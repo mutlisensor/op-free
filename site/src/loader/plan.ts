@@ -16,7 +16,7 @@ import type { CatalogueEngine } from "../shared/catalogue.ts";
 import {
   type Doc, type Engine, TRACK_NAMES, isUserSample, makeEngine, planInstall, pyInt, slotCells, slotMapProblems, unassignedUserSamples,
 } from "./core.ts";
-import { type Choice, GROUPS, type GroupId, SLOTS_PER_TRACK, engineTracks, group, slotIntents } from "./model.ts";
+import { type Choice, GROUPS, type GroupId, SLOTS_PER_TRACK, cautionOf, engineTracks, group, slotIntents } from "./model.ts";
 
 export interface Device {
   plugs: Doc;
@@ -229,6 +229,9 @@ export function planLoader(input: PlanInput): LoaderPlan {
       dir, label: e.label, plugId: pid, version: pyInt(m.plug.version ?? 1), action: "install", restart: false,
       presets: e.presets.length, built: e.engine !== null, bytes: null,
     };
+    const caution = cautionOf(e);
+    if (caution && !input.demo) errors.push(`${e.label} can't go on a real OP-Z yet: ${caution} Untick it.`);
+    else if (caution) warnings.push(`${e.label}: ${caution} (the demo OP-Z never runs it)`);
     if (record && record.engine !== engine.devicePath) {
       errors.push(`plug id ${pid} on this OP-Z belongs to ${record.engine}, not ${engine.devicePath}: ${e.label} can't go on`);
     } else if (record && record.version >= item.version) {

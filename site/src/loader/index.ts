@@ -19,7 +19,7 @@ import { type BakeRequest, type DiskDir, backupMeta, diskPicker, runBake } from 
 import { type Child, clear, download, formatTime, h } from "./dom.ts";
 import {
   type Choice, GROUPS, type GroupId, MAX_PICKS, SLOTS_PER_TRACK, capacity, engineTracks, group, groupEngines, sanitizeChoice,
-  setSource, slotIntents, toggleOriginalSlot, togglePick, TRACK_LABELS,
+  cautionOf, setSource, slotIntents, toggleOriginalSlot, togglePick, TRACK_LABELS,
 } from "./model.ts";
 import { type LoaderPlan, blockedSlots, planLoader, plugLabel, presetDocs, userSampleCells } from "./plan.ts";
 import { type SampleCheck, type SampleGate, gateOpen, gateRefusal, looseText, sampleCheck, sampleGate } from "./samplegate.ts";
@@ -87,6 +87,8 @@ class LoaderPanel {
   private log: string[] = [];
   private destroyed = false;
   private readonly onPick = (e: Event) => this.pickFromLab(e as PickEvent);
+  /** Set while the loader sends its own opfree:pick, so it doesn't handle its own event. */
+  private telling = false;
 
   constructor(el: HTMLElement) {
     this.el = el;
@@ -130,6 +132,9 @@ class LoaderPanel {
       this.catalogueError = (e as Error).message;
     }
     this.choice = sanitizeChoice(read(KEYS.choice), this.engines);
+    // the lab starts with the featured engines ticked: tell it where the loader's (stored) picks differ
+    const picked = new Set(GROUPS.flatMap((g) => this.choice![g.id].picks));
+    for (const e of this.engines) if (!!e.featured !== picked.has(e.dir) && GROUPS.some((g) => groupEngines(this.engines, g.id).includes(e))) this.tellLab(e.dir, picked.has(e.dir));
     await this.reloadBackups();
     this.render();
   }
@@ -181,14 +186,25 @@ class LoaderPanel {
     return this.open <= 1 ? 1 : 2;
   }
 
+  /** Keep the lab's "add to my OP-Z" in step with the ticks here. */
+  private tellLab(dir: string, picked: boolean): void {
+    this.telling = true;
+    try {
+      document.dispatchEvent(new CustomEvent("opfree:pick", { detail: { dir, picked } }) as PickEvent);
+    } finally {
+      this.telling = false;
+    }
+  }
+
   private pickFromLab(e: PickEvent): void {
-    if (!this.choice) return;
+    if (!this.choice || this.telling) return;
     const engine = this.engines.find((x) => x.dir === e.detail?.dir);
     const g = engine && GROUPS.find((x) => groupEngines(this.engines, x.id).includes(engine));
     if (!engine || !g) return;
     const edit = togglePick(this.choice[g.id], engine.dir, e.detail.picked, this.blocked(g.id));
     this.groupId = g.id;
     this.notice = edit.refused ? { text: edit.refused, kind: "warn" } : null;
+    if (edit.refused) this.tellLab(engine.dir, false);
     this.setChoice({ ...this.choice, [g.id]: edit.choice });
   }
 
@@ -491,6 +507,7 @@ class LoaderPanel {
               const box = ev.target as HTMLInputElement;
               const edit = togglePick(c, e.dir, box.checked, blocked);
               this.notice = edit.refused ? { text: edit.refused, kind: "warn" } : null;
+              if (!edit.refused) this.tellLab(e.dir, box.checked);
               this.setChoice({ ...this.choice!, [g.id]: edit.choice });
             },
           }),
@@ -498,7 +515,9 @@ class LoaderPanel {
             slotNo ? h("small", { class: "ld-engine__slot", title: `slot ${slotNo} (black key ${slotNo % 10})` }, `slot ${slotNo}`) : null,
             unbuilt ? h("small", { class: "ld-tag", title: "The catalogue has no built .engine for it" }, midi ? "not built" : "not built · demo only") : null,
             engineTracks(e, g).length < g.tracks.length ? h("small", { class: "ld-tag" }, engineTracks(e, g).map((t) => TRACK_LABELS[t]).join("+") + " only") : null),
-          e.summary ? h("span", { class: "ld-engine__sum" }, e.summary) : null),
+          e.summary ? h("span", { class: "ld-engine__sum" }, e.summary) : null,
+          cautionOf(e) ? h("span", { class: "ld-engine__caution", "data-testid": `caution-${e.dir}` },
+            `${cautionOf(e)} ${midi ? "It can't be installed on your OP-Z." : "Demo only."}`) : null),
         h("button", {
           type: "button", class: "ld-listen", "data-key": `listen-${e.dir}`, "aria-label": `Listen to ${e.label}`,
           onclick: () => document.dispatchEvent(new CustomEvent("opfree:audition", { detail: { dir: e.dir } }) as AuditionEvent),

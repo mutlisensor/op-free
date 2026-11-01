@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  DEFAULT_PICKS, MAX_PICKS, capacity, defaultChoice, engineGroup, engineTracks, freeSlots, group, groupEngines, sanitizeChoice,
+  DEFAULT_PICKS, MAX_PICKS, capacity, cautionOf, defaultChoice, engineGroup, engineTracks, freeSlots, group, groupEngines, sanitizeChoice,
   setSource, slotIntents, toggleOriginalSlot, togglePick,
 } from "../model.ts";
 import { catalogue, engine } from "./fixtures.ts";
@@ -94,4 +94,12 @@ test("a stored choice is checked against the catalogue", () => {
   assert.deepEqual(c.fx, defaultChoice(all).fx, "a missing group gets the default");
   const crowded = sanitizeChoice({ synth: { picks: groupEngines(all, "synth").map((e) => e.dir), original: [1, 2, 3] } }, all);
   assert.equal(crowded.synth.picks.length, 7, "capped by the free slots");
+});
+
+test("an engine with a caution is never ticked by default", () => {
+  const all = [...catalogue(), engine("risky", "synth", 61099, { featured: true, caution: "Froze the OP-Z." })];
+  const risky = all.at(-1)!;
+  assert.equal(cautionOf(risky), "Froze the OP-Z.");
+  assert.ok(!defaultChoice(all).synth.picks.includes("risky"));
+  assert.ok(groupEngines(all, "synth").includes(risky), "still offered, to tick by hand (and to try in the demo)");
 });

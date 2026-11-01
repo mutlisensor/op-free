@@ -10,7 +10,7 @@ const MASK: Record<Kind, number> = { synth: 0xf0, drum: 0x0f, fx: 0x300 };
 const FREE_SLOTS = [7, 6, 5, 3, 2, 57, 56, 55, 54, 53, 52, 51, 50, 49, 48, 47, 46, 45, 44, 43, 42, 41, 40];
 let next = 0;
 
-export function engine(dir: string, kind: Kind, id: number, options: { featured?: boolean; mask?: number; built?: boolean; version?: number } = {}): CatalogueEngine {
+export function engine(dir: string, kind: Kind, id: number, options: { featured?: boolean; mask?: number; built?: boolean; version?: number; caution?: string } = {}): CatalogueEngine {
   const values = [128, 128, 0, 64, 255, 64, 0, 0, 255, 0, 128, 200, 0, 128, 100, 255, 0, 0];
   const slots = kind === "synth" ? [0, 1, 2, 3] : [0];
   return {
@@ -24,7 +24,8 @@ export function engine(dir: string, kind: Kind, id: number, options: { featured?
     wasm: null,
     engine: options.built === false ? null : `engines/${dir}.engine`,
     summary: null, help: null, author: null,
-  };
+    ...(options.caution ? { caution: options.caution } : {}),
+  } as CatalogueEngine;
 }
 
 export function catalogue(): CatalogueEngine[] {

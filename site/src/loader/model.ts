@@ -64,6 +64,14 @@ export function isTestPlug(e: CatalogueEngine): boolean {
   return id >= TEST_PLUG_MIN && id <= TEST_PLUG_MAX;
 }
 
+/**
+ * Why an engine must not go on a real OP-Z yet (it crashed or froze one), or null: the catalogue's `caution`. Read
+ * through a cast so the loader builds with and without that field in src/shared/catalogue.ts.
+ */
+export function cautionOf(e: CatalogueEngine): string | null {
+  return (e as CatalogueEngine & { caution?: string | null }).caution ?? null;
+}
+
 /** The group an engine belongs to: its kind, if its trackmask names a track of that group (or names none). */
 export function engineGroup(e: CatalogueEngine): GroupId | null {
   const id: GroupId = e.kind === "fx" ? "fx" : e.kind === "drum" ? "drum" : "synth";
@@ -85,12 +93,12 @@ export function groupEngines(engines: readonly CatalogueEngine[], id: GroupId): 
 
 /**
  * The default: per group the catalogue's featured engines, at most DEFAULT_PICKS. A catalogue that features none in a
- * group gets its first DEFAULT_PICKS engines there.
+ * group gets its first DEFAULT_PICKS engines there. Engines with a caution are never ticked by default.
  */
 export function defaultChoice(engines: readonly CatalogueEngine[]): Choice {
   const out = {} as Choice;
   for (const g of GROUPS) {
-    const list = groupEngines(engines, g.id);
+    const list = groupEngines(engines, g.id).filter((e) => !cautionOf(e));
     const featured = list.filter((e) => e.featured);
     out[g.id] = { source: "community", picks: (featured.length ? featured : list).slice(0, DEFAULT_PICKS).map((e) => e.dir), original: [] };
   }

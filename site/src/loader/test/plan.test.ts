@@ -196,3 +196,13 @@ test("names: ours by label, TE's by engine or sample file, the visitor's samples
   assert.equal(plugLabel(d.plugs, null), "empty");
   assert.equal(cellsToDoc(new Map([["4:2", 7], ["4:1", 8]]), { tracks: [{ index: 0, packs: [] }] }).tracks[1].packs[0].slot, 1);
 });
+
+test("an engine with a caution is refused on a real OP-Z, allowed in the demo", () => {
+  const d = demoDevice();
+  const risky = engines.map((e) => (e.dir === "syn2" ? { ...e, caution: "Froze the OP-Z twice." } : e));
+  const real = planLoader({ engines: risky, choice: defaultChoice(engines), device: d, original: d.slots, demo: false });
+  assert.match(real.errors.join(), /syn2 can't go on a real OP-Z yet: Froze the OP-Z twice/);
+  const demo = planLoader({ engines: risky, choice: defaultChoice(engines), device: d, original: d.slots, demo: true });
+  assert.deepEqual(demo.errors, []);
+  assert.ok(demo.warnings.some((w) => w.startsWith("syn2: Froze")));
+});

@@ -42,8 +42,13 @@ one is loose (SAFETY.md rule 5).
 `dir`, `label`, `kind`, `summary`, `featured`, `presets`, `engine` and `manifest`. `manifest` must be `plug.json` as
 written: the loader needs `plug.id`, `plug.version`, `plug.trackmask`, `memoryslot`, `engine_version` and, for master,
 `master_in_place`. Presets may carry `default_octave` (as in `presets.json`) or `octave`. `engine` is the URL of the
-built `.engine`; without it an engine can be installed only on the demo OP-Z (a placeholder). Test plugs
-(60900–60999) are never offered.
+built `.engine`; without it an engine can be installed only on the demo OP-Z (a placeholder). `caution` (an engine
+that crashed or froze a real OP-Z): shown on its row, never ticked by default, refused for a real OP-Z (the plan
+errors), allowed on the demo. Test plugs (60900–60999) are never offered.
+
+**The lab's ticks.** The lab starts with the featured engines ticked and follows `opfree:pick` from anyone, so the
+loader sends `opfree:pick {dir, picked}` for every tick it changes, for each stored pick that differs from the
+featured set after it loads, and `picked: false` back when it refuses a tick from the lab (past the cap).
 
 ## Tests
 
