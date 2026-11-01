@@ -84,14 +84,13 @@ export const HOME = `
         <span class="block__cta">Open the synth lab <span aria-hidden="true">→</span></span>
       </a>
 
-      <a class="block block--yellow" href="#/firmware" data-reveal>
+      <section class="block block--yellow block--static" data-reveal aria-labelledby="firmware-h">
         <p class="block__n label">02 · <i class="dot dot--yellow"></i> research</p>
-        <h2 class="block__h">Firmware mods</h2>
+        <h2 id="firmware-h" class="block__h">Firmware mods</h2>
         <p class="block__soon">Coming soon</p>
         <p class="block__p">A builder that applies the mods you choose to your own firmware file. A 64-step sequencer,
           button debounce, Bluetooth audio, new arpeggiator and player styles, module updates.</p>
-        <span class="block__cta">What's planned <span aria-hidden="true">→</span></span>
-      </a>
+      </section>
 
       <section id="source" class="block block--blue block--static" data-reveal aria-labelledby="source-h">
         <p class="block__n label">03 · <i class="dot dot--blue"></i> open source</p>
