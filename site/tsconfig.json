@@ -8,7 +8,8 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "paths": { "@opz/core": ["../core/src/index.ts", "../../web/core/src/index.ts"] }
   },
   "include": ["src", "vite.config.ts"]
 }
