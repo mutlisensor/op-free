@@ -164,9 +164,9 @@ export function mountLab(el: HTMLElement): Mounted {
       audio.post({ type: "param", slot: this.name, index, value, immediate });
     }
 
-    /** The synth's sends to effects that are on survive a preset change. */
+    /** The synth's two sends are the player's: they survive a preset change and a change of synth. */
     private keep(): number[] {
-      return this.name === "synth" ? effects.filter((e) => e.entry).map((e) => SEND_BYTE[e.name]) : [];
+      return this.name === "synth" ? FX_SLOTS.map((s) => SEND_BYTE[s]) : [];
     }
 
     applyPreset(name: string | null, values: number[]): void {
@@ -268,7 +268,10 @@ export function mountLab(el: HTMLElement): Mounted {
         knobs.append(sep);
         for (const s of FX_SLOTS) {
           const byte = SEND_BYTE[s];
-          const k = knob(`send ${s.toUpperCase()}`, byte, this.values[byte], 0, (v) => this.setByte(byte, v, false));
+          const k = knob(`send ${s.toUpperCase()}`, byte, this.values[byte], 0, (v) => {
+            sendSet.add(s);
+            this.setByte(byte, v, false);
+          });
           k.el.classList.add("knob--send");
           k.el.title = `How much of the synth goes into ${s.toUpperCase()}. The send crossfades: turned up, the synth moves from the dry path into the effect.`;
           this.sends.set(s, k);
@@ -305,11 +308,17 @@ export function mountLab(el: HTMLElement): Mounted {
   const effects = FX_SLOTS.map((n) => new Slot(n)) as [Slot & { name: FxSlot }, Slot & { name: FxSlot }];
   const slots = [synth, ...effects];
 
-  /** After an effect slot changes: a send that lets it be heard, and the send knobs' state. */
+  /** Sends that already have a level (set here once, or turned by the player): never changed for them again. */
+  const sendSet = new Set<FxSlot>();
+
+  /** After a slot changes: the first time an effect and a synth are both on, a send that lets the effect be heard;
+   * and the send knobs' state. */
   function routing(): void {
     for (const fx of effects) {
+      if (sendSet.has(fx.name) || !fx.entry || !synth.entry) continue;
       const byte = SEND_BYTE[fx.name];
-      if (fx.entry && synth.entry && synth.values[byte] === 0) synth.setByte(byte, FIRST_SEND, true);
+      if (synth.values[byte] === 0) synth.setByte(byte, FIRST_SEND, true);
+      sendSet.add(fx.name);
     }
     synth.refreshSends();
   }
