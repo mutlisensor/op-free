@@ -1,0 +1,15 @@
+# Every knob at its limit on a loud sweep: P1 255 (dense), P2 255 (feedback 0.8, detune) with a held C5 freezing and
+# thawing, then P1 0 and pan 0 (dry only) must still pass sound, and nothing may clip.
+tempo 120
+steps 48
+tail 1
+track fx1
+input sweep 30 16000 0.9
+preset 255 255 0 0 255 0 0 0 0 255 255 255 0 0 0 0 0 0
+gain 1
+note 4 C5 12 127
+note 18 C3 1 127
+param p1 0 24
+param pan 0 40
+expect sound 1 48
+expect peak_below 0

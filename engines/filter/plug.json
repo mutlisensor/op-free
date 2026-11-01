@@ -1,0 +1,8 @@
+{
+  "engine": "filter",
+  "memoryslot": 86,
+  "engine_version": 2,
+  "plug": { "id": 61002, "version": 2, "name": "filter", "trackmask": 768, "flags": 1,
+            "parameter_names": ["cutoff", "character"] },
+  "presets": "presets.json"
+}

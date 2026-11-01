@@ -1,0 +1,26 @@
+# "vocal bass" and "doo bass" (bass track, mono): low notes down to C1, a velocity range for the breathy onset,
+# a pitch bend, and the vowel jumping between notes.
+tempo 110
+steps 16
+tail 1.5
+track bass
+preset 80 24 0 80 200 30 0 0 128 0 128 205 0 0 0 0 0 0
+note 0 C2 2 127
+note 2 C2 1 60
+note 3 G1 1 90
+note 4 Bb1 2 127
+param p1 230 6
+note 6 F1 2 110
+note 8 C1 2 127
+bend 8 -200
+param p1 50 10
+param decay 45 10
+param sustain 0 10
+bend 10 0
+note 10 Eb2 1 127
+note 11 Eb2 1 30
+note 12 G1 2 120
+note 14 C2 2 127
+expect sound 0 16
+expect idle 30
+expect peak_below -4

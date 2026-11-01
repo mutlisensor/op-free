@@ -1,0 +1,13 @@
+# Every knob at its limits (resonator ignores filter and resonance) on a loud sweep: no blow-up at the longest
+# decay with a fully inharmonic string; then dry only (pan 0) must still pass sound.
+tempo 120
+steps 16
+tail 0.5
+track fx1
+input sweep 30 16000 0.9
+preset 255 255 0 0 255 0 0 0 0 255 255 255 0 0 0 0 0 0
+gain 1
+note 0 C2 16
+param pan 0 12
+expect sound 0 16
+expect peak_below 0

@@ -1,0 +1,37 @@
+# Knob corners and odd notes: P1/P2 at 0 and 255 on a closed hat, an open hat, a crash and the bell; MIDI 0 and
+# 127 (keys 4 and 3 at octaves -3 and +3, clamped to +-2); octave presses -2 and +2 (notes 5 and 101); velocity 1;
+# the swell at P2 255 (a 3.6 s rise).
+tempo 120
+steps 64
+tail 6.0
+track perc
+param p1 0 0
+param p2 0 0
+note 0 F3 1 127
+note 1 A3 1 127
+note 2 A4 1 127
+note 3 E5 1 127
+param p1 255 4
+param p2 255 4
+note 4 F3 1 127
+note 6 A3 1 127
+param p1 0 12
+param p2 255 12
+note 12 A4 1 127
+param p1 255 20
+param p2 0 20
+note 20 E5 1 127
+param p1 128 24
+param p2 128 24
+note 24 0 1 127
+note 25 127 1 127
+note 26 5 1 127
+note 27 101 1 127
+note 28 A3 1 1
+track sample
+param p1 128 0
+param p2 255 0
+note 32 Eb5 1 127
+expect sound 0 64
+expect idle 150
+expect peak_below -6

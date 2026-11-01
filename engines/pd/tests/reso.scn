@@ -1,0 +1,28 @@
+# The three resonance waves: P1 sweeps from the sine through the resonance up to the top and down again on each,
+# at C2 and C4 (k up to 32, limited to 6 kHz), then bends on resonance II (the pitch limit). Decay 0: the DCW
+# is over within ~0.1 s, so P1 alone sets the distortion.
+tempo 120
+steps 48
+tail 1.5
+track lead
+preset 0 182 0 0 255 30 0 0 128 0 128 200 0 128 100 255 0 0
+note 0 C2 15 100
+note 0 C4 15 100
+sweep p1 0 255 0 8
+sweep p1 255 0 8 15
+param p2 219 16
+note 16 C2 15 100
+note 16 C4 15 100
+sweep p1 0 255 16 24
+sweep p1 255 0 24 31
+param p2 255 32
+param p1 255 32
+note 32 C3 8 100
+note 40 C2 8 100
+param p2 219 40
+bend 41 200
+bend 42 -200
+bend 43 200
+expect sound 0 48
+expect idle 58
+expect peak_below -3

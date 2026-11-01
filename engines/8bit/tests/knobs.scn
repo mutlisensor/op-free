@@ -1,0 +1,103 @@
+# A fast pattern (32nd notes on four tracks) while P1 and P2 jump and sweep across their whole range every few steps.
+tempo 150
+steps 64
+tail 1.5
+track kick
+param p1 0 0
+param p2 0 0
+sweep p1 0 255 0 16
+sweep p2 220 0 0 16
+sweep p1 255 0 16 32
+sweep p2 0 255 16 32
+param p1 0 33
+param p2 255 33
+param p1 255 40
+param p2 0 40
+param p1 128 48
+param p2 200 48
+param p1 30 56
+param p2 60 60
+note 0 F3 0.5 127
+note 4 Gb3 0.5 127
+note 8 F3 0.5 127
+note 12 Ab3 0.5 127
+note 16 F3 0.5 127
+note 20 G3 0.5 127
+note 24 F3 0.5 127
+note 28 Ab3 0.5 127
+note 32 F3 0.5 127
+note 36 Gb3 0.5 127
+note 40 F3 0.5 127
+note 44 G3 0.5 127
+note 48 F3 0.5 127
+note 52 Eb5 0.5 127
+note 56 F3 0.5 127
+note 60 E5 0.5 127
+track snare
+sweep p1 255 0 0 20
+sweep p2 0 255 0 20
+sweep p1 0 255 20 40
+sweep p2 255 0 20 40
+param p1 200 44
+param p2 230 44
+note 4 A3 0.5 110
+note 12 Bb3 0.5 110
+note 20 B3 0.5 110
+note 28 A3 0.5 110
+note 36 A3 0.5 110
+note 44 Bb3 0.5 110
+note 52 B3 0.5 110
+note 60 C4 0.5 110
+track perc
+sweep p1 0 255 0 64
+sweep p2 0 255 0 8
+sweep p2 255 0 8 16
+sweep p2 0 255 16 24
+sweep p2 255 0 24 32
+param p2 128 32
+note 0 Db4 0.5 90
+note 2 D4 0.5 70
+note 4 Db4 0.5 90
+note 6 Eb4 0.5 80
+note 8 Db4 0.5 90
+note 10 D4 0.5 70
+note 12 Db4 0.5 90
+note 14 E4 0.5 80
+note 16 Db4 0.5 90
+note 18 D4 0.5 70
+note 20 Db4 0.5 90
+note 22 Eb4 0.5 80
+note 24 Db4 0.5 90
+note 26 D4 0.5 70
+note 28 Db4 0.5 90
+note 30 E4 0.5 80
+note 32 Db4 0.5 90
+note 34 D4 0.5 70
+note 36 Db4 0.5 90
+note 38 Eb4 0.5 80
+note 40 Db4 0.5 90
+note 42 D4 0.5 70
+note 44 Db4 0.5 90
+note 46 E4 0.5 80
+note 48 Db4 0.5 90
+note 50 D4 0.5 70
+note 52 Db4 0.5 90
+note 54 Eb4 0.5 80
+note 56 Db4 0.5 90
+note 58 D4 0.5 70
+note 60 Db4 0.5 90
+note 62 E4 0.5 80
+track sample
+sweep p1 255 0 0 64
+sweep p2 255 0 0 64
+note 1 A4 0.5 100
+note 9 Bb4 0.5 100
+note 17 B4 0.5 100
+note 25 C5 0.5 100
+note 33 D5 0.5 100
+note 41 E5 0.5 100
+note 49 Db5 0.5 100
+note 57 B4 0.5 100
+expect sound 0 64
+expect idle 80
+expect peak_below 0

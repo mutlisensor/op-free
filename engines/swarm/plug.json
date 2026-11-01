@@ -1,0 +1,8 @@
+{
+  "engine": "swarm",
+  "memoryslot": 40,
+  "engine_version": 1,
+  "plug": { "id": 61202, "version": 1, "name": "swarm", "trackmask": 240, "flags": 0,
+            "parameter_names": ["density", "spread"] },
+  "presets": "presets.json"
+}

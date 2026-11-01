@@ -1,0 +1,74 @@
+# The whole bank: P1 set on each note's own step (a step lock) to all 32 patches in turn (P1 = 8 n + 4); dx sees
+# through the OS's P1 smoothing and plays the new patch from the note's first sample. Lead track; bass patches
+# play two octaves down, bells and mallets an octave up.
+tempo 150
+steps 64
+tail 2.0
+track lead
+preset 4 128 0 0 255 60 0 0 128 0 128 200 0 0 0 0 0 0
+note 0 C4 1 110
+param p1 12 2
+note 2 C4 1 110
+param p1 20 4
+note 4 C4 1 110
+param p1 28 6
+note 6 C4 1 110
+param p1 36 8
+note 8 C4 1 110
+param p1 44 10
+note 10 C2 1 110
+param p1 52 12
+note 12 C2 1 110
+param p1 60 14
+note 14 C2 1 110
+param p1 68 16
+note 16 C2 1 110
+param p1 76 18
+note 18 C2 1 110
+param p1 84 20
+note 20 C2 1 110
+param p1 92 22
+note 22 C4 1 110
+param p1 100 24
+note 24 C4 1 110
+param p1 108 26
+note 26 C4 1 110
+param p1 116 28
+note 28 C4 1 110
+param p1 124 30
+note 30 C4 1 110
+param p1 132 32
+note 32 C4 1 110
+param p1 140 34
+note 34 C4 1 110
+param p1 148 36
+note 36 C4 1 110
+param p1 156 38
+note 38 C4 1 110
+param p1 164 40
+note 40 C4 1 110
+param p1 172 42
+note 42 C4 1 110
+param p1 180 44
+note 44 C4 1 110
+param p1 188 46
+note 46 C5 1 110
+param p1 196 48
+note 48 C5 1 110
+param p1 204 50
+note 50 C5 1 110
+param p1 212 52
+note 52 C5 1 110
+param p1 220 54
+note 54 C5 1 110
+param p1 228 56
+note 56 C5 1 110
+param p1 236 58
+note 58 C5 1 110
+param p1 244 60
+note 60 C5 1 110
+param p1 252 62
+note 62 C5 1 110
+expect sound 0 64
+expect idle 72
+expect peak_below -6      # one voice peaks at -12 dBFS

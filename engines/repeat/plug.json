@@ -1,0 +1,8 @@
+{
+  "engine": "repeat",
+  "memoryslot": 71,
+  "engine_version": 1,
+  "plug": { "id": 61100, "version": 1, "name": "repeat", "trackmask": 768, "flags": 1,
+            "parameter_names": ["division", "decay"] },
+  "presets": "presets.json"
+}

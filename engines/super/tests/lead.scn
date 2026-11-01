@@ -1,0 +1,17 @@
+# "trance lead" (lead track): a short anthem line with a pitch bend; the voice must be freed after the release.
+tempo 138
+steps 16
+tail 3.0
+track lead
+preset 128 170 0 90 200 50 0 0 128 0 128 190 0 0 0 0 0 0
+note 0 A4 3 127
+note 3 C5 1 110
+note 4 E5 4 127
+note 8 D5 2 100
+note 10 C5 2 100
+bend 10 100
+note 12 A4 4 127
+bend 14 0
+expect sound 0 16
+expect idle 40
+expect peak_below -4      # one voice peaks around -8 dBFS; a releasing note overlaps the next

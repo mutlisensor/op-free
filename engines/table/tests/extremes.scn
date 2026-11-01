@@ -1,0 +1,19 @@
+# All knobs at both ends, the lowest and highest notes (C0, C8, G9: the last mip, pitch held at 11 kHz), velocities
+# 1 and 127, P1/P2 jumping between 0 and 255 and a full bend on the highest note.
+tempo 120
+steps 16
+tail 0.3
+track lead
+preset 255 255 0 0 255 0 0 0 0 255 128 255 0 0 0 0 0 0
+note 0 C0 4 127
+note 4 C8 4 127
+param p1 0 8
+param p2 0 8
+note 8 C2 4 1
+param p1 255 10
+param p2 255 10
+note 12 G9 4 127
+bend 12 200
+param p1 0 14
+param p2 128 14
+expect peak_below -4

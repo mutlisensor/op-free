@@ -1,0 +1,27 @@
+# The noise half of P2 on a held lead note (128 -> 255 -> 128), then "noise arp" on the arp track: short notes,
+# the oscillators level with the noise at 255.
+tempo 120
+steps 32
+tail 1.0
+track lead
+preset 80 128 4 90 220 55 0 0 128 0 128 195 0 128 100 255 0 0
+sweep p2 128 255 0 8
+sweep p2 255 128 8 16
+note 0 D4 16 127
+track arp
+preset 120 210 0 30 0 25 0 0 128 0 128 200 0 128 100 255 0 0
+note 16 C4 1 127
+note 17 E4 1 100
+note 18 G4 1 127
+note 19 C5 1 80
+note 20 G4 1 127
+note 21 E4 1 100
+note 22 C4 1 127
+note 23 G3 1 80
+note 24 C4 1 127
+note 25 E4 1 100
+note 26 G4 1 127
+note 27 B4 1 80
+expect sound 0 28
+expect idle 50
+expect peak_below -4

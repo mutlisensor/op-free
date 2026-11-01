@@ -1,0 +1,22 @@
+# Extremes: C0 and G9 on every wave, velocity 1, pitch bends on a sweeping high note, both knob ends.
+tempo 120
+steps 16
+tail 0.3
+track lead
+preset 255 255 0 0 255 0 0 0 0 255 128 255 0 0 0 0 0 0
+note 0 C0 2 127
+note 2 G9 2 127
+param p1 0 4
+param p2 0 4
+note 4 C0 2 127
+note 6 G9 2 1
+param p1 128 8
+param p2 252 8
+note 8 C8 4 127
+bend 9 200
+bend 10 -200
+param p1 224 12
+param p2 216 12
+note 12 C8 2 127
+note 14 C0 2 127
+expect peak_below -11.9

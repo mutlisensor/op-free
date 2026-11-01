@@ -1,0 +1,23 @@
+# A tour of the whole grid on one held note (lead track, C3): P1 sweeps every bank's six waves while P2 walks the
+# seven banks, slowly first and then fast (full range in a quarter of a step), as a hand or an LFO would.
+tempo 120
+steps 32
+tail 0.5
+track lead
+preset 0 0 0 0 255 20 0 0 128 0 128 200 0 0 0 0 0 0
+sweep p1 0 255 0 4
+sweep p1 255 0 4 8
+sweep p1 0 255 8 12
+sweep p1 255 0 12 16
+sweep p2 0 255 0 16
+sweep p1 0 255 16 17
+sweep p1 255 0 17 18
+sweep p2 255 0 16 18
+param p1 255 20
+param p2 0 20
+param p1 0 22
+param p2 255 22
+sweep p1 0 255 24 32
+note 0 C3 32 127
+expect sound 0 32
+expect peak_below -4

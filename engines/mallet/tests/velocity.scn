@@ -1,0 +1,26 @@
+# Mallet hardness and level from velocity: glock and marimba at velocities 1, 10, 20, 40, 64, 90, 110, 127 (soft is
+# dark, slow to speak and quiet; hard is bright with a click).
+tempo 120
+steps 64
+tail 2
+track perc
+preset 128 120 0 0 255 0 0 0 128 0 128 200 0 128 100 255 0 0
+note 0 64 1 1
+note 2 64 1 10
+note 4 64 1 20
+note 6 64 1 40
+note 8 64 1 64
+note 10 64 1 90
+note 12 64 1 110
+note 14 64 1 127
+param p1 32 32
+note 32 57 1 1
+note 34 57 1 10
+note 36 57 1 20
+note 38 57 1 40
+note 40 57 1 64
+note 42 57 1 90
+note 44 57 1 110
+note 46 57 1 127
+expect sound 0 64
+expect peak_below 0

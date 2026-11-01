@@ -1,0 +1,17 @@
+# The bow zone: "glass harp" on the lead (P2 245: the bow sustains the partials while the key is held, soft attack),
+# "bell pad" chords below; note-off lifts the bow and the partials ring out under the release.
+tempo 90
+steps 16
+tail 4.0
+track chord
+preset 204 240 60 0 255 120 0 0 128 0 128 150 0 0 0 0 0 0
+note 0 D3 8 100
+note 0 Gb3 8 100
+note 0 A3 8 100
+track lead
+preset 255 245 45 0 255 80 0 0 128 0 128 185 0 0 0 0 0 0
+note 4 A4 6 110
+note 10 E5 4 70
+expect sound 2 14
+expect idle 64
+expect peak_below -3

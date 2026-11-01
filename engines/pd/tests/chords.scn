@@ -1,0 +1,45 @@
+# Chords on the chord track (voices steal and release) while P1 and P2 are turned fast end to end, then jumped:
+# the situation that crashed macro v3. Then "pd piano" chords at different velocities.
+tempo 120
+steps 48
+tail 2.0
+track chord
+preset 128 128 10 120 200 60 0 0 128 0 128 160 0 128 100 255 0 0
+note 0 C3 4 100
+note 0 E3 4 100
+note 0 G3 4 100
+note 0 B3 4 100
+note 4 D3 4 127
+note 4 F3 4 127
+note 4 A3 4 127
+note 4 C4 4 127
+note 6 G2 2 80
+note 8 E3 6 60
+note 8 G3 6 60
+note 8 B3 6 60
+note 8 D4 6 60
+sweep p1 0 255 0 2
+sweep p2 255 0 0 3
+sweep p1 255 0 2 4
+sweep p2 0 255 3 6
+sweep p1 0 255 4 6
+param p1 0 8
+param p2 255 9
+param p1 255 10
+param p2 0 11
+param p1 40 12
+param p2 109 12
+note 16 C3 6 127
+note 16 E3 6 127
+note 16 G3 6 127
+note 24 F3 6 70
+note 24 A3 6 70
+note 24 C4 6 70
+note 32 G3 6 30
+note 32 B3 6 30
+note 32 D4 6 30
+param decay 110 16
+param sustain 60 16
+expect sound 0 38
+expect idle 60
+expect peak_below 0

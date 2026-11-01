@@ -1,0 +1,16 @@
+# P2 swept 0 -> 255 twice: once on the saw swarm (P1 255: unison, chorus, a wide cluster, then inharmonic membrane
+# ratios) and once on the particles (P1 70: pings on the note scattering into a cluster, then bell-like).
+tempo 120
+steps 48
+tail 2.0
+track lead
+preset 255 0 0 64 255 30 0 0 128 0 128 200 0 128 100 255 0 0
+note 0 A3 22 120
+sweep p2 0 255 1 21
+param p1 70 24
+param p2 0 24
+note 24 A4 22 120
+sweep p2 0 255 25 45
+expect sound 0 46
+expect idle 64
+expect peak_below -4

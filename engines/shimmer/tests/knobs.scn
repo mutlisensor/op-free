@@ -1,0 +1,33 @@
+# Both knobs swept fast and in opposite directions while a chord-like saw plays and the interval changes: P1 and P2
+# move every block (the situation that crashed macro v3 on the device). Bounded and click-free.
+tempo 120
+steps 64
+tail 1
+track fx1
+input saw 165 0.6
+preset 128 128 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
+sweep p1 0 255 0 4
+sweep p2 255 0 0 6
+sweep p1 255 0 4 8
+sweep p2 0 255 6 12
+sweep p1 0 255 8 12
+sweep p1 255 0 12 16
+sweep p2 255 0 12 18
+sweep p1 0 255 16 18
+sweep p1 255 0 18 20
+sweep p2 0 255 18 24
+sweep p1 0 255 20 32
+sweep p2 255 0 24 32
+sweep p1 255 0 32 33
+sweep p2 0 255 32 33
+sweep p1 0 255 33 34
+sweep p2 255 0 33 34
+sweep p1 255 0 34 64
+sweep p2 0 255 34 64
+note 10 G3 1 100
+note 20 C5 1 100
+note 30 C2 1 100
+note 40 C4 1 100
+gain 1
+expect sound 0 64
+expect peak_below -0.5

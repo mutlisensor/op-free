@@ -1,0 +1,13 @@
+# Auto-wah (P2 high) on a click train: each click opens the filter, which falls back between clicks.
+tempo 120
+steps 32
+tail 0.5
+track fx2
+input impulse 1 0.9
+param p1 60
+param p2 220
+param pan 128
+param level 255
+gain 1
+expect sound 0 32
+expect peak_below 0

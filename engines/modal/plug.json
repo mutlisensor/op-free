@@ -1,0 +1,8 @@
+{
+  "engine": "modal",
+  "memoryslot": 52,
+  "engine_version": 1,
+  "plug": { "id": 61017, "version": 1, "name": "modal", "trackmask": 240, "flags": 0,
+            "parameter_names": ["structure", "damping"] },
+  "presets": "presets.json"
+}

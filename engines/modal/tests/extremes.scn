@@ -1,0 +1,26 @@
+# All knobs at both ends (modal ignores filter and resonance), the lowest and highest notes (C9: only its lowest
+# partials are below 0.45 fs), velocity 1, knob jumps every step while notes start and steal, a full bend on glass.
+tempo 120
+steps 16
+tail 0.5
+track lead
+preset 255 255 0 0 255 0 0 0 0 255 128 255 0 0 0 0 0 0
+note 0 C0 4 127
+note 0 C9 4 127
+param p1 0 2
+param p2 0 2
+note 4 C2 4 1
+param p1 255 5
+param p2 191 6
+param p1 0 7
+param p2 255 7
+note 8 G6 4 127
+note 8 G6 4 127
+note 8 G6 4 127
+param p1 128 9
+param p2 0 10
+param p1 255 11
+param p2 255 11
+bend 12 200
+note 12 C8 4 127
+expect peak_below -3

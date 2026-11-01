@@ -1,0 +1,15 @@
+# Open hat at step 0, closed hat at step 2 on the same track: the open hat must be cut short (chip-style one noise
+# channel per track); the metallic open hat at step 8 is cut by the metallic closed hat at step 10.
+tempo 120
+steps 16
+tail 0.8
+track perc
+param p1 128 0
+param p2 128 0
+note 0 Eb4 2 110
+note 2 Db4 1 40
+note 8 E4 2 110
+note 10 D4 1 40
+expect sound 0 2
+expect sound 8 10
+expect idle 20

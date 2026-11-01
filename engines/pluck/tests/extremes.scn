@@ -1,0 +1,17 @@
+# All knobs at both ends (pluck ignores filter and resonance), the lowest and highest notes (C0 runs at a quarter of
+# the sample rate; C8 bypasses the all-pass chain), velocity 1, fast knob jumps, a full bend on a metal string.
+tempo 120
+steps 16
+tail 0.5
+track lead
+preset 255 255 0 0 255 0 0 0 0 255 128 255 0 0 0 0 0 0
+note 0 C0 4 127
+note 4 C8 4 127
+param p1 0 8
+param p2 0 8
+note 8 C2 4 1
+param p1 255 12
+param p2 255 12
+note 12 G6 4 127
+bend 12 200
+expect peak_below -3

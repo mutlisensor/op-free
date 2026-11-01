@@ -1,0 +1,13 @@
+# Lead: P1 swept through all 16 ratio steps under a held note at index 150 (steps change the timbre, never click).
+tempo 100
+steps 32
+tail 1.5
+track lead
+param p2 150
+param sustain 255
+param release 40
+sweep p1 0 255 0 32
+note 0 A3 32 100
+expect sound 0 32
+expect peak_below 0
+expect idle 40      # release 40: ~0.9 s to -66 dB

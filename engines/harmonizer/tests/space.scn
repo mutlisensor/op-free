@@ -1,0 +1,13 @@
+# A fifth up (P1 216) with P2 swept from no space to full feedback: the harmony cascades upward and swirls.
+tempo 120
+steps 48
+tail 3
+track fx2
+input impulse 4 0.6
+param p1 216
+param pan 200
+param level 255
+gain 1
+sweep p2 0 255 0 40
+expect sound 0 48
+expect peak_below 0

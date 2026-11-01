@@ -1,0 +1,18 @@
+# Notes on the FX track ("note ping"): the resonance sits on A2, E3, A3, C5 and each note sweeps it down from above.
+tempo 120
+steps 32
+tail 0.5
+track fx1
+input noise 0.3
+param p1 128
+param p2 95
+param pan 128
+param level 255
+gain 1
+note 0 A2 6
+note 8 E3 6
+note 16 A3 3
+note 20 A3 3
+note 24 C5 8
+expect sound 0 32
+expect peak_below 0

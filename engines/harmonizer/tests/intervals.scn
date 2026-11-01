@@ -1,0 +1,13 @@
+# P1 swept from -12 through the detune zone to +12 on a saw, P2 0 (the voices alone), wet only.
+tempo 120
+steps 48
+tail 0.3
+track fx1
+input saw 165 0.4
+param p2 0
+param pan 255
+param level 255
+gain 1
+sweep p1 0 255 0 48
+expect sound 0 48
+expect peak_below 0

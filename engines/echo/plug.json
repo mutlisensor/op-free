@@ -1,0 +1,8 @@
+{
+  "engine": "echo",
+  "memoryslot": 48,
+  "engine_version": 1,
+  "plug": { "id": 61005, "version": 1, "name": "echo", "trackmask": 256, "flags": 0,
+            "parameter_names": ["time", "feedback"] },
+  "presets": "presets.json"
+}

@@ -1,0 +1,18 @@
+# One violin chord, the ensemble swept dry -> lush -> seasick and back, then a held lush chord: listen for the
+# three-phase shimmer growing, the common wow from 153 on, and no pitch jump when the depth moves.
+tempo 90
+steps 32
+tail 2.5
+track chord
+param p1 192
+param attack 40
+param sustain 255
+param release 70
+sweep p2 0 255 0 16
+sweep p2 255 153 16 24
+note 0 A3 32 120
+note 0 Db4 32 120
+note 0 E4 32 120
+expect sound 0 32
+expect idle 46
+expect peak_below -4

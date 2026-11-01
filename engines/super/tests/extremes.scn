@@ -1,0 +1,17 @@
+# All knobs at both ends (super ignores filter and resonance), very low and very high notes, a velocity-1 note,
+# fast knob jumps and a pitch bend on a wildly detuned high note.
+tempo 120
+steps 16
+tail 0.3
+track lead
+preset 255 255 0 0 255 0 0 0 0 255 128 255 0 0 0 0 0 0
+note 0 C0 4 127
+note 4 C8 4 127
+param p1 0 8
+param p2 0 8
+note 8 C2 4 1
+param p1 255 12
+param p2 255 12
+note 12 G7 4 127
+bend 12 200
+expect peak_below -2

@@ -1,0 +1,15 @@
+# Knobs at their limits on a full-scale sweep: small and dark, then huge and bright, then the endless top, with a
+# freeze note on top; output stays clean and below 0 dBFS.
+tempo 120
+steps 32
+tail 2
+track fx2
+input sweep 30 16000 0.99
+preset 0 0 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
+param p1 255 8
+param p2 255 8
+param p1 240 16
+note 20 C4 6 127
+param p2 0 24
+expect sound 0 32
+expect peak_below 0

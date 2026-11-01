@@ -1,0 +1,12 @@
+# Used by tests/golden.py with fixture voicecap_probe (opz_voices.h, cap 2): four held chord notes one step apart,
+# so the third and fourth evict sounding voices; a fifth note later takes a record the fades freed.
+tempo 120
+steps 16
+tail 0.5
+track chord
+preset 0 0 0 0 255 10 0 0 0 0 0 0 0 0 0 0 0 0
+note 0 C4 12 100
+note 1 E4 12 100
+note 2 G4 12 100
+note 3 B4 12 100
+note 6 D5 2 100

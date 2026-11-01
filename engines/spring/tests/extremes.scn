@@ -1,0 +1,15 @@
+# spring: every knob at 0, then at 255, on a full-scale sweep; then dry only must still pass the input.
+tempo 120
+steps 24
+tail 0.2
+track fx2
+input sweep 30 16000 0.9
+preset 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+gain 1
+param level 255 0
+param pan 255 0
+param p1 255 8
+param p2 255 8
+param pan 0 16
+expect sound 0 24
+expect peak_below 0

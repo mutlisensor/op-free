@@ -1,0 +1,13 @@
+# P2 swept from 0 to 255 on a sawtooth: low-pass, resonance, band-pass, auto-wah, without steps or overloads.
+tempo 120
+steps 32
+tail 0.5
+track fx1
+input saw 110 0.5
+param p1 120
+sweep p2 0 255 0 32
+param pan 128
+param level 255
+gain 1
+expect sound 0 32
+expect peak_below 0

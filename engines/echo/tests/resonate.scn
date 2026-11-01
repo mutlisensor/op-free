@@ -1,0 +1,21 @@
+# Noise into a tuned loop: held notes (velocity 1: no pluck; in the chord the newest note wins) turn the echo into a resonator; at
+# P2 235 the loop rings on by itself (a drone), held by the saturator.
+tempo 120
+steps 48
+tail 1
+track fx1
+input noise 0.1
+param p1 136
+param p2 200
+param pan 200
+param level 255
+gain 1
+note 0 A2 8 1
+note 8 D3 8 1
+note 16 C3 8 1
+note 16 E3 8 1
+note 16 G3 8 1
+param p2 235 24
+note 24 E2 16 1
+expect sound 0 48
+expect peak_below 0

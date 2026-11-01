@@ -1,0 +1,8 @@
+{
+  "engine": "fmperc",
+  "memoryslot": 80,
+  "engine_version": 2,
+  "plug": { "id": 61021, "version": 2, "name": "fmperc", "trackmask": 15, "flags": 24,
+            "parameter_names": ["ratio", "sweep"] },
+  "presets": "presets.json"
+}

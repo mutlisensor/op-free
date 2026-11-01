@@ -1,0 +1,23 @@
+# "table lead" (lead track): a line up to C6 with pitch bends that cross the 516 Hz and 1067 Hz mip edges (one-block
+# crossfades) and a slow P1 sweep through the sync bank; the voice must be freed after the release.
+tempo 132
+steps 16
+tail 2.0
+track lead
+preset 140 150 0 90 210 50 0 0 128 0 128 190 0 0 0 0 0 0
+sweep p1 140 255 4 12
+sweep p2 150 190 8 16
+note 0 C5 2 127
+note 2 D5 2 100
+note 4 G4 2 110
+bend 5 200
+bend 6 0
+note 6 B4 2 127
+note 8 C6 4 127
+bend 9 -200
+bend 10 100
+bend 11 0
+note 12 E5 4 90
+expect sound 0 16
+expect idle 30
+expect peak_below -4

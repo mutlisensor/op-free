@@ -1,0 +1,20 @@
+# A held C major chord on the chord track: registration swept cello -> full with the ensemble off (P2 0), then
+# back down with the classic ensemble on (P2 153). The tone and the footages morph without steps.
+tempo 100
+steps 32
+tail 1.5
+track chord
+param attack 20
+param sustain 255
+param release 60
+param p2 0
+sweep p1 0 255 0 16
+param p2 153 16
+sweep p1 255 0 16 32
+note 0 C3 32 110
+note 0 E3 32 110
+note 0 G3 32 110
+note 0 C4 32 110
+expect sound 0 32
+expect idle 48
+expect peak_below -3

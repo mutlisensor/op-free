@@ -1,0 +1,13 @@
+# Cutoff swept from 30 Hz to fully open on a sawtooth, low-pass with some resonance (P2 48).
+tempo 120
+steps 32
+tail 0.5
+track fx1
+input saw 110 0.5
+sweep p1 0 255 0 32
+param p2 48
+param pan 128
+param level 255
+gain 1
+expect sound 4 32
+expect peak_below 0

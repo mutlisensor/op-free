@@ -1,0 +1,21 @@
+# A roll of explosions and lasers on the 2-voice kick track, faster than they ring: every third hit steals a voice,
+# which must fade out in a few milliseconds so the new hit starts at once.
+tempo 120
+steps 8
+tail 1.5
+track kick
+param p1 128 0
+param p2 100 0
+note 0 Eb5 0.25 127
+note 0.5 Db5 0.25 127
+note 1 Eb5 0.25 127
+note 1.5 Db5 0.25 127
+note 2 Eb5 0.25 127
+note 2.5 F3 0.25 127
+note 3 Eb5 0.25 127
+note 3.25 F3 0.25 127
+note 3.5 Eb5 0.25 127
+note 3.75 F3 0.25 127
+expect sound 0 8
+expect idle 12
+expect peak_below -5

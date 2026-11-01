@@ -1,0 +1,8 @@
+{
+  "engine": "spring",
+  "memoryslot": 38,
+  "engine_version": 1,
+  "plug": { "id": 61101, "version": 1, "name": "spring", "trackmask": 768, "flags": 0,
+            "parameter_names": ["tension", "drip"] },
+  "presets": "presets.json"
+}

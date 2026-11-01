@@ -1,0 +1,27 @@
+# Chip drums on the arp track: a noise kick (long noise, sweep down 30 oct/s, short decay), a metallic snare and
+# noise hats at three pitches, velocity steps in the 4-bit volume.
+tempo 120
+steps 16
+tail 1.0
+track arp
+preset 192 236 0 20 0 20 0 0 128 0 128 210 0 0 0 0 0 0
+note 0 C3 1 127
+param p1 224 2
+param p2 0 2
+note 2 D4 1 110
+param p1 192 3
+note 3 C7 1 60
+note 4 C3 1 127
+param p1 224 5
+note 6 D4 1 127
+param p1 192 7
+note 7 G7 1 90
+note 8 C3 1 127
+note 10 C8 1 40
+note 11 C7 1 20
+note 12 C3 1 127
+note 14 D4 1 127
+note 15 C7 1 1
+expect sound 0 15
+expect idle 24
+expect peak_below -9       # noise peaks at -15 dBFS; two voices overlap

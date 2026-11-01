@@ -1,0 +1,5 @@
+# Used by tests/golden.py with the failing fixtures.
+steps 4
+tail 0.1
+track lead
+note 0 C4 2 100

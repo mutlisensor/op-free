@@ -1,0 +1,8 @@
+{
+  "engine": "shimmer",
+  "memoryslot": 44,
+  "engine_version": 1,
+  "plug": { "id": 61008, "version": 1, "name": "shimmer", "trackmask": 768, "flags": 0,
+            "parameter_names": ["size", "shimmer"] },
+  "presets": "presets.json"
+}

@@ -1,0 +1,13 @@
+# Every knob at its limits on a loud sweep (echo ignores filter and resonance): the longest time, feedback 1.15,
+# echoes only, then P1 0 (19.8 ms, metallic) and dry only (pan 0) must still pass sound.
+tempo 120
+steps 32
+tail 0.5
+track fx1
+input sweep 30 16000 0.45
+preset 255 255 0 0 255 0 0 0 0 255 255 255 0 0 0 0 0 0
+gain 1
+param p1 0 8
+param pan 0 24
+expect sound 0 32
+expect peak_below 0

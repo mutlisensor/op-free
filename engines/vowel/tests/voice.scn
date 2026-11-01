@@ -1,0 +1,12 @@
+# One held "ah" while P2 walks the body size from giant (0) through male (64), female (128) and child (191) into
+# the breath zone (192 .. 255, a whisper at 255) and back down to male.
+tempo 100
+steps 32
+tail 1.0
+track lead
+preset 109 0 0 90 230 40 0 0 128 0 128 195 0 0 0 0 0 0
+sweep p2 0 255 0 20
+sweep p2 255 64 20 32
+note 0 G3 32 127
+expect sound 0 32
+expect peak_below -5

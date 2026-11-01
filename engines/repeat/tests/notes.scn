@@ -1,0 +1,19 @@
+# Keys on the FX track: F3 (1/4), A3 (1/16), C#4 (1/64), then F4 (1/4 reversed) and C#5 (1/64 reversed) on a rising
+# sweep. Each held key repeats; between notes (P1 off) the sweep passes through.
+tempo 120
+steps 48
+tail 0.5
+track fx1
+input sweep 100 3000 0.5
+param p1 0
+param p2 0
+param pan 255
+param level 255
+gain 1
+note 0 F3 8
+note 10 A3 4
+note 16 61 4
+note 24 F4 8
+note 36 73 6
+expect sound 0 48
+expect peak_below 0

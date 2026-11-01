@@ -1,0 +1,17 @@
+# Tape stops on a rising sweep: F3 (slowest, held to a halt), A#4 = 70 (fast, released half-way), E5 (fastest), at
+# P1 100, P2 60.
+tempo 120
+steps 48
+tail 0.5
+track fx1
+input sweep 200 2000 0.5
+param p1 100
+param p2 60
+param pan 255
+param level 255
+gain 1
+note 2 F3 14
+note 24 70 2
+note 34 E5 8
+expect sound 0 48
+expect peak_below 0

@@ -1,0 +1,12 @@
+# P2 (shimmer) swept from 0 to 255 at a long size on a 220 Hz saw: a plain reverb, then the octave fades in above the
+# tail, then the cascade climbs. The shifter runs at every setting, so nothing clicks where it starts.
+tempo 120
+steps 48
+tail 3
+track fx1
+input saw 220 0.4
+preset 200 0 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
+sweep p2 0 255 4 44
+gain 1
+expect sound 0 48
+expect peak_below -3

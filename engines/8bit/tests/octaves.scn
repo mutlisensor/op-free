@@ -1,0 +1,30 @@
+# Octave buttons and notes far outside the 24 keys: -2 / -1 / +1 / +2 octaves (+-24 per press) and MIDI 0 and 127.
+tempo 120
+steps 32
+tail 1.5
+track sample
+param p1 128 0
+param p2 128 0
+note 0 5 1 120
+note 2 29 1 120
+note 4 77 1 120
+note 6 101 1 120
+note 8 24 1 120
+note 10 48 1 120
+note 12 96 1 120
+note 14 120 1 120
+note 16 0 1 120
+note 18 127 1 120
+note 20 18 1 120
+note 22 114 1 120
+track kick
+param p1 0 0
+param p2 0 0
+note 24 5 1 127
+note 26 101 1 127
+param p1 255 27
+note 28 21 1 127
+note 30 117 1 127
+expect sound 0 32
+expect idle 48
+expect peak_below -6

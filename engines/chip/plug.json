@@ -1,0 +1,8 @@
+{
+  "engine": "chip",
+  "memoryslot": 81,
+  "engine_version": 1,
+  "plug": { "id": 61203, "version": 1, "name": "chip", "trackmask": 240, "flags": 0,
+            "parameter_names": ["wave", "arpeggio"] },
+  "presets": "presets.json"
+}

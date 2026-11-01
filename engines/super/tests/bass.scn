@@ -1,0 +1,19 @@
+# "wide bass" then "sub stack" (bass track): low notes with the side high-pass and the triangle sub; P2 swept
+# into the sub range and back.
+tempo 124
+steps 16
+tail 1.5
+track bass
+preset 100 220 0 80 160 30 0 0 128 0 128 200 0 0 0 0 0 0
+sweep p2 192 255 0 8
+sweep p2 255 160 8 16
+note 0 A1 2 127
+note 2 A1 1 90
+note 4 C2 2 127
+note 6 E1 2 110
+note 8 G1 2 127
+note 10 A1 1 80
+note 12 D2 3 127
+expect sound 0 16
+expect idle 28
+expect peak_below -4

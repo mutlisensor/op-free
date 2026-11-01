@@ -1,0 +1,46 @@
+# Knob extremes on a kick, a snare and a bell, then P1 and P2 swept fast (both ends in two steps) during a
+# sixteenth-note pattern over every key family: no clicks, nothing stuck, every hit ends.
+tempo 120
+steps 64
+tail 4.0
+track perc
+param p1 0 0
+param p2 0 0
+note 0 F3 1 127
+param p1 255 4
+param p2 255 4
+note 4 F3 1 127
+param p1 0 8
+param p2 255 8
+note 8 A3 1 127
+param p1 255 12
+param p2 0 12
+note 12 Db5 1 127
+sweep p1 0 255 16 18
+sweep p2 255 0 16 18
+sweep p1 255 0 18 20
+sweep p2 0 255 18 20
+sweep p1 0 255 20 22
+sweep p2 255 0 20 22
+sweep p1 255 0 22 24
+sweep p2 0 255 22 24
+note 16 F3 1 127
+note 17 Db4 1 100
+note 18 A3 1 120
+note 19 Db4 1 100
+note 20 Db5 1 110
+note 21 Eb4 1 100
+note 22 Ab4 1 127
+note 23 E5 1 100
+sweep p1 0 255 24 32
+sweep p2 0 255 24 32
+note 24 F4 1 127
+note 26 Bb4 1 127
+note 28 Eb5 1 127
+note 30 E4 1 127
+param p1 128 40
+param p2 128 40
+note 40 Db5 1 127
+expect sound 0 44
+expect idle 120
+expect peak_below 0

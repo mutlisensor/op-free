@@ -1,0 +1,18 @@
+# "aah lead" (lead track): one held note while P1 morphs through every vowel and back (hum oo oh ah eh ee ue er),
+# then a short phrase with the vowel moving under the notes. No clicks or zipper while P1 turns.
+tempo 100
+steps 32
+tail 1.5
+track lead
+preset 0 128 5 90 220 50 0 0 128 0 128 195 0 0 0 0 0 0
+sweep p1 0 255 0 12
+sweep p1 255 0 12 20
+note 0 A3 20 120
+sweep p1 109 200 20 32
+note 20 E4 4 110
+note 24 D4 4 100
+note 28 C4 4 115
+bend 28 -100
+expect sound 0 32
+expect idle 52
+expect peak_below -6

@@ -1,0 +1,24 @@
+# Both knobs at their ends, the lowest and highest notes (C0, C8), velocity 1 and 127, knob jumps on the same
+# block as note-ons, a full bend on a top note, and the whisper end of P2.
+tempo 120
+steps 16
+tail 0.5
+track lead
+preset 255 255 0 0 255 0 0 0 0 255 128 255 0 0 0 0 0 0
+note 0 C0 4 127
+note 0 C8 4 127
+param p1 0 4
+param p2 0 4
+note 4 C0 4 127
+note 4 C8 4 1
+param p1 255 8
+param p2 191 8
+note 8 C8 4 127
+bend 8 200
+note 8 C1 4 127
+param p1 0 12
+param p2 255 12
+bend 12 -200
+note 12 G7 4 127
+note 12 C0 4 127
+expect peak_below -2

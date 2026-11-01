@@ -1,0 +1,27 @@
+# Firmware, keys and device data never belong in this repository (CONTRIBUTING.md).
+keys/
+dumps/
+decrypted/
+backups/
+pulled/
+device-tests/
+*.zfw
+*.ldr
+*.cyacd
+
+# Build output
+build/
+*.o
+*.dxe
+*.elf
+*.dylib
+*.wav
+__pycache__/
+.venv/
+node_modules/
+dist/
+.DS_Store
+
+# Built engines: only our own, released ones, copied by the sync into the website's modules folder.
+*.engine
+!site/public/modules/*.engine

@@ -1,0 +1,118 @@
+# Fast retriggers: 16ths and 32nds at 400 BPM on perc (closed, open, pedal, tick) and a ride + bell pattern on
+# sample; every other hit steals a voice that is still sounding.
+tempo 400
+steps 64
+tail 8.0
+track perc
+param p1 140 0
+param p2 120 0
+note 0 F3 1 100
+note 1 F3 1 70
+note 2 A3 1 70
+note 3 F3 1 70
+note 4 G3 1 100
+note 5 F3 1 70
+note 6 F3 1 70
+note 7 A3 1 70
+note 7.5 F4 0.5 60
+note 8 F3 1 100
+note 9 F3 1 70
+note 10 A3 1 70
+note 11 F3 1 70
+note 12 G3 1 100
+note 13 F3 1 70
+note 14 F3 1 70
+note 15 A3 1 70
+note 15.5 F4 0.5 60
+note 16 F3 1 100
+note 17 F3 1 70
+note 18 A3 1 70
+note 19 F3 1 70
+note 20 G3 1 100
+note 21 F3 1 70
+note 22 F3 1 70
+note 23 A3 1 70
+note 23.5 F4 0.5 60
+note 24 F3 1 100
+note 25 F3 1 70
+note 26 A3 1 70
+note 27 F3 1 70
+note 28 G3 1 100
+note 29 F3 1 70
+note 30 F3 1 70
+note 31 A3 1 70
+note 31.5 F4 0.5 60
+note 32 F3 1 100
+note 33 F3 1 70
+note 34 A3 1 70
+note 35 F3 1 70
+note 36 G3 1 100
+note 37 F3 1 70
+note 38 F3 1 70
+note 39 A3 1 70
+note 39.5 F4 0.5 60
+note 40 F3 1 100
+note 41 F3 1 70
+note 42 A3 1 70
+note 43 F3 1 70
+note 44 G3 1 100
+note 45 F3 1 70
+note 46 F3 1 70
+note 47 A3 1 70
+note 47.5 F4 0.5 60
+note 48 F3 1 100
+note 49 F3 1 70
+note 50 A3 1 70
+note 51 F3 1 70
+note 52 G3 1 100
+note 53 F3 1 70
+note 54 F3 1 70
+note 55 A3 1 70
+note 55.5 F4 0.5 60
+note 56 F3 1 100
+note 57 F3 1 70
+note 58 A3 1 70
+note 59 F3 1 70
+note 60 G3 1 100
+note 61 F3 1 70
+note 62 F3 1 70
+note 63 A3 1 70
+note 63.5 F4 0.5 60
+track sample
+param p1 128 0
+param p2 128 0
+note 0 Gb4 1 90
+note 2 Gb4 1 90
+note 4 G4 1 90
+note 6 Gb4 1 90
+note 8 Gb4 1 90
+note 10 Gb4 1 90
+note 12 G4 1 90
+note 14 Gb4 1 90
+note 16 Gb4 1 90
+note 18 Gb4 1 90
+note 20 G4 1 90
+note 22 Gb4 1 90
+note 24 Gb4 1 90
+note 26 Gb4 1 90
+note 28 G4 1 90
+note 30 Gb4 1 90
+note 32 Gb4 1 90
+note 34 Gb4 1 90
+note 36 G4 1 90
+note 38 Gb4 1 90
+note 40 Gb4 1 90
+note 42 Gb4 1 90
+note 44 G4 1 90
+note 46 Gb4 1 90
+note 48 Gb4 1 90
+note 50 Gb4 1 90
+note 52 G4 1 90
+note 54 Gb4 1 90
+note 56 Gb4 1 90
+note 58 Gb4 1 90
+note 60 G4 1 90
+note 62 Gb4 1 90
+expect sound 0 64
+expect idle 270
+expect peak_below -3

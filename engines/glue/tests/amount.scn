@@ -1,0 +1,14 @@
+# Amount swept from 0 to 255 at P2 0 (clean glue) on a loud (-3 dBFS) sawtooth: its peaks come down by 6 dB (auto
+# make-up holds -12 dBFS peaks, so louder input ends up quieter).
+tempo 120
+steps 32
+tail 0.5
+track fx2
+input saw 110 0.7
+sweep p1 0 255 0 32
+param p2 0
+param pan 128
+param level 255
+gain 1
+expect sound 0 32
+expect peak_below -0.1

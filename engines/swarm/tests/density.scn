@@ -1,0 +1,14 @@
+# P1 swept 0 -> 255 over a held chord (chord track, P2 128): single pings on the notes, a sparkling particle cloud,
+# fizzing tonal noise, the saws coming in one by one, then the twelve-saw drone. Even level.
+tempo 120
+steps 40
+tail 2.0
+track chord
+preset 0 128 0 64 255 40 0 0 128 0 128 170 0 128 100 255 0 0
+note 0 C3 40 110
+note 0 G3 40 110
+note 0 E4 40 110
+sweep p1 0 255 2 38
+expect sound 0 40
+expect idle 60
+expect peak_below -2

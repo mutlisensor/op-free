@@ -1,0 +1,18 @@
+# The "pluck bass" preset on the bass track: a line with accents, then the lowest notes (octave -3: the string runs
+# at a half and a quarter of the sample rate below ~46 Hz). Short steps: note-off damps each note (release 30).
+tempo 120
+steps 16
+tail 1.0
+track bass
+preset 50 120 0 0 255 30 0 0 128 0 128 210 0 0 0 0 0 0
+note 0 E1 2 110
+note 2 E1 1 60
+note 4 G1 2 127
+note 6 A1 1 80
+note 8 E2 2 100
+note 10 F0 2 127
+note 12 C1 2 100
+note 14 E0 2 127
+expect sound 0 16
+expect idle 22
+expect peak_below -6      # one voice peaks near -12 dBFS; a releasing note overlaps the next

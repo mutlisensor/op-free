@@ -1,0 +1,8 @@
+# Used by tests/golden.py with fixture tempo_probe: the sequencer clock through play, stop and play again at a
+# tempo whose tick is not a whole number of blocks (137 BPM: 201.2 frames per tick).
+tempo 137
+steps 20
+tail 0
+track fx1
+transport 9.4 stop
+transport 12 play

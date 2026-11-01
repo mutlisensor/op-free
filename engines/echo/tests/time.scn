@@ -1,0 +1,17 @@
+# P1 moves the tape speed: a glide from 1/8 to 1/4 (P1 117 -> 149) bends the repeats in pitch, a jump of more than an
+# octave (to P1 60, 73 ms) crossfades, then back to 1/16. A saw keeps every glitch audible.
+tempo 120
+steps 48
+tail 2
+track fx1
+input saw 110 0.25
+param p1 117
+param p2 150
+param pan 128
+param level 255
+gain 1
+sweep p1 117 149 8 20
+param p1 60 28
+param p1 85 38
+expect sound 0 48
+expect peak_below 0

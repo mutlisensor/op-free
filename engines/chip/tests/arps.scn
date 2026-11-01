@@ -1,0 +1,41 @@
+# The arpeggios on the lead track: each P2 zone (octave, major, minor, fifth, sus4, seventh) at its four speeds
+# (15, 20, 30, 60 Hz), a held note per pattern, pulse 25 %; then the sweeps down and up on short notes.
+tempo 120
+steps 32
+tail 0.5
+track lead
+preset 32 32 0 0 255 20 0 0 128 0 128 200 0 0 0 0 0 0
+param p2 40 1
+param p2 48 2
+param p2 56 3
+param p2 64 4
+param p2 72 5
+param p2 80 6
+param p2 88 7
+param p2 96 8
+param p2 104 9
+param p2 112 10
+param p2 120 11
+param p2 128 12
+param p2 152 15
+param p2 160 16
+param p2 184 19
+param p2 192 20
+param p2 216 23
+param p2 224 24
+param p2 236 26
+param p2 240 28
+param p2 252 30
+note 0 C4 4 127
+note 4 C4 4 127
+note 8 A3 4 127
+note 12 G3 4 127
+note 16 F4 4 127
+note 20 G3 4 127
+note 24 C6 2 127
+note 26 C6 2 127
+note 28 C4 2 127
+note 30 C4 2 127
+expect sound 0 32
+expect idle 36
+expect peak_below -6      # one voice peaks at -12 dBFS; a releasing note overlaps the next

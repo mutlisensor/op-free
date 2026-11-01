@@ -1,0 +1,14 @@
+# P1 swept from a short knock to the longest ring on a click every beat, tuned to A2.
+tempo 120
+steps 64
+tail 4
+track fx1
+input impulse 4 0.9
+sweep p1 0 255 0 64
+param p2 100
+param pan 255
+param level 255
+gain 1
+note 0 A2 64
+expect sound 0 64
+expect peak_below 0
