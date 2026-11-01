@@ -88,8 +88,8 @@ export const HOME = `
         <p class="block__n label">02 · <i class="dot dot--yellow"></i> research</p>
         <h2 id="firmware-h" class="block__h">Firmware mods</h2>
         <p class="block__soon">Coming soon</p>
-        <p class="block__p">A builder that applies the mods you choose to your own firmware file. A 64-step sequencer,
-          button debounce, Bluetooth audio, new arpeggiator and player styles, module updates.</p>
+        <p class="block__p">Currently investigating: a 64-step sequencer, button debounce, Bluetooth audio, new
+          arpeggiator and player styles, module updates. Excited for others to attempt too.</p>
       </section>
 
       <section id="source" class="block block--blue block--static" data-reveal aria-labelledby="source-h">
