@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0a0a0b" />
+    <title>OP-FREE</title>
+    <meta name="description" content="OP-FREE: community synths, effects and research for the OP-Z. An independent project, not affiliated with teenage engineering." />
+    <meta property="og:title" content="OP-FREE" />
+    <meta property="og:description" content="A first step into liberating your OP-Z." />
+    <meta property="og:image" content="img/op-free-header.webp" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0a0b'/%3E%3Ccircle cx='9' cy='16' r='3' fill='%2329b35a'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%232c7be5'/%3E%3Ccircle cx='23' cy='16' r='3' fill='%23ef3b2d'/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@200;300;400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="preload" as="image" href="img/op-free-header.webp" />
+    <style>
+      /* The landing without JavaScript: the image fills the window. */
+      html, body { margin: 0; background: #0a0a0b; color: #ececec; font-family: system-ui, sans-serif; }
+      .gate { position: relative; height: 100vh; overflow: hidden; background: #000; }
+      .gate__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <!-- Static first frame: the landing, complete before (or without) JavaScript. -->
+      <section class="gate" aria-label="OP-FREE">
+        <img class="gate__img" src="img/op-free-header.webp" width="1672" height="941"
+          alt="An OP-Z the size of a monolith standing in a trench on the moon, two astronauts in front of it, the Earth in the sky and the word OP-FREE above." />
+        <noscript>
+          <div class="gate__noscript">
+            <p>OP-FREE needs JavaScript for the synth lab and the loader. The source, the SDK and the research are on
+              <a href="https://github.com/mutlisensor/op-free">GitHub</a>.</p>
+          </div>
+        </noscript>
+      </section>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
