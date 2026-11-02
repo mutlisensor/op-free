@@ -1,0 +1,15 @@
+# Knobs at their limits on a full-scale sweep: everything at 255 (heavy compression, full drive), then P1 0, then pan 0
+# (dry). The clipper keeps the processed signal below -0.18 dBFS throughout.
+tempo 120
+steps 24
+tail 0.2
+track fx2
+input sweep 30 16000 0.99
+preset 255 255 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
+param p1 0 8
+param p2 0 12
+param pan 0 16
+gain 1
+note 2 C4 2 127
+expect sound 0 24
+expect peak_below 0

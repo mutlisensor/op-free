@@ -1,0 +1,8 @@
+{
+  "engine": "ensemble",
+  "memoryslot": 41,
+  "engine_version": 1,
+  "plug": { "id": 61201, "version": 1, "name": "ensemble", "trackmask": 240, "flags": 0,
+            "parameter_names": ["registration", "ensemble"] },
+  "presets": "presets.json"
+}

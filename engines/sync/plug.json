@@ -1,0 +1,8 @@
+{
+  "engine": "sync",
+  "memoryslot": 43,
+  "engine_version": 1,
+  "plug": { "id": 61019, "version": 1, "name": "sync", "trackmask": 240, "flags": 0,
+            "parameter_names": ["ratio", "sub noise"] },
+  "presets": "presets.json"
+}

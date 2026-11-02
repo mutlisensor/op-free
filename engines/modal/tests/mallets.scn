@@ -1,0 +1,37 @@
+# Mallets on the arp: marimba with soft to hard strokes (darker and quieter when soft), then glock and kalimba,
+# then celesta one octave up; one-step notes, so the release decides how long they ring.
+tempo 120
+steps 32
+tail 1.5
+track arp
+preset 51 120 0 0 255 45 0 0 128 0 128 195 0 0 0 0 0 0
+note 0 C5 1 20
+note 1 E5 1 50
+note 2 G5 1 80
+note 3 C6 1 127
+note 4 G5 1 100
+note 5 E5 1 60
+param p1 102 8
+param p2 180 8
+param release 80 8
+note 8 C6 1 110
+note 9 G6 1 90
+note 10 E6 1 110
+note 11 C7 1 127
+param p1 72 16
+param p2 115 16
+param release 45 16
+note 16 A4 1 100
+note 17 C5 1 90
+note 18 E5 1 100
+note 19 A5 1 120
+param p1 88 24
+param p2 150 24
+param release 60 24
+note 24 C6 1 100
+note 26 E6 1 100
+note 28 G6 1 100
+note 30 C7 1 100
+expect sound 0 31
+expect idle 70
+expect peak_below -3

@@ -1,0 +1,13 @@
+# P2 swept from 0 (tight: a grainy copy 4-15 ms behind) through 128 (reach 0.65 s, full width) to 255 (5 s reach,
+# feedback 0.8, +-40 cents detune) on drum-like impulses, P1 200: the cloud smears into a wash that the limiter
+# holds below 0 dBFS.
+tempo 120
+steps 96
+tail 2
+track fx1
+input impulse 2 0.9
+preset 200 0 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
+sweep p2 0 255 0 64
+gain 1
+expect sound 2 96
+expect peak_below 0

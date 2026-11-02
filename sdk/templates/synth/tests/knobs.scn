@@ -1,0 +1,25 @@
+# my_engine: P1 and P2 swept through their range under a chord, a pitch bend, then every knob at 0 and at 255.
+tempo 120
+steps 32
+tail 2.0
+track chord
+preset 0 0 10 80 220 60 0 0 128 0 128 200 0 128 100 255 0 0
+sweep p1 0 255 0 16
+sweep p2 0 255 0 16
+note 0 C3 14 90
+note 0 E3 14 90
+note 0 G3 14 90
+note 0 B3 14 90
+bend 6 200
+bend 10 -200
+bend 14 0
+preset 0 0 0 0 0 0 0 0 128 0 128 200 0 128 100 255 0 0
+param p1 255 16
+param p2 255 16
+param attack 255 24
+param release 0 24
+note 16 C1 6 127
+note 24 G8 6 127
+expect sound 0 14
+expect sound 16 22
+expect idle 46

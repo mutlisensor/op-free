@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>opzsim web</title>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <h1>opzsim <span>web</span></h1>
+      <p>Play a synth through FX1 and FX2 before any of them goes on the OP-Z. Host and engines run in WebAssembly, the same C
+        as <code>opzsim</code>: 44.1 kHz, 64-frame blocks.</p>
+    </div>
+    <div class="top-controls">
+      <button id="audio" class="primary" data-testid="audio">Start audio</button>
+      <label class="inline">Tempo <input id="tempo" type="number" min="20" max="400" value="120"> BPM</label>
+      <label class="inline">Volume <input id="volume" type="range" min="0" max="100" value="70"></label>
+      <button id="panic" title="Release every note">All notes off</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel slot synth" id="slot-synth" aria-labelledby="h-synth" data-testid="slot-synth">
+      <div class="slot-head">
+        <h2 id="h-synth"><span class="dot synth"></span>Synth</h2>
+        <select class="slot-engine" data-testid="synth-engine" aria-label="Synth engine"></select>
+        <select class="slot-track" data-testid="synth-track" aria-label="Synth track"></select>
+      </div>
+      <div class="slot-info"></div>
+      <div class="presets"><span class="label">Presets</span><div class="preset-list"></div></div>
+      <div class="knobs main-knobs"></div>
+      <details class="more"><summary>All 18 parameter bytes</summary><div class="knobs more-knobs"></div></details>
+      <details class="readme"><summary>README</summary><pre></pre></details>
+    </section>
+
+    <section class="panel slot fx" id="slot-fx1" aria-label="Effect on FX1" data-testid="slot-fx1"></section>
+    <section class="panel slot fx" id="slot-fx2" aria-label="Effect on FX2" data-testid="slot-fx2"></section>
+
+    <template id="fx-template">
+      <div class="slot-head">
+        <h2><span class="dot fx"></span><span class="slot-title">Effect</span></h2>
+        <select class="slot-engine" aria-label="Effect engine"></select>
+        <select class="slot-track" hidden></select>
+      </div>
+      <div class="slot-info"></div>
+      <div class="routing">
+        <div class="send-knobs"></div>
+        <div class="routing-text">
+          <label class="field">Input
+            <select class="source">
+              <option value="send">the synth, through its send</option>
+              <option value="saw">saw</option>
+              <option value="sine">sine</option>
+              <option value="noise">noise</option>
+              <option value="sweep">sine sweep (4 s)</option>
+              <option value="impulse">impulses</option>
+              <option value="silence">silence</option>
+            </select>
+          </label>
+          <div class="row source-generator" hidden>
+            <label class="field small">Hz <input class="source-f0" type="number" min="1" max="20000" value="110"></label>
+            <label class="field small source-f1-label">to Hz <input class="source-f1" type="number" min="1" max="20000" value="4000"></label>
+            <label class="field small">Level <input class="source-amp" type="range" min="0" max="100" value="50"></label>
+          </div>
+          <p class="hint routing-note"></p>
+        </div>
+      </div>
+      <div class="presets"><span class="label">Presets</span><div class="preset-list"></div></div>
+      <div class="knobs main-knobs"></div>
+      <details class="more"><summary>All 18 parameter bytes</summary><div class="knobs more-knobs"></div></details>
+      <label class="field gain">Mixer level of the FX track (renderFX's gain)
+        <input class="fx-gain" type="range" min="0" max="100" value="100">
+      </label>
+      <details class="readme"><summary>README</summary><pre></pre></details>
+    </template>
+
+    <section class="panel play" aria-label="Keyboard and output">
+      <div class="keyboard-bar">
+        <span id="octave" class="hint"></span>
+        <label class="inline">Velocity <input id="velocity" type="range" min="1" max="127" value="100"></label>
+        <label class="inline">Keys play
+          <select id="keys-target" data-testid="keys-target">
+            <option value="synth">the synth</option>
+            <option value="fx1">FX1's effect (onNoteOn)</option>
+            <option value="fx2">FX2's effect (onNoteOn)</option>
+          </select>
+        </label>
+        <span id="midi" class="hint" data-testid="midi">Web MIDI: not connected</span>
+        <button id="midi-connect">Connect MIDI</button>
+      </div>
+      <p id="track-note" class="hint"></p>
+      <div id="keyboard" data-testid="keyboard"></div>
+      <div class="scope-row">
+        <canvas id="scope" class="scope" width="720" height="160" aria-label="Oscilloscope of the output"></canvas>
+        <div class="meter" data-testid="meter" aria-label="Output level">
+          <div class="meter-bars"><div id="meter-l" class="bar"></div><div id="meter-r" class="bar"></div></div>
+          <div class="meter-text"><span id="meter-peak">-∞</span> dBFS peak<br><span id="meter-rms">-∞</span> dBFS rms<br><span id="meter-clip" class="clip" hidden>clip</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel checks" aria-labelledby="h-checks">
+      <h2 id="h-checks">Host checks</h2>
+      <table class="stats" data-testid="stats">
+        <thead><tr><th></th><th><span class="dot synth"></span>Synth</th><th><span class="dot fx"></span>FX1</th><th><span class="dot fx"></span>FX2</th></tr></thead>
+        <tbody>
+          <tr><th>State budget</th><td id="st-state-synth">–</td><td id="st-state-fx1">–</td><td id="st-state-fx2">–</td></tr>
+          <tr><th>Adds into out</th><td id="st-add-synth">–</td><td class="hint" colspan="2">n/a (effects write out)</td></tr>
+          <tr><th>Voices</th><td id="st-voices-synth">–</td><td class="hint" colspan="2">–</td></tr>
+          <tr><th>Host CPU</th><td id="st-cpu-synth">–</td><td id="st-cpu-fx1">–</td><td id="st-cpu-fx2">–</td></tr>
+          <tr><th>Static size</th><td id="st-size-synth">–</td><td id="st-size-fx1">–</td><td id="st-size-fx2">–</td></tr>
+        </tbody>
+      </table>
+      <p class="hint"><span id="st-mix" data-testid="mix"></span> <span id="st-load"></span></p>
+      <p class="hint">Host CPU is this browser's WebAssembly, <strong>not Blackfin cycles</strong>. For cycles on the
+        device's DSP run <code>python3 tools/opz_cycles.py</code> (or <code>make -C sim cycles</code>).</p>
+      <h3>opzsim log</h3>
+      <pre id="log" class="log" data-testid="log"></pre>
+    </section>
+
+    <section class="panel scenarios-panel" aria-labelledby="h-scenarios">
+      <h2 id="h-scenarios">Scenarios</h2>
+      <p class="hint">Each engine's <code>tests/*.scn</code>, rendered by opzsim's own <code>main</code> in WebAssembly
+        and checked against the golden hash the CLI wrote.</p>
+      <div id="scenarios" data-testid="scenarios"></div>
+      <div id="scenario-result" class="scenario-result" data-testid="scenario-result"></div>
+    </section>
+  </main>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

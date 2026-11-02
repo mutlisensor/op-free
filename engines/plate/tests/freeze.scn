@@ -1,0 +1,13 @@
+# Freeze: a hit every 8 steps into a short reverb (P1 90, ~1.4 s). A note held on the FX track from step 10 to 30 holds
+# the tail at its level and keeps the hits at steps 16 and 24 out; after the release it decays, and later hits ring
+# normally again.
+tempo 120
+steps 64
+tail 1
+track fx2
+input impulse 8 0.9
+preset 90 150 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
+gain 1
+note 10 C4 20 100
+expect sound 8 64
+expect peak_below -6

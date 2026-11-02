@@ -1,0 +1,20 @@
+# Short notes on the FX track set the grain pitch and it stays: C5 (+1 octave), G4 (+7), C3 (-1 octave), E4 (+4),
+# then C4 (back to the input's pitch). P2 0 keeps the grains tight: a granular pitch shifter. A held note shorter than
+# 0.4 s does not freeze. Bend +-2 semitones transposes the next grains.
+tempo 120
+steps 48
+tail 1
+track fx1
+input saw 165 0.25
+preset 170 0 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
+gain 1
+note 4 C5 2 100
+note 10 G4 2 100
+note 16 C3 2 100
+note 22 E4 2 100
+bend 26 200
+bend 30 -200
+bend 34 0
+note 38 C4 2 100
+expect sound 2 48
+expect peak_below -3

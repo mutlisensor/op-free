@@ -1,0 +1,7 @@
+# Used by tests/golden.py: one long note on the lead track while the fixture tables_probe streams the shared tables
+# and the opz_tables.h accessors' outputs into the track buffer (~102 blocks).
+tempo 120
+steps 4
+tail 0.1
+track lead
+note 0 C4 4 100

@@ -1,0 +1,14 @@
+# P2 swept dark -> bright string -> inharmonic, on a saw, with a long decay: no steps, no overload.
+tempo 120
+steps 32
+tail 1
+track fx2
+input saw 98 0.5
+param p1 220
+sweep p2 0 255 0 32
+param pan 160
+param level 255
+gain 1
+note 0 C3 32
+expect sound 0 32
+expect peak_below 0

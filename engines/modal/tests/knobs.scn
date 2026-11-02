@@ -1,0 +1,44 @@
+# P1 and P2 moving every block while chords start, steal and release (the situation that crashed macro v3 on the
+# device): fast triangle sweeps of both knobs over the whole range, through the bow zone, on six chord voices.
+tempo 140
+steps 32
+tail 1.5
+track chord
+preset 128 128 0 0 255 60 0 0 128 0 128 140 0 0 0 0 0 0
+sweep p1 0 255 0 4
+sweep p1 255 0 4 8
+sweep p1 0 255 8 12
+sweep p1 255 0 12 16
+sweep p1 0 255 16 20
+sweep p1 255 0 20 24
+sweep p1 0 255 24 28
+sweep p2 255 0 0 6
+sweep p2 0 255 6 12
+sweep p2 255 0 12 18
+sweep p2 0 255 18 24
+sweep p2 255 100 24 30
+note 0 C3 3 100
+note 0 E3 3 100
+note 0 G3 3 100
+note 3 D3 3 120
+note 3 F3 3 120
+note 3 A3 3 120
+note 6 E3 2 60
+note 6 G3 2 60
+note 6 B3 2 60
+note 6 D4 2 60
+note 8 F3 8 110
+note 8 A3 8 110
+note 8 C4 8 110
+note 8 E4 8 110
+note 16 G3 1 127
+note 17 B3 1 127
+note 18 D4 1 127
+note 19 F4 1 127
+note 20 C3 8 90
+note 20 G3 8 90
+note 24 C4 4 90
+note 24 E4 4 90
+expect sound 0 30
+expect idle 64
+expect peak_below 0

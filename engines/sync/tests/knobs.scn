@@ -1,0 +1,48 @@
+# Knobs moving every block while voices start, steal and release (what crashed macro v3 on the device): P1 and P2
+# swept up and down quickly on the chord track while chords retrigger and overlap, at both ends of the keyboard.
+tempo 140
+steps 32
+tail 3.0
+track chord
+preset 128 128 0 40 200 60 0 0 128 0 128 165 0 128 100 255 0 0
+sweep p1 0 255 0 2
+sweep p1 255 0 2 4
+sweep p1 0 255 4 6
+sweep p1 255 0 6 8
+sweep p1 0 255 8 10
+sweep p1 255 0 10 12
+sweep p1 0 255 12 14
+sweep p1 255 0 14 16
+sweep p2 0 255 0 3
+sweep p2 255 0 3 6
+sweep p2 0 255 6 9
+sweep p2 255 0 9 12
+sweep p2 0 255 12 15
+sweep p2 255 64 15 16
+sweep p1 0 255 16 32
+sweep p2 64 230 16 32
+note 0 C3 3 127
+note 0 E3 3 127
+note 0 G3 3 127
+note 1 B3 3 127
+note 2 D4 3 127
+note 3 F3 2 90
+note 4 A3 2 90
+note 5 C4 2 90
+note 6 E4 4 127
+note 6 G2 4 127
+note 7 B2 1 60
+note 8 D3 1 60
+note 9 Gb3 1 60
+note 10 A3 6 120
+note 10 Db4 6 120
+note 10 E4 6 120
+note 10 G4 6 120
+note 16 C2 8 127
+note 16 C7 8 127
+note 20 G4 12 100
+note 24 C8 8 127
+note 24 C0 8 127
+expect sound 0 32
+expect idle 64
+expect peak_below -1

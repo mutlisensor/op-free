@@ -15,7 +15,9 @@ into how the OP-Z firmware works, as the ground for firmware mods later.
 | Folder | What it is |
 |---|---|
 | [`site/`](site/) | The website: the landing, the synth lab (play every engine in the browser) and the loader (put them on your OP-Z). Static, hosted on GitHub Pages |
-| [`sdk/`](sdk/) | Write your own engine: the engine ABI header, DSP helpers, templates, the host simulator, build and check tools |
+| [`sdk/`](sdk/) | Write your own engine: the engine ABI header, DSP helpers, templates, linker script and the [SDK docs](sdk/docs/) |
+| [`sim/`](sim/) | The host simulator (`opzsim`): runs any engine on your computer, renders scenarios, checks the ABI rules; also in the browser (`sim/web`) |
+| [`tools/`](tools/) | Build, pack, verify, crash and CPU checks, the engine scaffold, and the installer CLI (`tools/opz.py`, with an offline `--fake` OP-Z) |
 | [`core/`](core/) | The TypeScript core that talks to the OP-Z over USB MIDI (the file service, backups, install plans, safety checks) |
 | [`engines/`](engines/) | The community synths, drum engines and effects, each with its presets, tests and a one-page manual |
 | [`research/`](research/) | How the OP-Z works, with an evidence label on every claim |

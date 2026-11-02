@@ -1,0 +1,73 @@
+# A fast 32nd-note pattern of claps, rims, shakers and the crowd while P1 and P2 sweep their whole range back and
+# forth (what a hand does on the device; the macro v3 crash). Knobs are read per hit, so every hit is different.
+tempo 140
+steps 32
+tail 2.0
+track snare
+sweep p1 0 255 0 8
+sweep p2 255 0 0 8
+sweep p1 255 0 8 16
+sweep p2 0 255 8 16
+sweep p1 0 255 16 24
+sweep p2 0 255 16 24
+sweep p1 255 128 24 32
+sweep p2 255 0 24 32
+note 0 53 0.5 127
+note 0.5 61 0.5 90
+note 1 67 0.5 70
+note 1.5 58 0.5 110
+note 2 53 0.5 127
+note 2.5 61 0.5 90
+note 3 67 0.5 70
+note 3.5 58 0.5 110
+note 4 53 0.5 127
+note 4.5 61 0.5 90
+note 5 67 0.5 70
+note 5.5 58 0.5 110
+note 6 53 0.5 127
+note 6.5 61 0.5 90
+note 7 67 0.5 70
+note 7.5 58 0.5 110
+note 8 53 0.5 127
+note 8.5 61 0.5 90
+note 9 67 0.5 70
+note 9.5 58 0.5 110
+note 10 53 0.5 127
+note 10.5 61 0.5 90
+note 11 67 0.5 70
+note 11.5 58 0.5 110
+note 12 53 0.5 127
+note 12.5 61 0.5 90
+note 13 67 0.5 70
+note 13.5 58 0.5 110
+note 14 53 0.5 127
+note 14.5 61 0.5 90
+note 15 67 0.5 70
+note 15.5 58 0.5 110
+note 16 76 0.5 127
+note 16.5 61 0.5 90
+note 17 68 0.5 70
+note 17.5 58 0.5 110
+note 18 76 0.5 127
+note 18.5 61 0.5 90
+note 19 68 0.5 70
+note 19.5 58 0.5 110
+note 20 76 0.5 127
+note 20.5 61 0.5 90
+note 21 68 0.5 70
+note 21.5 58 0.5 110
+note 22 76 0.5 127
+note 22.5 61 0.5 90
+note 23 68 0.5 70
+note 23.5 58 0.5 110
+note 24 53 0.5 127
+note 25 61 0.5 90
+note 26 67 0.5 70
+note 27 58 0.5 110
+note 28 53 0.5 127
+note 29 61 0.5 90
+note 30 67 0.5 70
+note 31 58 0.5 110
+expect sound 0 32
+expect idle 60
+expect peak_below -3

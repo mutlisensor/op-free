@@ -1,0 +1,26 @@
+# The octave buttons (+-24 notes per press) move the filter and the bodies: rim 909, clave and clap at
+# octaves -2 .. +2, then notes 0 and 127 (outside the keyboard: clamped, never out of range).
+tempo 160
+steps 64
+tail 1.0
+track kick
+note 0 13 1 110
+note 2 37 1 110
+note 4 61 1 110
+note 8 85 1 110
+note 10 109 1 110
+note 16 17 1 110
+note 18 41 1 110
+note 20 65 1 110
+note 24 89 1 110
+note 26 113 1 110
+note 32 5 1 110
+note 34 29 1 110
+note 36 53 1 110
+note 40 77 1 110
+note 42 101 1 110
+note 48 0 1 110
+note 52 127 1 110
+expect sound 0 56
+expect idle 80
+expect peak_below -6

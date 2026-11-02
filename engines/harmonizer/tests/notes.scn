@@ -1,0 +1,17 @@
+# Held keys play intervals over a sustained saw: G4 (+7), then E4 added (two-voice harmony +7 / +4), E4 alone after
+# G4 lets go, C3 (-12), then back to P1 (detune).
+tempo 120
+steps 48
+tail 0.5
+track fx1
+input saw 220 0.4
+param p1 140
+param p2 90
+param pan 255
+param level 255
+gain 1
+note 4 G4 16
+note 12 E4 16
+note 32 C3 8
+expect sound 0 48
+expect peak_below 0

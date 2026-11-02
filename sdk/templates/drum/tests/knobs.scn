@@ -1,0 +1,23 @@
+# my_engine: P1 tune and P2 snap swept on a ringing hit, octave presses (notes 24 apart), every knob at 0 and 255.
+tempo 120
+steps 32
+tail 1.0
+track snare
+preset 128 0 0 0 255 255 0 0 128 0 128 200 0 128 100 255 0 0
+sweep p1 0 255 0 8
+sweep p2 0 255 0 8
+note 0 F3 1 100
+note 8 F1 1 100
+note 10 F5 1 100
+preset 0 0 0 0 0 0 0 0 128 0 128 200 0 128 100 255 0 0
+note 16 C4 1 127
+param p1 255 20
+param p2 255 20
+param attack 255 20
+param decay 255 20
+param sustain 255 20
+param release 255 20
+note 20 C4 1 127
+expect sound 0 8
+expect sound 20 22
+expect idle 40

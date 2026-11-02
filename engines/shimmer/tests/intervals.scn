@@ -1,0 +1,18 @@
+# Notes on the FX track set the interval while a sine at 330 Hz plays into a long, bright shimmer: C4 (an octave,
+# the default), G3 (a fifth), C5 (two octaves), C2 (an octave down), F3 (a fourth), C3 (unison: shimmer off), then
+# C4 again. The interval stays after each note's release.
+tempo 120
+steps 64
+tail 3
+track fx2
+input sine 330 0.4
+preset 190 190 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
+note 8 G3 2 100
+note 16 C5 2 100
+note 24 C2 2 100
+note 32 F3 2 100
+note 40 C3 2 100
+note 48 C4 2 100
+gain 1
+expect sound 0 64
+expect peak_below -3

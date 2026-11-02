@@ -1,0 +1,15 @@
+# Freeze: a sine sweeping slowly from 200 Hz to 1.6 kHz into a cloud (P1 120, P2 60: 106 ms grains, reach 70 ms).
+# A note (C4: the input's pitch) held from step 8 freezes the ring 0.4 s later: the cloud stays at the pitch it had
+# (~430 Hz) while the input sweeps on. A second key (G4) over it plays the frozen cloud a fifth up; its release
+# returns to C4. After the last release (step 40) the ring records again and the cloud catches up with the sweep.
+tempo 120
+steps 64
+tail 1
+track fx1
+input sweep 200 1600 0.3
+preset 120 60 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
+gain 1
+note 8 C4 32 100
+note 24 G4 6 100
+expect sound 4 64
+expect peak_below -3

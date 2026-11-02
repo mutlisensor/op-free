@@ -1,0 +1,12 @@
+[
+  { "slot": 0, "index": 0, "default_octave": 0, "name": "chip",
+    "values": [128, 128, 0, 0, 255, 0, 0, 0, 128, 0, 128, 200, 0, 128, 100, 255, 0, 0] },
+  { "slot": 0, "index": 1, "default_octave": 0, "name": "clean",
+    "values": [128, 32, 0, 0, 255, 0, 0, 0, 128, 0, 128, 200, 0, 128, 100, 255, 0, 0] },
+  { "slot": 0, "index": 2, "default_octave": 0, "name": "handheld",
+    "values": [140, 176, 0, 0, 255, 0, 0, 0, 128, 0, 128, 200, 0, 128, 100, 255, 0, 0] },
+  { "slot": 0, "index": 3, "default_octave": 0, "name": "crushed",
+    "values": [110, 240, 0, 0, 255, 0, 0, 0, 128, 0, 128, 200, 0, 128, 100, 255, 0, 0] },
+  { "slot": 0, "index": 4, "default_octave": 0, "name": "high score",
+    "values": [170, 96, 0, 0, 255, 0, 0, 0, 128, 0, 128, 200, 0, 128, 100, 255, 0, 0] }
+]

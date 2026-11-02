@@ -1,0 +1,14 @@
+# A held saw chord-ish tone with P1 swept clean -> worn (wow, flutter, band, drive) and back, no noise.
+tempo 120
+steps 32
+tail 0.3
+track fx1
+input saw 220 0.5
+param p2 0
+param pan 255
+param level 255
+gain 1
+sweep p1 0 255 0 16
+sweep p1 255 0 16 32
+expect sound 0 32
+expect peak_below 0

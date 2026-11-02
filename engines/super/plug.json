@@ -1,0 +1,8 @@
+{
+  "engine": "super",
+  "memoryslot": 49,
+  "engine_version": 1,
+  "plug": { "id": 61015, "version": 1, "name": "super", "trackmask": 240, "flags": 0,
+            "parameter_names": ["detune", "mix"] },
+  "presets": "presets.json"
+}

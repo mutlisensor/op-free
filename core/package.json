@@ -1,0 +1,22 @@
+{
+  "name": "@opz/core",
+  "version": "0.1.0",
+  "description": "OP-Z SysEx file service, install planning and safety flows (TypeScript port of tools/opz*.py)",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "engines": {
+    "node": ">=23.6"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.ts\"",
+    "typecheck": "tsc -p ."
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3"
+  }
+}

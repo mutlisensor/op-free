@@ -1,0 +1,13 @@
+# Character swept from 0 to 255 at P1 160 on a click train: slow glue, fast pumping, then drive into the clipper.
+tempo 120
+steps 32
+tail 0.5
+track fx2
+input impulse 1 0.9
+param p1 160
+sweep p2 0 255 0 32
+param pan 128
+param level 255
+gain 1
+expect sound 0 32
+expect peak_below -0.1

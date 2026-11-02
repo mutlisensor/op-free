@@ -1,0 +1,13 @@
+# P2 swept from shift down through ring modulation to shift up on a saw, carrier ~200 Hz.
+tempo 120
+steps 32
+tail 0.2
+track fx1
+input saw 220 0.5
+param p1 182
+param pan 255
+param level 255
+gain 1
+sweep p2 0 255 0 32
+expect sound 0 32
+expect peak_below 0

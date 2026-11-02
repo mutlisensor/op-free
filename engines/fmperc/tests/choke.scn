@@ -1,0 +1,13 @@
+# Open hat at step 0, closed hat at step 4 on the same track: the open hat must be cut short. Then a cymbal
+# choked by a pedal hat.
+tempo 120
+steps 16
+tail 0.5
+track perc
+param p2 200
+note 0 Eb4 4 110
+note 4 Db4 1 40
+note 8 E4 4 110
+note 12 D4 1 60
+expect sound 0 4
+expect idle 20

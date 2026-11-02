@@ -1,0 +1,12 @@
+# P2 (tone) swept from dark to bright at a medium size, on noise bursts: band limit 2 -> 18 kHz, damping 1.4 -> 14 kHz,
+# chorus deeper and faster.
+tempo 120
+steps 32
+tail 2
+track fx1
+input impulse 1 0.5
+preset 160 0 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
+sweep p2 0 255 0 32
+gain 1
+expect sound 0 32
+expect peak_below -6

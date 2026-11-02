@@ -1,0 +1,12 @@
+# Pan is dry/wet: swept from 0 (dry) to 128 (fully wet) and on to 255 (still wet) on FX2, with the level at 200 and a
+# track gain of 0.8.
+tempo 120
+steps 32
+tail 2
+track fx2
+input impulse 2 0.6
+preset 150 120 0 0 255 0 0 0 128 0 0 200 0 0 0 0 0 0
+sweep pan 0 255 0 32
+gain 0.8
+expect sound 0 32
+expect peak_below -1

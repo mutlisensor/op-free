@@ -1,0 +1,32 @@
+# Every key once, one per beat, on the sample track: each model must sound and end.
+tempo 240
+steps 96
+tail 2.5
+track sample
+note 0 F3 1 120
+note 4 Gb3 1 120
+note 8 G3 1 120
+note 12 Ab3 1 120
+note 16 A3 1 120
+note 20 Bb3 1 120
+note 24 B3 1 120
+note 28 C4 1 120
+note 32 Db4 1 120
+note 36 D4 1 120
+note 40 Eb4 1 120
+note 44 E4 1 120
+note 48 F4 1 120
+note 52 Gb4 1 120
+note 56 G4 1 120
+note 60 Ab4 1 120
+note 64 A4 1 120
+note 68 Bb4 1 120
+note 72 B4 1 120
+note 76 C5 1 120
+note 80 Db5 1 120
+note 84 D5 1 120
+note 88 Eb5 1 120
+note 92 E5 1 120
+expect sound 0 96
+expect idle 120
+expect peak_below 0

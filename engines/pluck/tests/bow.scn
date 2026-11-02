@@ -1,0 +1,16 @@
+# The bow zone: "steel pad" on the chord track (P2 245: the bow sustains the strings, slow attack), then "e-bow"
+# on the lead; note-off lifts the bow and damps the strings (release 120 / 70).
+tempo 90
+steps 16
+tail 4.0
+track chord
+preset 80 245 70 0 255 120 0 0 128 0 128 150 0 0 0 0 0 0
+note 0 D3 8 100
+note 0 Gb3 8 100
+note 0 A3 8 100
+track lead
+preset 70 240 40 0 255 70 0 0 128 0 128 185 0 0 0 0 0 0
+note 8 A4 6 110
+expect sound 2 14
+expect idle 48
+expect peak_below 0

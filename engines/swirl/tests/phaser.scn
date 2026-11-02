@@ -1,0 +1,13 @@
+# Classic phaser on a sawtooth: slow sweep, some feedback, 50/50 mix.
+tempo 120
+steps 32
+tail 0.5
+track fx1
+input saw 110 0.5
+param p1 90
+param p2 90
+param pan 128
+param level 255
+gain 1
+expect sound 0 32
+expect peak_below 0

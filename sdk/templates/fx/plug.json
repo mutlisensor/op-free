@@ -1,0 +1,8 @@
+{
+  "engine": "my_engine",
+  "memoryslot": 0,
+  "engine_version": 1,
+  "plug": { "id": 0, "version": 1, "name": "my_engine", "trackmask": 768, "flags": 1,
+            "parameter_names": ["drive", "tone"] },
+  "presets": "presets.json"
+}

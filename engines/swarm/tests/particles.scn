@@ -1,0 +1,20 @@
+# Sparse particles on the bass track (P1 40, P2 60): short and long notes, soft and hard (velocity sets the
+# crackle), re-struck notes stealing their voice, a low C1 and a glide (bend) while particles ring.
+tempo 110
+steps 32
+tail 3.0
+track bass
+preset 40 60 0 80 200 90 0 0 128 0 128 210 0 128 100 255 0 0
+note 0 C2 4 127
+note 4 G1 2 40
+note 6 C2 2 90
+note 8 C1 8 127
+bend 10 -200
+bend 14 0
+note 16 Eb2 4 127
+note 18 Eb2 4 127
+note 20 Bb1 12 70
+param p1 90 24
+expect sound 0 30
+expect idle 80
+expect peak_below -4

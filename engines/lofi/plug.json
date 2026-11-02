@@ -1,0 +1,8 @@
+{
+  "engine": "lofi",
+  "memoryslot": 37,
+  "engine_version": 1,
+  "plug": { "id": 61102, "version": 1, "name": "lofi", "trackmask": 768, "flags": 1,
+            "parameter_names": ["age", "noise"] },
+  "presets": "presets.json"
+}

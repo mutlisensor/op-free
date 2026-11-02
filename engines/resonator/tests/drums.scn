@@ -1,0 +1,13 @@
+# Drum-like clicks and no notes on the FX track: the default string (C3) rings on every hit, mostly wet.
+tempo 120
+steps 32
+tail 1
+track fx1
+input impulse 4 0.9
+param p1 150
+param p2 105
+param pan 200
+param level 255
+gain 1
+expect sound 0 32
+expect peak_below 0

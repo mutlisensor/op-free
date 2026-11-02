@@ -1,0 +1,45 @@
+# Checks every push and pull request with what runs without the Blackfin toolchain: the host simulator and every
+# engine's golden renders, the tools tests, and the USB MIDI core. The simulator builds engines as macOS dylibs with
+# Apple's clang (sim/Makefile), so the first two jobs run on macOS.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simulator:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make -C sim test
+
+  tools:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # opzsim lets the scaffold tests compile each template and run its scenarios.
+      - run: make -C sim
+      - run: python3 -m unittest discover -s tools/tests
+
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24        # core runs TypeScript directly (Node ≥ 23.6)
+          cache: npm
+          cache-dependency-path: core/package-lock.json
+      - run: npm ci
+        working-directory: core
+      - run: npm test
+        working-directory: core

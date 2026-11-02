@@ -1,0 +1,28 @@
+# The "solina" preset: six-note chords on the chord track's four voices, so notes steal voices from each other and
+# from the chord before (host fade, stage 5) while the slow attacks and releases overlap.
+tempo 110
+steps 24
+tail 3.0
+track chord
+preset 200 153 90 120 255 120 0 0 128 0 128 165 0 128 100 255 0 0
+note 0 C3 8 127
+note 0 E3 8 127
+note 0 G3 8 127
+note 0 B3 8 127
+note 0 D4 8 127
+note 0 G4 8 127
+note 8 A2 8 127
+note 8 C3 8 127
+note 8 E3 8 127
+note 8 G3 8 127
+note 8 B3 8 127
+note 8 E4 8 127
+note 16 F2 8 100
+note 16 A2 8 100
+note 16 C3 8 100
+note 16 E3 8 100
+note 16 G3 8 100
+note 16 C4 8 100
+expect sound 0 24
+expect idle 70
+expect peak_below -1

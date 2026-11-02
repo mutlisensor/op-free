@@ -1,0 +1,13 @@
+# P2 swept through hiss and crackle, then bits and rate down to 4 bits at 3 kHz, on a sine; P1 at 80.
+tempo 120
+steps 32
+tail 0.3
+track fx2
+input sine 440 0.5
+param p1 80
+param pan 255
+param level 255
+gain 1
+sweep p2 0 255 0 28
+expect sound 0 32
+expect peak_below 0

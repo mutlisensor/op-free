@@ -1,0 +1,15 @@
+# P2 through all eight waves (saw, square, pulse, double sine, saw-pulse, resonance I, II, III) under a held note,
+# P1 high, then P1 down to 0 (every wave becomes the same sine) and back up. Velocity 1: no DCW sweep.
+tempo 120
+steps 32
+tail 0.5
+track lead
+preset 200 0 0 64 255 30 0 0 128 0 128 200 0 128 100 255 0 0
+note 0 A2 28 1
+note 0 E3 28 127
+sweep p2 0 255 0 20
+sweep p1 200 0 20 24
+sweep p1 0 255 24 28
+expect sound 0 28
+expect idle 40
+expect peak_below -6

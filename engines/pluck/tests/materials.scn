@@ -1,0 +1,28 @@
+# P1 swept through all three zones under repeated notes (nylon -> steel -> stiff -> metal), then P2 from palm mute
+# to the bow zone, with a pitch bend on a ringing stiff string (the delay ramps; tuning follows the filters).
+tempo 120
+steps 32
+tail 1.0
+track lead
+preset 0 150 0 0 255 40 0 0 128 0 128 190 0 0 0 0 0 0
+sweep p1 0 255 0 16
+note 0 A3 2 110
+note 2 A3 2 110
+note 4 A3 2 110
+note 6 A3 2 110
+note 8 A3 2 110
+note 10 A3 2 110
+note 12 A3 2 110
+note 14 A3 2 110
+param p1 128 16
+sweep p2 0 255 16 28
+note 16 D4 4 120
+bend 18 200
+bend 20 -200
+bend 22 0
+note 20 G3 4 100
+note 24 C4 4 127
+note 28 C4 2 127
+expect sound 0 30
+expect idle 40
+expect peak_below -6

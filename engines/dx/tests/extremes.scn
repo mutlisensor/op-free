@@ -1,0 +1,18 @@
+# All knobs at both ends (dx ignores filter and resonance), very low and very high notes (operators above 16 kHz fade
+# out, above 20 kHz they are muted), velocity 1, P1/P2 jumps (patch 31 FM TOM, patch 0, patch 11 BRASS) and a pitch
+# bend.
+tempo 120
+steps 16
+tail 0.5
+track lead
+preset 255 255 0 0 255 0 0 0 0 255 128 255 0 0 0 0 0 0
+note 0 C0 4 127
+note 4 C8 4 127
+param p1 0 8
+param p2 0 8
+note 8 C2 4 1
+param p1 92 12
+param p2 255 12
+note 12 G6 4 127
+bend 12 200
+expect peak_below -3

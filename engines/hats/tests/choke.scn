@@ -1,0 +1,23 @@
+# Open hats on perc and sample at step 0; a closed hat on perc at step 4 cuts perc's open hat (to silence within
+# ~30 ms), sample's open hat rings on; a pedal hat on sample at step 12 cuts it there. Then a half-open hat cut by
+# a closed hat, and a ride that a closed hat must not cut.
+tempo 120
+steps 32
+tail 4.0
+track perc
+param p1 128 0
+param p2 160 0
+note 0 A3 4 110
+note 4 F3 1 60
+note 16 Ab3 2 110
+note 18 F3 1 80
+note 24 Gb4 1 110
+note 26 F3 1 80
+track sample
+param p1 128 0
+param p2 160 0
+note 0 A3 8 110
+note 12 G3 1 90
+expect sound 0 32
+expect idle 64
+expect peak_below -6

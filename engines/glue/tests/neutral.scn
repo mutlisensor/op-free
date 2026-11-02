@@ -1,0 +1,13 @@
+# Neutral: P1 0 (no compression), P2 0. A -6 dBFS sweep passes unchanged; only peaks above -1.4 dBFS would be rounded.
+tempo 120
+steps 16
+tail 0.2
+track fx2
+input sweep 30 18000 0.5
+param p1 0
+param p2 0
+param pan 128
+param level 255
+gain 1
+expect sound 0 16
+expect peak_below -5.9

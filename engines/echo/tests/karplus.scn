@@ -1,0 +1,29 @@
+# Notes with no input: every note plucks the tape loop, tuned to the note (Karplus-Strong). Legato steps glide, an
+# octave jump crossfades, low velocity plucks softly, a bend detunes the ring; releasing returns to the echo, which
+# repeats the last ring at P1's time.
+tempo 120
+steps 48
+tail 2
+track fx1
+input silence
+param p1 117
+param p2 215
+param pan 128
+param level 255
+gain 1
+note 0 C3 4 120
+note 4 E3 2 90
+note 6 G3 2 90
+note 8 C5 4 127
+note 12 C2 4 127
+note 16 A3 4 30
+note 20 C4 6 110
+bend 22 100
+bend 24 -200
+bend 26 0
+note 28 F6 2 100
+note 30 C7 2 100
+note 34 F0 4 100
+note 40 C9 4 100
+expect sound 0 44
+expect peak_below -1

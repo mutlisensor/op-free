@@ -1,0 +1,11 @@
+# The preset ("shimmer": P1 180, P2 140, fully wet) on FX1 with a click train, like a melody's attacks sent to it: a
+# ~6 s hall whose tail grows an octave halo that climbs and thins out into the highs.
+tempo 120
+steps 16
+tail 5
+track fx1
+input impulse 4 0.7
+preset 180 140 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
+gain 1
+expect sound 0 16
+expect peak_below -6

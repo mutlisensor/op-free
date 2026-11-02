@@ -1,0 +1,27 @@
+# P2 swept 0 -> 255 under a ringing explosion and repeated lasers: clean, chip, 3-bit, sample-and-hold, metallic noise.
+tempo 120
+steps 32
+tail 1.5
+track kick
+param p1 128 0
+param p2 0 0
+sweep p2 0 255 0 28
+note 0 Eb5 4 127
+note 8 Eb5 4 127
+note 16 Eb5 4 127
+note 24 Eb5 4 127
+track snare
+param p1 128 0
+param p2 0 0
+sweep p2 0 255 0 28
+note 2 Db5 1 110
+note 6 Db5 1 110
+note 10 Db5 1 110
+note 14 Db5 1 110
+note 18 Db5 1 110
+note 22 Db5 1 110
+note 26 Db5 1 110
+note 30 Db5 1 110
+expect sound 0 32
+expect idle 48
+expect peak_below -6

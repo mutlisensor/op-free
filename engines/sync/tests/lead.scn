@@ -1,0 +1,23 @@
+# "sync lead" on the lead track: a short phrase with velocities 40 .. 127 (velocity also moves the ratio), then one
+# held note with the classic sync sweep, P1 0 -> 255 -> 0, and a bend on top.
+tempo 110
+steps 32
+tail 1.5
+track lead
+preset 110 40 0 90 210 50 0 0 128 0 128 195 0 128 100 255 0 0
+note 0 A4 2 127
+note 2 C5 1 80
+note 3 D5 1 40
+note 4 E5 2 127
+note 6 G5 2 100
+note 8 E5 4 127
+bend 10 -200
+bend 12 0
+param p1 0 16
+sweep p1 0 255 16 26
+sweep p1 255 0 26 32
+note 16 A4 16 127
+bend 28 200
+expect sound 0 32
+expect idle 60
+expect peak_below -6

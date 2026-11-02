@@ -1,0 +1,84 @@
+# The nine materials and the halfway points between them (P1 0, 16, 32 .. 255 in steps of 16), a three-note
+# phrase each at P2 128 on the sample track: wood, marimba, xylophone, vibes, glock, steel drum, bell, gong, glass.
+tempo 160
+steps 144
+tail 1.5
+track sample
+preset 0 128 0 0 255 0 0 0 128 0 128 200 0 128 100 255 0 0
+param p1 0 0
+note 0 53 1 120
+note 2 60 1 100
+note 4 69 1 110
+param p1 16 8
+note 8 53 1 120
+note 10 60 1 100
+note 12 69 1 110
+param p1 32 16
+note 16 53 1 120
+note 18 60 1 100
+note 20 69 1 110
+param p1 48 24
+note 24 53 1 120
+note 26 60 1 100
+note 28 69 1 110
+param p1 64 32
+note 32 53 1 120
+note 34 60 1 100
+note 36 69 1 110
+param p1 80 40
+note 40 53 1 120
+note 42 60 1 100
+note 44 69 1 110
+param p1 96 48
+note 48 53 1 120
+note 50 60 1 100
+note 52 69 1 110
+param p1 112 56
+note 56 53 1 120
+note 58 60 1 100
+note 60 69 1 110
+param p1 128 64
+note 64 53 1 120
+note 66 60 1 100
+note 68 69 1 110
+param p1 144 72
+note 72 53 1 120
+note 74 60 1 100
+note 76 69 1 110
+param p1 160 80
+note 80 53 1 120
+note 82 60 1 100
+note 84 69 1 110
+param p1 176 88
+note 88 53 1 120
+note 90 60 1 100
+note 92 69 1 110
+param p1 192 96
+note 96 53 1 120
+note 98 60 1 100
+note 100 69 1 110
+param p1 208 104
+note 104 53 1 120
+note 106 60 1 100
+note 108 69 1 110
+param p1 224 112
+note 112 53 1 120
+note 114 60 1 100
+note 116 69 1 110
+param p1 240 120
+note 120 53 1 120
+note 122 60 1 100
+note 124 69 1 110
+param p1 255 128
+note 128 53 1 120
+note 130 60 1 100
+note 132 69 1 110
+# end: two dead wood hits per track, together, steal the ringing voices (they fade in 2.9 ms, the wood ends at once)
+track sample
+param p1 0 136
+param p2 0 136
+note 140 53 1 90
+note 140 53 1 90
+expect sound 0 136
+expect peak_below 0
+expect idle 150

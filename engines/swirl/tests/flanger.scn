@@ -1,0 +1,13 @@
+# Flanger (P2 in its upper zone) on noise with high feedback and a full sweep of rate.
+tempo 120
+steps 32
+tail 0.5
+track fx2
+input noise 0.4
+sweep p1 0 255 0 32
+param p2 230
+param pan 128
+param level 255
+gain 1
+expect sound 2 32
+expect peak_below 0

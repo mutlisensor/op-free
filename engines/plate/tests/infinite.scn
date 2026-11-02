@@ -1,0 +1,11 @@
+# P1 255 (endless tail) with a loud, sustained saw: without a limit it would build up without end; the tank limiter
+# ducks the input and trims the loop so the output stays below 0 dBFS.
+tempo 120
+steps 48
+tail 2
+track fx2
+input saw 110 0.95
+preset 255 255 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
+gain 1
+expect sound 0 48
+expect peak_below -0.1

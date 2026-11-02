@@ -1,0 +1,19 @@
+# P2 brightness on a held "dx brass" note: swept 128 -> 0 (darker: modulators down 24 dB), 0 -> 255 (12 dB up, more
+# feedback grit), back to 128; then the same on "strings" an octave lower. Carriers never change: the level holds.
+tempo 100
+steps 32
+tail 2.5
+track lead
+preset 92 128 0 0 255 70 0 0 128 0 128 190 0 0 0 0 0 0
+sweep p2 128 0 0 5
+sweep p2 0 255 5 11
+sweep p2 255 128 11 15
+note 0 E3 15 127
+param p1 140 16
+param p2 128 16
+sweep p2 128 255 17 24
+sweep p2 255 0 24 31
+note 16 E2 16 100
+expect sound 0 32
+expect idle 46
+expect peak_below -6

@@ -1,0 +1,15 @@
+# "tube bell" and "glock" as an arpeggio high up with long decays overlapping (inharmonic ratios 3.5, 1.41, 2.7).
+tempo 90
+steps 16
+tail 4
+track arp
+preset 188 128 0 0 255 100 0 0 128 0 128 195 0 0 0 0 0 0
+note 0 C5 1 120
+note 2 G5 1 90
+note 4 E5 1 110
+param p1 196 6
+note 6 C6 1 127
+note 8 A5 1 80
+note 12 D6 1 100
+expect sound 0 16
+expect peak_below 0

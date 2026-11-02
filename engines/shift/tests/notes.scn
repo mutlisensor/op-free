@@ -1,0 +1,18 @@
+# Keys tune the carrier: A2, E3, A3, C5 held in ring mode on a sine, then up-shift with the knob back at P1.
+tempo 120
+steps 40
+tail 0.2
+track fx1
+input sine 330 0.5
+param p1 60
+param p2 128
+param pan 255
+param level 255
+gain 1
+note 0 A2 6
+note 8 E3 6
+note 16 A3 6
+note 24 C5 6
+param p2 255 30
+expect sound 0 40
+expect peak_below 0

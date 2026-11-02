@@ -1,0 +1,42 @@
+# Every synth track on pluck at once: bass 2, lead 3, arp 2, chord 4 voices = 11 lines from the shared pool of 13,
+# with steals inside the tracks. Each voice keeps its own line: every note rings at its own pitch.
+tempo 120
+steps 16
+tail 2.0
+track bass
+preset 50 120 0 0 255 30 0 0 128 0 128 180 0 0 0 0 0 0
+note 0 C2 4 110
+note 4 G1 4 110
+note 8 A1 4 110
+note 12 F1 4 110
+track lead
+preset 75 150 0 0 255 60 0 0 128 0 128 160 0 0 0 0 0 0
+note 0 E4 8 100
+note 0 G4 8 100
+note 0 C5 8 100
+note 8 F4 8 100
+note 8 A4 8 100
+note 8 C5 8 100
+track arp
+preset 176 90 0 0 255 60 0 0 128 0 128 160 0 0 0 0 0 0
+note 0 C6 1 100
+note 2 G5 1 100
+note 4 E6 1 100
+note 6 C6 1 100
+note 8 A5 1 100
+note 10 E6 1 100
+note 12 F5 1 100
+note 14 C6 1 100
+track chord
+preset 128 165 0 0 255 70 0 0 128 0 128 130 0 0 0 0 0 0
+note 0 C3 8 90
+note 0 E3 8 90
+note 0 G3 8 90
+note 0 B3 8 90
+note 8 F3 8 90
+note 8 A3 8 90
+note 8 C4 8 90
+note 8 E4 8 90
+expect sound 0 16
+expect idle 40
+expect peak_below 0

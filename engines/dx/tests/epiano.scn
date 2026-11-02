@@ -1,0 +1,23 @@
+# The "tine ep" preset on the chord track: four-voice chords at changing velocities (soft chords stay round, hard ones
+# bark), then a fifth note steals a voice (host fade, stage 5).
+tempo 110
+steps 16
+tail 2.5
+track chord
+preset 4 128 0 0 255 80 0 0 128 0 128 160 0 0 0 0 0 0
+note 0 C3 4 110
+note 0 E3 4 110
+note 0 G3 4 110
+note 0 B3 4 110
+note 4 A2 4 40
+note 4 C3 4 40
+note 4 E3 4 40
+note 4 G3 4 40
+note 8 F2 6 127
+note 8 A2 6 127
+note 8 C3 6 127
+note 8 E3 6 127
+note 10 G4 2 90
+expect sound 0 14
+expect idle 30
+expect peak_below 0

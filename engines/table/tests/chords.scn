@@ -1,0 +1,21 @@
+# "table pad" chords (chord track, level 160): the second chord steals the first's voices (host fade, stage 5)
+# while P1 and P2 drift across the organ / vocal border.
+tempo 110
+steps 16
+tail 5.0
+track chord
+preset 110 70 100 140 220 110 0 0 128 0 128 160 0 0 0 0 0 0
+sweep p1 110 170 0 16
+sweep p2 70 95 0 16
+note 0 C3 6
+note 0 E3 6
+note 0 G3 6
+note 0 B3 6
+note 6 A2 8
+note 6 C3 8
+note 6 E3 8
+note 6 G3 8
+note 6 B3 8
+expect sound 0 14
+expect idle 80
+expect peak_below 0

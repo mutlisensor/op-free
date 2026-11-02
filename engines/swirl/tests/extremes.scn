@@ -1,0 +1,10 @@
+# Every knob at its limits (swirl ignores filter and resonance), then dry only (pan 0) must still pass sound.
+tempo 120
+steps 16
+tail 0.2
+track fx2
+input sweep 30 16000 0.9
+preset 255 255 0 0 255 0 0 0 0 255 255 255 0 0 0 0 0 0
+gain 1
+expect sound 0 16
+expect peak_below 0

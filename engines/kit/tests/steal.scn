@@ -1,0 +1,12 @@
+# Three long boom kicks on the 2-voice kick track: the third steals the first, which must fade out in a few
+# milliseconds so the new hit starts at once (device behaviour; hardware found kit blocking new hits).
+tempo 120
+steps 8
+tail 2.0
+track kick
+param p2 0
+note 0 G3 1 127
+note 1 G3 1 127
+note 2 Gb3 1 127
+expect sound 0 8
+expect peak_below 0

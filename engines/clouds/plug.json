@@ -1,0 +1,8 @@
+{
+  "engine": "clouds",
+  "memoryslot": 45,
+  "engine_version": 1,
+  "plug": { "id": 61007, "version": 1, "name": "clouds", "trackmask": 256, "flags": 0,
+            "parameter_names": ["size", "texture"] },
+  "presets": "presets.json"
+}

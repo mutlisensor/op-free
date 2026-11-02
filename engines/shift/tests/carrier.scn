@@ -1,0 +1,15 @@
+# P1 swept over the whole carrier range in ring mode, then up-shift, on noise at 50/50.
+tempo 120
+steps 32
+tail 0.2
+track fx2
+input noise 0.4
+param p2 128
+param pan 128
+param level 255
+gain 1
+sweep p1 0 255 0 16
+param p2 230 16
+sweep p1 255 0 16 32
+expect sound 0 32
+expect peak_below 0

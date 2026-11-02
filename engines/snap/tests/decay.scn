@@ -1,0 +1,20 @@
+# P2 (decay/tone) at 0, 128 and 255 on the 808 clap, the tambourine and the shaker.
+tempo 90
+steps 48
+tail 4.0
+track sample
+param p2 0 0
+note 0 54 1 120
+note 4 69 1 120
+note 8 67 1 120
+param p2 128 16
+note 16 54 1 120
+note 20 69 1 120
+note 24 67 1 120
+param p2 255 32
+note 32 54 1 120
+note 36 69 1 120
+note 40 67 1 120
+expect sound 0 48
+expect idle 90
+expect peak_below -6

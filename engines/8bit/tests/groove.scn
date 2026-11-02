@@ -1,0 +1,43 @@
+# A two-bar chip groove over three drum tracks: kicks, snares and a coin, hats with an open hat choked.
+tempo 120
+steps 32
+tail 1.0
+track kick
+param p1 128 0
+param p2 128 0
+note 0 F3 1
+note 6 F3 1 90
+note 8 Ab3 1
+note 16 F3 1
+note 22 Gb3 1 100
+note 24 F3 1
+track snare
+param p1 128 0
+param p2 128 0
+note 4 A3 1
+note 12 Bb3 1
+note 20 A3 1
+note 28 B3 1
+note 30 B4 1 90
+track perc
+param p1 128 0
+param p2 160 0
+note 0 Db4 1 90
+note 2 Db4 1 60
+note 4 Db4 1 90
+note 6 Eb4 2 80
+note 8 Db4 1 90
+note 10 Db4 1 60
+note 12 D4 1 90
+note 14 Eb4 2 80
+note 16 Db4 1 90
+note 18 Db4 1 60
+note 20 Db4 1 90
+note 22 E4 2 80
+note 24 Db4 1 90
+note 26 D4 1 80
+note 28 Db4 1 90
+note 30 Eb4 2 80
+expect sound 0 32
+expect idle 40
+expect peak_below 0

@@ -1,0 +1,16 @@
+# Clicks every 8 steps through the springs, wet only: each echo chirps; P2 from smooth (0) to full drip (255).
+tempo 120
+steps 32
+tail 3
+track fx1
+input impulse 2 0.8
+param p1 60
+param p2 0
+param pan 255
+param level 255
+gain 1
+param p2 128 8
+param p2 255 16
+param p1 220 24
+expect sound 0 32
+expect peak_below 0

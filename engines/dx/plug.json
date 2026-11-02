@@ -1,0 +1,8 @@
+{
+  "engine": "dx",
+  "memoryslot": 7,
+  "engine_version": 1,
+  "plug": { "id": 61013, "version": 1, "name": "dx", "trackmask": 240, "flags": 0,
+            "parameter_names": ["patch", "bright"] },
+  "presets": "presets.json"
+}

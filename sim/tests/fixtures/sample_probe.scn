@@ -1,0 +1,57 @@
+# Host check sample_probe (tests/golden.py): every key of three packs, one note per step (MIDI numbers: '#'
+# starts a comment, so sharps can't be written by name).
+# kick: the 24-key test kit; snare: a 5-key pack (keys 6-24 clamp to 5); perc: a plain AIFF (one slice);
+# sample: the built-in buffer under an explicit samples path; bass: no pack (arg2 0, getSample NULL); lead: a synth
+# sample (one slice for every note).
+tempo 120
+steps 38
+tail 0
+track kick
+sample ../../build/samples/opzk_testkit.aif
+note 0 53 0.5
+note 1 54 0.5
+note 2 55 0.5
+note 3 56 0.5
+note 4 57 0.5
+note 5 58 0.5
+note 6 59 0.5
+note 7 60 0.5
+note 8 61 0.5
+note 9 62 0.5
+note 10 63 0.5
+note 11 64 0.5
+note 12 65 0.5
+note 13 66 0.5
+note 14 67 0.5
+note 15 68 0.5
+note 16 69 0.5
+note 17 70 0.5
+note 18 71 0.5
+note 19 72 0.5
+note 20 73 0.5
+note 21 74 0.5
+note 22 75 0.5
+note 23 76 0.5
+note 24 0 0.5
+note 25 52 0.5
+note 26 127 0.5
+track snare
+sample ../../build/samples/opzk_testkit5.aif
+note 27 53 0.5
+note 28 57 0.5
+note 29 58 0.5
+note 30 76 0.5
+note 31 0 0.5
+track perc
+sample ../../build/samples/opzk_plain.aif
+note 32 53 0.5
+note 33 72 0.5
+track sample
+sample builtin samplepacks/user/opzk_builtin.aif
+note 34 60 0.5
+track bass
+note 35 60 0.5
+track lead
+sample ../../build/samples/opzk_synth.aif
+note 36 60 0.5
+note 37 72 0.5

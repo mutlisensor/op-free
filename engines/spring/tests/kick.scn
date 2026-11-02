@@ -1,0 +1,17 @@
+# No input: keys on the FX track kick the tank, C2 (a thud) to C6 (a crash), soft and hard.
+tempo 120
+steps 32
+tail 2
+track fx2
+input silence
+param p1 100
+param p2 180
+param pan 255
+param level 255
+gain 1
+note 0 C2 1 127
+note 8 C4 1 60
+note 16 C6 1 127
+note 24 G3 2 100
+expect sound 0 32
+expect peak_below 0

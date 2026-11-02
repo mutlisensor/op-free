@@ -1,0 +1,8 @@
+{
+  "engine": "pluck",
+  "memoryslot": 6,
+  "engine_version": 1,
+  "plug": { "id": 61014, "version": 1, "name": "pluck", "trackmask": 240, "flags": 0,
+            "parameter_names": ["material", "decay"] },
+  "presets": "presets.json"
+}

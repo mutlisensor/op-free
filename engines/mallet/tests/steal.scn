@@ -1,0 +1,38 @@
+# Fast retriggers of long rings: gong and bell hits at P2 255 every 32nd note on the two voices of the kick track, so
+# every hit from the third on steals a ringing voice, which must fade out in a few milliseconds and let the new hit
+# start at once (the device behaviour kit v1 got wrong). Then a 32nd-note roll of one glass key.
+tempo 140
+steps 20
+tail 1.5
+track kick
+preset 223 255 0 0 255 0 0 0 128 0 128 200 0 128 100 255 0 0
+note 0 41 0.5 127
+note 0.5 44 0.5 120
+note 1 41 0.5 127
+note 1.5 48 0.5 110
+note 2 41 0.5 127
+note 2.5 53 0.5 100
+param p1 191 3
+note 3 60 0.5 127
+note 3.5 60 0.5 127
+note 4 60 0.5 127
+note 4.5 64 0.5 127
+param p1 255 6
+param p2 120 6
+note 8 72 0.5 127
+note 8.5 72 0.5 110
+note 9 72 0.5 100
+note 9.5 72 0.5 90
+note 10 72 0.5 80
+note 10.5 72 0.5 70
+note 11 72 0.5 60
+note 11.5 72 0.5 50
+# end: two dead wood hits per track, together, steal the ringing voices (they fade in 2.9 ms, the wood ends at once)
+track kick
+param p1 0 12
+param p2 0 12
+note 16 53 1 90
+note 16 53 1 90
+expect sound 0 12
+expect peak_below 0
+expect idle 26

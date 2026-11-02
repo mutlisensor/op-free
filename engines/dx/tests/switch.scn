@@ -1,0 +1,21 @@
+# P1 moved while notes are held: a held note keeps its patch (no jump, no click), the next note plays the new one.
+# A chord on "warm pad", P1 swept across the whole bank under it, then new notes pick up whatever P1 has reached.
+tempo 100
+steps 24
+tail 2.5
+track chord
+preset 148 128 0 0 255 110 0 0 128 0 128 150 0 0 0 0 0 0
+note 0 C3 12 100
+note 0 G3 12 100
+note 0 E4 12 100
+sweep p1 148 0 2 6
+sweep p1 0 255 6 10
+param p1 4 10
+note 12 D3 2 100
+note 14 A3 2 100
+param p1 172 16
+note 16 F3 4 100
+note 16 C4 4 100
+expect sound 0 20
+expect idle 36
+expect peak_below 0

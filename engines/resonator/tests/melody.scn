@@ -1,0 +1,27 @@
+# Single notes from the bottom to the top of the range (C1 .. C7) with glides between ringing strings, a bend, and
+# notes outside the range (folded by octaves). Sine input, so a click would stand out.
+tempo 120
+steps 48
+tail 1
+track fx1
+input sine 196 0.6
+param p1 200
+param p2 70
+param pan 220
+param level 255
+gain 1
+note 0 C1 4
+note 4 G2 4
+note 8 C3 4
+note 12 E4 4
+note 16 C6 4
+note 20 C7 4
+note 24 A3 8
+bend 26 200
+bend 30 -200
+bend 32 0
+note 32 F0 4
+note 36 C9 4
+note 40 D3 8
+expect sound 0 48
+expect peak_below 0

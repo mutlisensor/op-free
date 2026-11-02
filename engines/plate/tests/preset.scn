@@ -1,0 +1,11 @@
+# The preset ("plate": P1 140, P2 160, fully wet) on FX2 with a click train, like drums sent to it: a dense, smooth
+# tail of ~4 s that rings on past the last hit.
+tempo 120
+steps 16
+tail 4
+track fx2
+input impulse 2 0.7
+preset 140 160 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
+gain 1
+expect sound 0 16
+expect peak_below -6

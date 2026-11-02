@@ -1,0 +1,26 @@
+/* OP-Z engine linker script. Filled in per memory slot by tools/opz_build.py:
+ *   @BASE@  slot window start   @SIZE@  slot window size
+ * Everything (export table, code, constants, data, bss) must stay inside the window: the OS loader rejects any
+ * block outside it, and nothing is relocated at load time. */
+OUTPUT_FORMAT("elf32-bfin")
+OUTPUT_ARCH(bfin)
+ENTRY(_initModule)
+
+MEMORY
+{
+  SLOT (rwx) : ORIGIN = @BASE@, LENGTH = @SIZE@
+}
+
+SECTIONS
+{
+  .opz_exports : { KEEP(*(.opz_exports)) } > SLOT
+  .text        : { *(.text .text.*) } > SLOT
+  .rodata      : { *(.rodata .rodata.* .const .const.*) } > SLOT
+  .data        : { *(.data .data.* .sdata .sdata.*) } > SLOT
+  .bss (NOLOAD): { *(.bss .bss.* .sbss .sbss.* COMMON) } > SLOT
+
+  /DISCARD/ : { *(.comment) *(.note*) *(.eh_frame*) *(.debug*) *(.init) *(.fini) *(.ctors) *(.dtors) }
+
+  ASSERT(ADDR(.opz_exports) == @BASE@, "export table must be at the slot base")
+  ASSERT(SIZEOF(.opz_exports) > 0, "missing OPZ_EXPORTS_INSTRUMENT() / OPZ_EXPORTS_FX()")
+}

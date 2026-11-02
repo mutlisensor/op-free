@@ -1,0 +1,8 @@
+{
+  "engine": "shift",
+  "memoryslot": 36,
+  "engine_version": 1,
+  "plug": { "id": 61103, "version": 1, "name": "shift", "trackmask": 768, "flags": 17,
+            "parameter_names": ["carrier", "mode"] },
+  "presets": "presets.json"
+}

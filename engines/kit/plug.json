@@ -1,0 +1,8 @@
+{
+  "engine": "kit",
+  "memoryslot": 54,
+  "engine_version": 5,
+  "plug": { "id": 61020, "version": 5, "name": "kit", "trackmask": 15, "flags": 24,
+            "parameter_names": ["tune", "decay"] },
+  "presets": "presets.json"
+}

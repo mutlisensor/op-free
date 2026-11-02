@@ -1,0 +1,16 @@
+# P1 swept through every zone (off, 1/4 .. 1/64, back) while repeating, on clicks every step: the slice length
+# follows the knob at each repeat, no new capture; P2 at 128 (-3 dB per repeat).
+tempo 100
+steps 48
+tail 0.5
+track fx2
+input impulse 1 0.8
+param p2 128
+param pan 255
+param level 255
+gain 1
+sweep p1 0 255 0 24
+sweep p1 255 40 24 44
+param p1 0 44
+expect sound 0 48
+expect peak_below 0

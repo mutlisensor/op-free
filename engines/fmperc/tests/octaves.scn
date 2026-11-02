@@ -1,0 +1,28 @@
+# The octave buttons: a deep kick, a snare, a bell and a zap at octaves -2 .. +2 (MIDI 53 - 48 .. 53 + 48 + key).
+tempo 120
+steps 80
+tail 3.0
+track sample
+note 0 5 1 120
+note 4 29 1 120
+note 8 53 1 120
+note 12 77 1 120
+note 16 101 1 120
+note 20 9 1 120
+note 24 33 1 120
+note 28 57 1 120
+note 32 81 1 120
+note 36 105 1 120
+note 40 25 1 120
+note 44 49 1 120
+note 48 73 1 120
+note 52 97 1 120
+note 56 121 1 120
+note 60 27 1 120
+note 64 51 1 120
+note 68 75 1 120
+note 72 99 1 120
+note 76 123 1 120
+expect sound 0 80
+expect idle 140
+expect peak_below 0

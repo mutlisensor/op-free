@@ -1,0 +1,20 @@
+# Turning the knobs while notes ring: a held bell chord whose structure sweeps string -> glass and back while P2
+# opens from damped to long ring and into the bow, with bends on top. Every partial glides; no clicks.
+tempo 100
+steps 32
+tail 3.0
+track chord
+preset 204 120 0 0 255 90 0 0 128 0 128 150 0 0 0 0 0 0
+note 0 C3 32 110
+note 0 G3 32 110
+note 0 E4 32 110
+sweep p1 204 0 1 8
+sweep p1 0 255 8 20
+sweep p1 255 128 20 30
+sweep p2 120 250 4 24
+bend 12 200
+bend 16 -200
+bend 20 0
+expect sound 0 32
+expect idle 60
+expect peak_below -3

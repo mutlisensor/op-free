@@ -1,0 +1,30 @@
+# The DCW envelope: the same saw pluck at velocities 127, 90, 50 and 10 (depth), then at decay 20, 80 and 160
+# (time), then on the square and the resonance I wave. P1 0: the distortion decays all the way to a sine.
+tempo 120
+steps 32
+tail 1.0
+track arp
+preset 0 0 0 40 0 30 0 0 128 0 128 200 0 128 100 255 0 0
+note 0 C3 2 127
+note 2 C3 2 90
+note 4 C3 2 50
+note 6 C3 2 10
+param decay 20 8
+note 8 C3 2 127
+param decay 80 10
+note 10 C3 2 127
+param decay 160 12
+note 12 C3 4 127
+param decay 40 16
+param p2 36 16
+note 16 G2 2 127
+note 18 G3 2 127
+param p2 182 20
+note 20 G2 2 127
+note 22 G3 2 127
+note 24 C5 2 127
+note 26 C6 2 127
+note 28 C7 2 127
+expect sound 0 30
+expect idle 48
+expect peak_below -6

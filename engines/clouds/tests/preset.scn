@@ -1,0 +1,11 @@
+# The preset (P1 140, P2 110: 79 ms grains, 2.7 overlapping, reach 0.36 s, wide stereo, no feedback) on a saw at
+# -12 dBFS: a smooth, wide cloud. The first 49 ms clear the ring (dry only: silence at pan 128), then the cloud fades in.
+tempo 120
+steps 32
+tail 1
+track fx1
+input saw 220 0.25
+preset 140 110 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
+gain 1
+expect sound 1 16
+expect peak_below -3

@@ -1,0 +1,27 @@
+/* Linker script for the cycle benchmark driver. Filled in by tools/opz_cycles.py:
+ *   @BASE@ @SIZE@      the engine's slot window (the engine image is placed there byte for byte)
+ *   @HOST@ @HOSTSIZE@  driver code, data and stack, away from every slot window
+ * Both regions are given to bfin-elf-run with --memory-region. */
+OUTPUT_FORMAT("elf32-bfin")
+OUTPUT_ARCH(bfin)
+ENTRY(__start)
+
+MEMORY
+{
+  HOST (rwx) : ORIGIN = @HOST@, LENGTH = @HOSTSIZE@
+  SLOT (rwx) : ORIGIN = @BASE@, LENGTH = @SIZE@
+}
+
+SECTIONS
+{
+  .engine_image : { KEEP(*(.engine_image)) } > SLOT
+  .text   : { *(.text.start) *(.text .text.*) } > HOST
+  .rodata : { *(.rodata .rodata.* .const .const.*) } > HOST
+  .data   : { *(.data .data.* .sdata .sdata.*) } > HOST
+  .bss (NOLOAD) : { *(.bss .bss.* .sbss .sbss.* COMMON) } > HOST
+  __stack_top = ORIGIN(HOST) + LENGTH(HOST) - 256;   /* the exit call reads 24 bytes above SP */
+
+  /DISCARD/ : { *(.comment) *(.note*) *(.eh_frame*) *(.debug*) }
+
+  ASSERT(ADDR(.engine_image) == @BASE@, "engine image must sit at the slot base")
+}

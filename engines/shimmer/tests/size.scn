@@ -1,0 +1,15 @@
+# P1 (size) swept up and back down on a saw with some shimmer, then jumped: the tank delays glide (at most 1/8 sample
+# per sample) and the output taps crossfade in steps, so the tail bends but never clicks. The top of P1 is endless;
+# the limiter holds it below 0 dBFS.
+tempo 120
+steps 64
+tail 1
+track fx2
+input saw 110 0.5
+preset 0 120 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
+sweep p1 0 255 4 20
+sweep p1 255 0 36 40
+param p1 180 48
+gain 1
+expect sound 0 64
+expect peak_below -0.5

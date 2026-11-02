@@ -9,7 +9,8 @@ gets what has been checked and is safe to publish.
 
 ```
 op-z-engines (private lab)                    op-free (public, GitHub + GitHub Pages)
-├─ sdk/ sim/ tools/ web/core/ engines/ ──sync──▶ ├─ sdk/        headers, templates, simulator, build tools
+├─ sdk/ sim/ tools/ web/core/ engines/ ──sync──▶ ├─ sdk/        headers, templates, SDK docs
+│                                                ├─ sim/ tools/  simulator; build, check, install tools
 ├─ docs/architecture, docs/sdk, research ──────▶ ├─ core/       the SysEx / install core the site uses
 │                                                ├─ engines/    released community engines (source)
 ├─ OP-FREE/  ◀── this folder IS the public repo  ├─ research/   how the OP-Z works (evidence-labelled)
@@ -67,7 +68,7 @@ Each workstream is its own branch and session. They touch separate folders so th
 | W0 | **Foundation**: this plan, the folder, the site shell (landing, risk notice, home, sections, routing, design system) | `OP-FREE/` | — | the site builds and runs; the lab and loader mount points exist |
 | W1 | **Synth lab**: the browser simulator (`sim/web`) retooled into the site: engine browser, presets, synth → FX1/FX2, on-screen + Web MIDI keyboard | `OP-FREE/site/src/lab/` | W0 | every released engine plays in the site; wasm modules come from the sync |
 | W2 | **Loader**: pick 8 of 10 (community / original toggle), back up, install over USB MIDI, content-mode bake of presets and slots, restore; demo mode | `OP-FREE/site/src/loader/` | W0 (uses `web/core`) | the full flow runs against the demo OP-Z with the same safety flows as `web/app` |
-| W3 | **SDK, research and guides export**: `tools/opfree_sync.py` with its guard, the public README/CONTRIBUTING, guides (use the site, extract your firmware, firmware explained, submit an engine, propose a firmware mod), issue and PR templates | `OP-FREE/{sdk,core,engines,research,guides,.github}`, `tools/opfree_sync.py` | W0 | a fresh clone of `OP-FREE/` builds an engine and runs the simulator with nothing from the lab |
+| W3 | **SDK, research and guides export**: `tools/opfree_sync.py` with its guard, the public README/CONTRIBUTING, guides (use the site, extract your firmware, firmware explained, submit an engine, propose a firmware mod), issue and PR templates | `OP-FREE/{sdk,sim,tools,third_party,core,engines,research,guides,firmware-mods,.github}`, `tools/opfree_sync.py` | W0 | a fresh clone of `OP-FREE/` builds an engine and runs the simulator with nothing from the lab |
 | W4 | **Publishing**: the public GitHub repository, the GitHub Pages workflow, the first release | GitHub | W0–W3, the user's go-ahead | the site is live at `https://<user>.github.io/op-free/` |
 | W5 | **Firmware mods** (later): the patch format (`tools/opz_fwpatch.py`), the browser builder that patches the user's own firmware file, the first mods | `OP-FREE/firmware-mods/`, `firmware/` | recovery proven on a spare unit (`firmware/README.md`) | the *Coming soon* block becomes a builder |
 

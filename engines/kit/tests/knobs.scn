@@ -1,0 +1,20 @@
+# Knob extremes on a kick and a snare: tuned down/up, short/long decays, then a low short snare and a nominal clap.
+tempo 120
+steps 32
+tail 4.0
+track kick
+param p1 0 0
+param p2 0 0
+note 0 F3 1 127
+param p1 255 4
+param p2 255 4
+note 4 F3 1 127
+param p1 60 12
+param p2 90 12
+note 12 A3 1 127
+param p1 128 20
+param p2 128 20
+note 20 B3 1 127
+expect sound 0 24
+expect idle 60
+expect peak_below 0

@@ -1,0 +1,12 @@
+[
+  { "slot": 0, "index": 0, "default_octave": 0, "name": "studio",
+    "values": [128, 128, 0, 0, 255, 0, 0, 0, 128, 0, 128, 200, 0, 128, 100, 255, 0, 0] },
+  { "slot": 0, "index": 1, "default_octave": 0, "name": "tight",
+    "values": [50, 80, 0, 0, 255, 0, 0, 0, 128, 0, 128, 200, 0, 128, 100, 255, 0, 0] },
+  { "slot": 0, "index": 2, "default_octave": 0, "name": "big room",
+    "values": [140, 210, 0, 0, 255, 0, 0, 0, 128, 0, 128, 195, 0, 128, 100, 255, 0, 0] },
+  { "slot": 0, "index": 3, "default_octave": 0, "name": "live hands",
+    "values": [215, 150, 0, 0, 255, 0, 0, 0, 128, 0, 128, 200, 0, 128, 100, 255, 0, 0] },
+  { "slot": 0, "index": 4, "default_octave": 0, "name": "dry",
+    "values": [100, 30, 0, 0, 255, 0, 0, 0, 128, 0, 128, 210, 0, 128, 100, 255, 0, 0] }
+]

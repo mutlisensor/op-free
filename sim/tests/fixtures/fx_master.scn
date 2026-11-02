@@ -1,0 +1,5 @@
+# Used by tests/golden.py with fx_big_init: effect on the master track (16 KB pool).
+steps 4
+tail 0.1
+track master
+input sine 440 0.5

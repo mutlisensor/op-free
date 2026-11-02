@@ -1,0 +1,154 @@
+# P1 and P2 turned fast over their whole range while a fast pattern plays on two drum tracks (16ths, with steals:
+# two voices per track): each hit takes the knobs of its first block. The situation that crashed macro v3.
+tempo 150
+steps 72
+tail 1.5
+track perc
+preset 0 0 0 0 255 0 0 0 128 0 128 200 0 128 100 255 0 0
+sweep p1 0 255 0 8
+sweep p1 255 0 8 16
+sweep p1 0 255 16 24
+sweep p1 255 0 24 32
+sweep p1 0 255 32 40
+sweep p1 255 0 40 48
+sweep p1 0 255 48 56
+sweep p1 255 30 56 64
+sweep p2 255 0 0 12
+sweep p2 0 255 12 24
+sweep p2 255 0 24 36
+sweep p2 0 255 36 48
+sweep p2 255 60 48 64
+note 0 53 1 60
+note 1 60 1 97
+note 2 67 1 66
+note 3 74 1 103
+note 4 57 1 72
+note 5 64 1 109
+note 6 71 1 78
+note 7 54 1 115
+note 8 61 1 84
+note 9 68 1 121
+note 10 75 1 90
+note 11 58 1 127
+note 12 65 1 96
+note 13 72 1 65
+note 14 55 1 102
+note 15 62 1 71
+note 16 69 1 108
+note 17 76 1 77
+note 18 59 1 114
+note 19 66 1 83
+note 20 73 1 120
+note 21 56 1 89
+note 22 63 1 126
+note 23 70 1 95
+note 24 53 1 64
+note 25 60 1 101
+note 26 67 1 70
+note 27 74 1 107
+note 28 57 1 76
+note 29 64 1 113
+note 30 71 1 82
+note 31 54 1 119
+note 32 61 1 88
+note 33 68 1 125
+note 34 75 1 94
+note 35 58 1 63
+note 36 65 1 100
+note 37 72 1 69
+note 38 55 1 106
+note 39 62 1 75
+note 40 69 1 112
+note 41 76 1 81
+note 42 59 1 118
+note 43 66 1 87
+note 44 73 1 124
+note 45 56 1 93
+note 46 63 1 62
+note 47 70 1 99
+note 48 53 1 68
+note 49 60 1 105
+note 50 67 1 74
+note 51 74 1 111
+note 52 57 1 80
+note 53 64 1 117
+note 54 71 1 86
+note 55 54 1 123
+note 56 61 1 92
+note 57 68 1 61
+note 58 75 1 98
+note 59 58 1 67
+note 60 65 1 104
+note 61 72 1 73
+note 62 55 1 110
+note 63 62 1 79
+track sample
+preset 255 255 0 0 255 0 0 0 128 0 128 200 0 128 100 255 0 0
+sweep p1 255 0 0 6
+sweep p1 0 255 6 12
+sweep p1 255 0 12 18
+sweep p1 0 255 18 24
+sweep p1 255 0 24 30
+sweep p1 0 255 30 36
+sweep p1 255 0 36 42
+sweep p1 0 255 42 48
+sweep p1 255 0 48 54
+sweep p1 0 255 54 60
+sweep p2 0 255 0 5
+sweep p2 255 0 5 10
+sweep p2 0 255 10 15
+sweep p2 255 0 15 20
+sweep p2 0 255 20 25
+sweep p2 255 0 25 30
+sweep p2 0 255 30 35
+sweep p2 255 0 35 40
+sweep p2 0 255 40 45
+sweep p2 255 0 45 50
+sweep p2 0 255 50 55
+sweep p2 255 40 55 60
+note 0 41 1 127
+note 2 51 1 105
+note 4 61 1 83
+note 6 71 1 61
+note 8 81 1 119
+note 10 43 1 97
+note 12 53 1 75
+note 14 63 1 53
+note 16 73 1 111
+note 18 83 1 89
+note 20 45 1 67
+note 22 55 1 125
+note 24 65 1 103
+note 26 75 1 81
+note 28 85 1 59
+note 30 47 1 117
+note 32 57 1 95
+note 34 67 1 73
+note 36 77 1 51
+note 38 87 1 109
+note 40 49 1 87
+note 42 59 1 65
+note 44 69 1 123
+note 46 79 1 101
+note 48 41 1 79
+note 50 51 1 57
+note 52 61 1 115
+note 54 71 1 93
+note 56 81 1 71
+note 58 43 1 49
+note 60 53 1 107
+note 62 63 1 85
+# end: two dead wood hits per track, together, steal the ringing voices (they fade in 2.9 ms, the wood ends at once)
+track perc
+param p1 0 64
+param p2 0 64
+note 68 53 1 90
+note 68 53 1 90
+track sample
+param p1 0 64
+param p2 0 64
+note 68 53 1 90
+note 68 53 1 90
+expect sound 0 64
+expect peak_below 0
+expect idle 78

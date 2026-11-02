@@ -1,0 +1,15 @@
+# Lead: P2 swept from a pure sine through index 4 rad into feedback grit, at ratio 1 then ratio 3.5.
+tempo 100
+steps 32
+tail 1.5
+track lead
+param p1 24
+param sustain 255
+param release 40
+sweep p2 0 255 0 15
+param p1 232 16
+sweep p2 255 0 16 31
+note 0 E3 32 127
+expect sound 0 32
+expect peak_below 0
+expect idle 40      # release 40: ~0.9 s to -66 dB

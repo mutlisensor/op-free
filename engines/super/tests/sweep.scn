@@ -1,0 +1,17 @@
+# One held note: detune swept from unison to wild at mix 128, then mix swept from the centre saw alone into the
+# full sub, then detune swept back down (the stereo width closes below P1 32).
+tempo 100
+steps 24
+tail 1.0
+track lead
+param p1 0
+param p2 128
+param attack 0
+param sustain 255
+param release 40
+sweep p1 0 255 0 8
+sweep p2 0 255 8 16
+sweep p1 255 0 16 24
+note 0 A3 24 127
+expect sound 0 24
+expect peak_below -4

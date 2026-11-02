@@ -1,0 +1,36 @@
+# A two-bar groove over three drum tracks: kicks, 808 snare + clap, closed/open hats.
+tempo 120
+steps 32
+tail 1.0
+track kick
+note 0 F3 1
+note 6 F3 1 90
+note 8 F3 1
+note 16 F3 1
+note 22 Gb3 1 100
+note 24 F3 1
+track snare
+note 4 A3 1
+note 12 A3 1
+note 20 B3 1
+note 28 A3 1
+track perc
+note 0 Db4 1 90
+note 2 Db4 1 60
+note 4 Db4 1 90
+note 6 Eb4 2 80
+note 8 Db4 1 90
+note 10 Db4 1 60
+note 12 Db4 1 90
+note 14 Eb4 2 80
+note 16 Db4 1 90
+note 18 D4 1 70
+note 20 Db4 1 90
+note 22 Ab4 1 90
+note 24 Db4 1 90
+note 26 A4 1 80
+note 28 Db4 1 90
+note 30 Eb4 2 80
+expect sound 0 32
+expect idle 40
+expect peak_below 0

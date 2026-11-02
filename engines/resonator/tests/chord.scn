@@ -1,0 +1,22 @@
+# Noise through a held chord (C3 E3 G3), which stays after the keys are up (latch); then a new chord (D3 F3 A3 C4)
+# takes over while the old strings ring out, and a fifth note steals the oldest string.
+tempo 120
+steps 48
+tail 1
+track fx1
+input noise 0.3
+param p1 170
+param p2 120
+param pan 255
+param level 255
+gain 1
+note 4 C3 8
+note 4 E3 8
+note 4 G3 8
+note 24 D3 4
+note 24 F3 4
+note 24 A3 4
+note 24 C4 4
+note 26 E4 2
+expect sound 1 48
+expect peak_below 0

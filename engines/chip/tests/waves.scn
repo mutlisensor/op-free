@@ -1,0 +1,28 @@
+# Every wave in turn on one held A3: P1 stepped through its 8 zones (pulse 12.5 / 25 / 50 %, duty cycling,
+# triangle, saw, noise, metallic noise), two steps each, then the same at A5 with a vibrato (P2 31).
+tempo 120
+steps 32
+tail 1.5
+track lead
+preset 0 0 0 0 255 30 0 0 128 0 128 200 0 0 0 0 0 0
+param p1 32 2
+param p1 64 4
+param p1 96 6
+param p1 128 8
+param p1 160 10
+param p1 192 12
+param p1 224 14
+param p1 0 16
+param p2 31 16
+param p1 32 18
+param p1 64 20
+param p1 96 22
+param p1 128 24
+param p1 160 26
+param p1 192 28
+param p1 224 30
+note 0 A3 16 127
+note 16 A5 16 127
+expect sound 0 32
+expect idle 42
+expect peak_below -6      # one voice peaks at -12 dBFS; a releasing note overlaps the next

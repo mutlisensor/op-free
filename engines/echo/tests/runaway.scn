@@ -1,0 +1,17 @@
+# Feedback past 1 (P2 255): a click every two bars starts the tape oscillating; the saturator holds it near -6 dBFS while P1 is
+# swept for a dub siren (glides within an octave, crossfades beyond). Echoes only (pan 255).
+tempo 120
+steps 96
+tail 1
+track fx1
+input impulse 32 0.5
+param p1 100
+param p2 255
+param pan 255
+param level 255
+gain 1
+sweep p1 100 80 32 48
+sweep p1 80 120 48 64
+sweep p1 120 40 72 96
+expect sound 8 96
+expect peak_below -5.5

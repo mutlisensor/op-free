@@ -1,0 +1,17 @@
+# Used by tests/golden.py: one drum hit per envelope shape on the kick track (fixture ahd_probe).
+# preset bytes 2-5 are the drum knobs: start, attack, hold, decay. Decay below 128: straight line + exponential;
+# above 128: bent curve.
+tempo 120
+steps 16
+tail 0.1
+track kick
+preset 0 0 0 40 60 90 0 0 0 0 0 0 0 0 0 0 0 0
+note 0 F3 1 100
+param decay 0 3
+param sustain 0 3
+param release 230 3
+note 4 F3 1 100
+param attack 20 7
+param decay 0 7
+param release 0 7
+note 8 F3 1 100

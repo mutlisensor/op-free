@@ -1,0 +1,35 @@
+# Corners: the lowest and highest notes, top notes at the 11 kHz pitch cap (the 4' is gone there), the knobs at
+# their ends, full bends, velocity 1 and 127, on the lead track.
+tempo 120
+steps 24
+tail 1.5
+track lead
+param attack 0
+param sustain 255
+param release 30
+param p1 0
+param p2 0
+note 0 C0 2 127
+note 0 C8 2 127
+param p1 255 2
+param p2 255 2
+note 2 C0 2 127
+note 2 G9 2 127
+note 4 C-1 2 1
+note 4 G9 2 1
+param p1 128 6
+param p2 76 6
+note 6 C4 6 127
+bend 7 200
+bend 9 -200
+bend 11 0
+note 12 B6 4 127
+note 12 Gb7 4 127
+sweep p1 0 255 12 16
+sweep p2 255 0 12 16
+note 16 C5 8 127
+param p2 255 16
+sweep p1 255 0 16 24
+expect sound 0 24
+expect idle 40
+expect peak_below -4

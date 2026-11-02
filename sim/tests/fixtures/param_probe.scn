@@ -1,0 +1,8 @@
+# Used by tests/golden.py: P1 from 0 to 255 at step 2, smoothed per block; C0 for pitch (doc: 0x184CBB).
+tempo 120
+steps 8
+tail 0.1
+track lead
+preset 0 0 0 0 255 0 0 0 0 0 0 0 0 0 0 0 0 0
+param p1 255 2
+note 0 C0 8 100

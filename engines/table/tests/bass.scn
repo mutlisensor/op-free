@@ -1,0 +1,20 @@
+# "wave bass" then "reso bass" (bass track): low notes on the 256-sample mip; P2 sweeps from analog into the
+# resonance bank and back while P1 walks the position, so the line morphs through both banks.
+tempo 124
+steps 16
+tail 1.5
+track bass
+preset 115 0 0 70 160 25 0 0 128 0 128 205 0 0 0 0 0 0
+sweep p2 0 128 0 8
+sweep p1 115 60 0 8
+sweep p2 128 0 8 16
+note 0 A1 2 127
+note 2 A1 1 90
+note 4 C2 2 127
+note 6 E1 2 110
+note 8 G1 2 127
+note 10 A1 1 70
+note 12 D2 3 127
+expect sound 0 16
+expect idle 28
+expect peak_below -4
