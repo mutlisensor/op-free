@@ -57,11 +57,15 @@ function moduleSources(dir: string): { wasm: string | null; engine: string | nul
   };
 }
 
-/** synth tracks 4-7, drum tracks 0-3, FX 8-9: the plug's trackmask decides what it is. */
-function kindOf(trackmask: number): Kind {
-  if (trackmask & 0xf00) return "fx";
-  if (trackmask & 0xf0) return "synth";
-  return "drum";
+/**
+ * synth tracks 4-7, drum tracks 0-3, FX 8-9: the plug's trackmask decides what it is. Synths and drums stay on tracks
+ * 1-8 and effects on 9-10, as on a stock OP-Z: a trackmask that crosses that line (or names no track, or a track past
+ * FX2) is untested, so it gets null and the engine is left out of the catalogue.
+ */
+function kindOf(trackmask: number): Kind | null {
+  if (!trackmask || trackmask & ~0x3ff) return null;
+  if (trackmask & 0x300) return trackmask & 0xff ? null : "fx";
+  return trackmask & 0xf0 ? "synth" : "drum";
 }
 
 /** Inline Markdown to plain text: **bold**, `code`, [links](…); the lab's backlog ids ("(X-04)") are dropped. */
@@ -129,6 +133,11 @@ export function buildCatalogue(): Built {
     const presets: Preset[] = presetPath && existsSync(presetPath) ? JSON.parse(readFileSync(presetPath, "utf8")) : [];
     const readmePath = join(abs, "README.md");
     const info = readme(existsSync(readmePath) ? readFileSync(readmePath, "utf8") : null);
+    const kind = kindOf(manifest.plug.trackmask);
+    if (!kind) {
+      console.warn(`catalogue: ${dir} left out: trackmask 0x${manifest.plug.trackmask.toString(16)} mixes synth or drum tracks with FX tracks`);
+      continue;
+    }
     const src = moduleSources(dir);
     const url = (file: string | null, ext: string) => {
       if (!file) return null;
@@ -139,7 +148,7 @@ export function buildCatalogue(): Built {
     engines.push({
       dir,
       label: manifest.plug.name || dir,
-      kind: kindOf(manifest.plug.trackmask),
+      kind,
       manifest,
       presets,
       wasm: url(src.wasm, "wasm"),
