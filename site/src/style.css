@@ -142,6 +142,7 @@ a:hover .arrow { color: var(--text); transform: translate(2px, -2px); }
 .bar__nav a { white-space: nowrap; transition: color .2s; }
 .bar__nav a:hover, .bar__nav a[aria-current] { color: var(--text); }
 .bar__nav .dot { width: 6px; height: 6px; margin-right: 7px; }
+.bar__off { white-space: nowrap; opacity: .45; cursor: default; }
 
 .foot { margin-top: clamp(80px, 12vw, 160px); padding: 40px var(--gutter) 48px; border-top: 1px solid var(--line); display: grid; gap: 28px; max-width: var(--max); margin-inline: auto; }
 .foot__row { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; align-items: baseline; }

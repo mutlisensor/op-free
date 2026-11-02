@@ -25,7 +25,7 @@ export const HEADER = (active: string) => `
     <a class="bar__brand" href="#/home" aria-label="OP-FREE home">OP-FREE</a>
     <nav class="bar__nav" aria-label="Sections">
       <a href="#/synths" ${active === "synths" ? 'aria-current="page"' : ""}><i class="dot dot--green"></i>Synths &amp; effects</a>
-      <a href="#/firmware" ${active === "firmware" ? 'aria-current="page"' : ""}><i class="dot dot--yellow"></i>Firmware mods</a>
+      <span class="bar__off" aria-disabled="true" title="Coming soon"><i class="dot dot--yellow"></i>Firmware mods</span>
       <a href="#/home#source"><i class="dot dot--blue"></i>Source</a>
     </nav>
   </header>`;
