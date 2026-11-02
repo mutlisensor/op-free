@@ -1,7 +1,7 @@
 /// <reference types="node" />
 /**
- * The plan against an OP-Z: picks into slots, the visitor's samples never touched, original vs community, installs,
- * and the restore target. The device is the demo OP-Z (src/loader/demo.ts): every drum and synth slot filled, three
+ * The plan against an OP-Z: each track's keys into slots, the visitor's samples never touched, effects only on fx1/fx2,
+ * original, installs, and the restore target. The device is the demo OP-Z (src/loader/demo.ts): every drum and synth slot filled, three
  * user samples on the sample track (slots 4, 9, 10).
  */
 
@@ -9,8 +9,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Doc, assign, loads, slotCells } from "../core.ts";
 import { DEMO_USER_SAMPLES, demoFiles } from "../demo.ts";
-import { type Choice, defaultChoice, setSource, toggleOriginalSlot } from "../model.ts";
-import { type Device, blockedSlots, cellsToDoc, planLoader, plugLabel, restoreTarget, userSampleCells } from "../plan.ts";
+import { type Choice, type KeyPick, allOriginal, defaultChoice, setKey, tickEngine } from "../model.ts";
+import { type Device, blockedKeys, cellsToDoc, planLoader, plugLabel, restoreTarget, userSampleCells } from "../plan.ts";
 import { catalogue } from "./fixtures.ts";
 
 const engines = catalogue();
@@ -19,6 +19,19 @@ const id = (dir: string) => engines.find((e) => e.dir === dir)!.manifest.plug.id
 function demoDevice(): Device {
   const f = demoFiles();
   return { plugs: loads(f.get("settings/plugs.json")!), slots: loads(f.get("settings/slotConfiguration.json")!) };
+}
+
+const SYNTH = [4, 5, 6, 7];
+const DRUM = [0, 1, 2, 3];
+
+/** Apply an edit to every track in `tracks` (the edit must be accepted). */
+function each(c: Choice, tracks: number[], edit: (c: Choice, t: number) => { choice: Choice; refused?: string }): Choice {
+  for (const t of tracks) {
+    const r = edit(c, t);
+    assert.equal(r.refused, undefined);
+    c = r.choice;
+  }
+  return c;
 }
 
 function cell(slots: Doc, t: number, s: number): number | null {
@@ -37,7 +50,7 @@ function applied(d: Device, choice: Choice, original: Doc | null = null): Device
   return { plugs, slots: plan.target };
 }
 
-test("the default picks fill slots 1–8 of every track in the group; 9 and 10 stay", () => {
+test("the default picks fill keys 1–8 of every track they are made for; 9 and 0 stay", () => {
   const d = demoDevice();
   const plan = planLoader({ engines, choice: defaultChoice(engines), device: d, original: d.slots, demo: true });
   assert.deepEqual(plan.errors, []);
@@ -47,8 +60,8 @@ test("the default picks fill slots 1–8 of every track in the group; 9 and 10 s
     assert.equal(cell(plan.target, t, 10), cell(d.slots, t, 10));
   }
   assert.deepEqual(plan.installs.map((i) => [i.dir, i.action]), [
-    ...["syn1", "syn2", "syn3", "syn4", "syn5", "syn6", "syn7", "syn8"].map((x) => [x, "install"]),
     ...["drm1", "drm2", "drm3"].map((x) => [x, "install"]),
+    ...["syn1", "syn2", "syn3", "syn4", "syn5", "syn6", "syn7", "syn8"].map((x) => [x, "install"]),
     ...["fxa", "fxb", "fxonly1", "fxd"].map((x) => [x, "install"]),
   ]);
   assert.equal(cell(plan.target, 10, 1), cell(d.slots, 10, 1), "tape untouched");
@@ -57,8 +70,8 @@ test("the default picks fill slots 1–8 of every track in the group; 9 and 10 s
 
 test("a slot holding the visitor's sample is skipped on that track only, and never changes", () => {
   const d = demoDevice();
-  const choice = defaultChoice(engines);
-  choice.drum.picks = ["drm1", "drm2", "drm3", "drm4", "drm5"];
+  let choice = defaultChoice(engines);
+  for (const dir of ["drm4", "drm5"]) choice = each(choice, DRUM, (c, t) => tickEngine(c, engines, t, dir, true));
   const plan = planLoader({ engines, choice, device: d, original: d.slots, demo: true });
   assert.deepEqual(plan.errors, []);
   const [sampleAt4] = DEMO_USER_SAMPLES;
@@ -75,9 +88,12 @@ test("no choice ever changes a cell that holds a user sample", () => {
   const all = engines.filter((e) => e.kind === "drum").map((e) => e.dir);
   const choices: Choice[] = [];
   for (let n = 0; n <= all.length; n++) {
-    const c = defaultChoice(engines);
-    c.drum.picks = all.slice(0, n);
-    choices.push(c, { ...c, drum: setSource(c.drum, "original") }, { ...c, drum: toggleOriginalSlot(c.drum, 4).choice });
+    let c = defaultChoice(engines);
+    for (const dir of all) c = each(c, DRUM, (x, t) => tickEngine(x, engines, t, dir, false));
+    for (const dir of all.slice(0, n)) c = each(c, DRUM, (x, t) => tickEngine(x, engines, t, dir, true));
+    const original: KeyPick = { kind: "original" };
+    choices.push(c, each(c, DRUM, (x, t) => ({ choice: allOriginal(x, t) })), each(c, DRUM, (x, t) => setKey(x, engines, t, 4, original)));
+    for (let k = 1; k <= 10; k++) choices.push(each(c, [3], (x, t) => setKey(x, engines, t, k, { kind: "engine", dir: all[k % all.length] })));
   }
   for (const c of choices) {
     const plan = planLoader({ engines, choice: c, device: d, original: d.slots, demo: true });
@@ -85,14 +101,17 @@ test("no choice ever changes a cell that holds a user sample", () => {
   }
 });
 
-test("a slot with user samples on every track of the group is skipped by the picks", () => {
+test("the default made once connected moves past the keys holding the visitor's samples", () => {
   const d = demoDevice();
   let slots = d.slots;
-  for (const t of [0, 1, 2, 3]) slots = assign(slots, t, 2, 1_513_459_487);
+  for (const t of [0, 1, 2]) slots = assign(slots, t, 2, 1_513_459_487);
   const device = { plugs: d.plugs, slots };
-  assert.deepEqual(blockedSlots("drum", userSampleCells(device)), [2]);
-  const plan = planLoader({ engines, choice: defaultChoice(engines), device, original: slots, demo: true });
-  assert.deepEqual(plan.blocked.drum, [2]);
+  const samples = userSampleCells(device);
+  assert.deepEqual(blockedKeys(0, samples), [2]);
+  assert.deepEqual(blockedKeys(3, samples), [4, 9, 10]);
+  const plan = planLoader({ engines, choice: defaultChoice(engines, (t) => blockedKeys(t, samples)), device, original: slots, demo: true });
+  assert.deepEqual(plan.blocked[0], [2]);
+  assert.deepEqual(plan.skipped, []);
   for (const t of [0, 1, 2]) {
     assert.equal(cell(plan.target, t, 1), id("drm1"));
     assert.equal(cell(plan.target, t, 2), 1_513_459_487);
@@ -106,17 +125,15 @@ test("original puts back what the first backup had; community and original per s
   const after = applied(first, defaultChoice(engines), first.slots);
   assert.equal(cell(after.slots, 5, 3), id("syn3"));
 
-  const choice = defaultChoice(engines);
-  choice.synth = toggleOriginalSlot(choice.synth, 3).choice;
+  let choice = setKey(defaultChoice(engines), engines, 5, 3, { kind: "original" }).choice;
+  choice = setKey(choice, engines, 5, 10, { kind: "engine", dir: "syn3" }).choice;
   const plan = planLoader({ engines, choice, device: after, original: first.slots, demo: true });
-  for (const t of [4, 5, 6, 7]) {
-    assert.equal(cell(plan.target, t, 3), cell(first.slots, t, 3), "slot 3 is original again");
-    assert.equal(cell(plan.target, t, 4), id("syn3"), "syn3 moves to the next free slot");
-    assert.equal(cell(plan.target, t, 9), id("syn8"));
-  }
+  assert.equal(cell(plan.target, 5, 3), cell(first.slots, 5, 3), "lead key 3 is original again");
+  assert.equal(cell(plan.target, 5, 10), id("syn3"), "syn3 on lead key 0");
+  for (const t of [4, 6, 7]) assert.equal(cell(plan.target, t, 3), id("syn3"), "the other synth tracks keep theirs");
   assert.ok(plan.installs.every((i) => i.action === "ready"), "nothing to install again");
 
-  choice.synth = setSource(choice.synth, "original");
+  choice = each(choice, SYNTH, (c, t) => ({ choice: allOriginal(c, t) }));
   const back = planLoader({ engines, choice, device: after, original: first.slots, demo: true });
   for (const t of [4, 5, 6, 7]) for (let s = 1; s <= 10; s++) assert.equal(cell(back.target, t, s), cell(first.slots, t, s));
   assert.ok(back.changes.every((c) => c.why === "original"));
@@ -126,8 +143,8 @@ test("original puts back what the first backup had; community and original per s
 test("an engine no longer picked goes back to the original; others are left as they are", () => {
   const first = demoDevice();
   const after = applied(first, defaultChoice(engines), first.slots);
-  const choice = defaultChoice(engines);
-  choice.synth.picks = choice.synth.picks.slice(0, 6);
+  let choice = defaultChoice(engines);
+  for (const dir of ["syn7", "syn8"]) choice = each(choice, SYNTH, (c, t) => tickEngine(c, engines, t, dir, false));
   const plan = planLoader({ engines, choice, device: after, original: first.slots, demo: true });
   for (const t of [4, 5, 6, 7]) {
     assert.equal(cell(plan.target, t, 7), cell(first.slots, t, 7));
@@ -138,12 +155,27 @@ test("an engine no longer picked goes back to the original; others are left as t
   assert.equal(unknown.changes.length, 0, "without a first backup the original is unknown: nothing moves");
 });
 
-test("an engine made for fx1 only leaves fx2's slot alone", () => {
+test("an engine made for fx1 only is not on fx2", () => {
   const d = demoDevice();
   const plan = planLoader({ engines, choice: defaultChoice(engines), device: d, original: d.slots, demo: true });
   assert.equal(cell(plan.target, 8, 3), id("fxonly1"));
-  assert.equal(cell(plan.target, 9, 3), cell(d.slots, 9, 3));
-  assert.equal(plan.cells.find((c) => c.track === 9 && c.slot === 3)?.why, "not-for-track");
+  assert.equal(cell(plan.target, 9, 3), id("fxd"), "fx2 has its own keys");
+  assert.equal(cell(plan.target, 9, 4), cell(d.slots, 9, 4));
+  assert.ok(!plan.cells.some((c) => c.track === 9 && c.to === id("fxonly1")));
+});
+
+test("a hand-made choice can't cross the line: effects only on fx1/fx2, synths and drums only on their own tracks", () => {
+  const d = demoDevice();
+  const forged = defaultChoice(engines);
+  forged[5] = forged[5].map((k, i) => (i === 8 ? { kind: "engine", dir: "fxa" } : k));
+  forged[8] = forged[8].map((k, i) => (i === 8 ? { kind: "engine", dir: "syn1" } : k));
+  forged[0] = forged[0].map((k, i) => (i === 8 ? { kind: "engine", dir: "syn2" } : k));
+  forged[9] = forged[9].map((k, i) => (i === 8 ? { kind: "engine", dir: "fxonly1" } : k));
+  const plan = planLoader({ engines, choice: forged, device: d, original: d.slots, demo: true });
+  assert.equal(plan.errors.length, 4, plan.errors.join("\n"));
+  assert.match(plan.errors.join("\n"), /fxa is an effect: it goes on fx1, fx2 only, not on lead/);
+  assert.match(plan.errors.join("\n"), /syn1 is a synth: it goes on bass, lead, arp, chord only, not on fx1/);
+  for (const [t, s] of [[5, 9], [8, 9], [0, 9], [9, 9]]) assert.equal(cell(plan.target, t, s), cell(d.slots, t, s));
 });
 
 test("installs: new, already there, upgrade with restart; refusals", () => {

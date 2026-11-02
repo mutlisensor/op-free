@@ -5,7 +5,9 @@
  *
  * Rules, cell by cell (a cell is one track's slot):
  * - a cell holding one of the visitor's own samples (flag 2) is never touched (SAFETY.md rule 5);
- * - an engine goes on the tracks of its group that its trackmask names, in the slot the picks give it;
+ * - an engine goes on the key the visitor gave it on that track, and only on a track it may go on (model.ts `canGoOn`:
+ *   effects only on fx1/fx2, synths and drums only on their own tracks among 1–8, as their trackmask names); anything
+ *   else is an error, so a stored or hand-made choice can't cross that line either;
  * - *original* puts back the plug the first backup of this OP-Z had in that cell (TE's own sound; it stays installed
  *   when we displace it, so this is a slot-map change only);
  * - a slot the picks leave alone keeps what it has, except one of our catalogue's plugs that is no longer picked
@@ -16,7 +18,7 @@ import type { CatalogueEngine } from "../shared/catalogue.ts";
 import {
   type Doc, type Engine, TRACK_NAMES, isUserSample, makeEngine, planInstall, pyInt, slotCells, slotMapProblems, unassignedUserSamples,
 } from "./core.ts";
-import { type Choice, GROUPS, type GroupId, SLOTS_PER_TRACK, cautionOf, engineTracks, group, slotIntents } from "./model.ts";
+import { type Choice, SLOTS_PER_TRACK, TRACKS, TRACK_LABELS, canGoOn, cautionOf, notForTrack } from "./model.ts";
 
 export interface Device {
   plugs: Doc;
@@ -34,8 +36,6 @@ export type CellWhy =
   | "keep"
   /** the visitor's own sample: never touched */
   | "user-sample"
-  /** the slot's engine is not made for this track (its trackmask) */
-  | "not-for-track"
   /** the original plug is no longer installed: left as it is */
   | "original-gone";
 
@@ -66,7 +66,7 @@ export interface InstallItem {
 }
 
 export interface LoaderPlan {
-  /** Every cell of every group's tracks, track then slot order. */
+  /** Every cell of tracks 1–10, track then slot order. */
   cells: Cell[];
   /** The cells that change. */
   changes: Cell[];
@@ -77,8 +77,8 @@ export interface LoaderPlan {
   /** Any error: write nothing. */
   errors: string[];
   warnings: string[];
-  /** Per group, slots that hold the visitor's samples on every track: the picks skip them. */
-  blocked: Record<GroupId, number[]>;
+  /** Per track (index 0…9), the keys holding the visitor's samples: never changed. */
+  blocked: number[][];
   /** Cells an engine or original would have taken but that hold the visitor's own sample. */
   skipped: Cell[];
 }
@@ -101,10 +101,10 @@ export function userSampleCells(d: Device): Map<string, number> {
   return new Map([...slotCells(d.slots)].filter(([, id]) => mine.has(id)));
 }
 
-/** Slots that hold a user sample on every track of the group: the picks skip them. */
-export function blockedSlots(id: GroupId, samples: Map<string, number>): number[] {
+/** The keys of a track that hold one of the visitor's samples. */
+export function blockedKeys(track: number, samples: Map<string, number>): number[] {
   const out: number[] = [];
-  for (let s = 1; s <= SLOTS_PER_TRACK; s++) if (group(id).tracks.every((t) => samples.has(key(t, s)))) out.push(s);
+  for (let s = 1; s <= SLOTS_PER_TRACK; s++) if (samples.has(key(track, s))) out.push(s);
   return out;
 }
 
@@ -157,53 +157,44 @@ export function planLoader(input: PlanInput): LoaderPlan {
   const byDir = new Map(engines.map((e) => [e.dir, e]));
   const cells: Cell[] = [];
   const skipped: Cell[] = [];
-  const blocked = {} as Record<GroupId, number[]>;
+  const blocked: number[][] = [];
   const placed: string[] = [];
 
-  for (const g of GROUPS) {
-    const c = choice[g.id];
-    blocked[g.id] = blockedSlots(g.id, samples);
-    const intents = slotIntents(c, blocked[g.id]);
-    const fit = [...intents.values()].filter((i) => i.kind === "engine").length;
-    if (c.source === "community" && c.picks.length > fit) {
-      warnings.push(`${g.title}: ${c.picks.length - fit} ticked engine${c.picks.length - fit > 1 ? "s don't" : " doesn't"} fit `
-        + "(slots kept original or holding your samples); untick some");
-    }
-    for (const t of g.tracks) {
-      for (let s = 1; s <= SLOTS_PER_TRACK; s++) {
-        const from = now.get(key(t, s)) ?? null;
-        const intent = intents.get(s)!;
-        const original = (): Cell => {
-          if (!orig) return { track: t, slot: s, from, to: from, why: "keep" };
-          const want = orig.get(key(t, s)) ?? null;
-          if (want !== null && !installed.has(want)) return { track: t, slot: s, from, to: from, why: "original-gone" };
-          return { track: t, slot: s, from, to: want, why: "original" };
-        };
-        let cell: Cell;
-        if (samples.has(key(t, s))) {
-          cell = { track: t, slot: s, from, to: from, why: "user-sample" };
-          if (intent.kind === "engine" || intent.kind === "original") skipped.push(cell);
-        } else if (intent.kind === "engine") {
-          const e = byDir.get(intent.dir);
-          if (!e) {
-            errors.push(`${intent.dir} is not in the catalogue`);
-            cell = { track: t, slot: s, from, to: from, why: "keep" };
-          } else if (!engineTracks(e, g).includes(t)) {
-            cell = from !== null && ours.has(from) ? { ...original(), why: "not-for-track" } : { track: t, slot: s, from, to: from, why: "not-for-track" };
-          } else {
-            cell = { track: t, slot: s, from, to: e.manifest.plug.id, why: "engine", dir: e.dir };
-            if (!placed.includes(e.dir)) placed.push(e.dir);
-          }
-        } else if (intent.kind === "original") {
-          cell = original();
-        } else if (from !== null && ours.has(from)) {
-          const back = original();
-          cell = back.why === "original" ? { ...back, why: "revert" } : back;
-        } else {
+  for (const t of TRACKS) {
+    blocked[t] = blockedKeys(t, samples);
+    const keys = choice[t] ?? [];
+    for (let s = 1; s <= SLOTS_PER_TRACK; s++) {
+      const from = now.get(key(t, s)) ?? null;
+      const intent = keys[s - 1] ?? { kind: "keep" };
+      const original = (): Cell => {
+        if (!orig) return { track: t, slot: s, from, to: from, why: "keep" };
+        const want = orig.get(key(t, s)) ?? null;
+        if (want !== null && !installed.has(want)) return { track: t, slot: s, from, to: from, why: "original-gone" };
+        return { track: t, slot: s, from, to: want, why: "original" };
+      };
+      let cell: Cell;
+      if (samples.has(key(t, s))) {
+        cell = { track: t, slot: s, from, to: from, why: "user-sample" };
+        if (intent.kind === "engine" || intent.kind === "original") skipped.push(cell);
+      } else if (intent.kind === "engine") {
+        const e = byDir.get(intent.dir);
+        if (!e) errors.push(`${intent.dir} is not in the catalogue`);
+        else if (!canGoOn(e, t)) errors.push(notForTrack(e, t));
+        if (!e || !canGoOn(e, t)) {
           cell = { track: t, slot: s, from, to: from, why: "keep" };
+        } else {
+          cell = { track: t, slot: s, from, to: e.manifest.plug.id, why: "engine", dir: e.dir };
+          if (!placed.includes(e.dir)) placed.push(e.dir);
         }
-        cells.push(cell);
+      } else if (intent.kind === "original") {
+        cell = original();
+      } else if (from !== null && ours.has(from)) {
+        const back = original();
+        cell = back.why === "original" ? { ...back, why: "revert" } : back;
+      } else {
+        cell = { track: t, slot: s, from, to: from, why: "keep" };
       }
+      cells.push(cell);
     }
   }
   const loose = unassignedUserSamples(device.plugs, device.slots);
@@ -307,5 +298,5 @@ export function restoreTarget(backupSlots: Doc, device: Device): { target: Doc; 
 
 /** "lead slot 3" */
 export function cellName(c: { track: number; slot: number }): string {
-  return `${TRACK_NAMES[c.track] ?? c.track} slot ${c.slot}`;
+  return `${TRACK_LABELS[c.track] ?? TRACK_NAMES[c.track] ?? c.track} slot ${c.slot}`;
 }

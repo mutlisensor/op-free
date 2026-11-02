@@ -1,6 +1,6 @@
 /**
  * The loader (workstream W2): a guided panel next to the synth lab. Five steps, the current one highlighted:
- * 1 pick (per track group, community or original), 2 connect and back up (Web MIDI or the demo OP-Z), 3 install
+ * 1 pick (per track, what goes on each black key), 2 connect and back up (Web MIDI or the demo OP-Z), 3 install
  * (one confirm, the core's flows), 4 content mode (the user-sample check, then the presets baked into the OP-Z's own
  * store), 5 eject and play, and restore from any backup.
  *
@@ -18,10 +18,10 @@ import { type BakeEngine, FakeOpz, isUserSample } from "./core.ts";
 import { type BakeRequest, type DiskDir, backupMeta, diskPicker, runBake } from "./disk.ts";
 import { type Child, clear, download, formatTime, h } from "./dom.ts";
 import {
-  type Choice, GROUPS, type GroupId, MAX_PICKS, SLOTS_PER_TRACK, capacity, engineTracks, group, groupEngines, sanitizeChoice,
-  cautionOf, setSource, slotIntents, toggleOriginalSlot, togglePick, TRACK_LABELS,
+  type Choice, type KeyPick, TRACKS, TRACK_LABELS, type TrackChoice, allOriginal, cautionOf, copyTrack, defaultTrack, engineTracks, keyOf,
+  pickEverywhere, pickedDirs, sanitizeChoice, setKey, tickEngine, trackEngines, trackGroup, trackPicks,
 } from "./model.ts";
-import { type LoaderPlan, blockedSlots, planLoader, plugLabel, presetDocs, userSampleCells } from "./plan.ts";
+import { type LoaderPlan, blockedKeys, planLoader, plugLabel, presetDocs, userSampleCells } from "./plan.ts";
 import { type SampleCheck, type SampleGate, gateOpen, gateRefusal, looseText, sampleCheck, sampleGate } from "./samplegate.ts";
 import { bakeSheet, confirmSheet, failureSheet, openSheet } from "./sheet.ts";
 import {
@@ -31,7 +31,7 @@ import { DemoTransport, loadDemoFiles, loadDemoState, resetDemoFiles, saveDemoFi
 import { workerSleep } from "./transport/timer.ts";
 import { type MidiAccessLike, PORT_LOST, WebMidiTransport, pickOpz, ports, requestMidi } from "./transport/webmidi.ts";
 
-const KEYS = { choice: "op-free.loader.choice", group: "op-free.loader.group", step: "op-free.loader.step", interrupted: "op-free.loader.interrupted" };
+const KEYS = { choice: "op-free.loader.keys", track: "op-free.loader.track", step: "op-free.loader.step", interrupted: "op-free.loader.interrupted" };
 const STEPS = ["Pick", "Connect & back up", "Install", "Content mode", "Eject & play"] as const;
 /** Backups the loader makes itself (the core's own, per step, are folded away in step 5). */
 const MAIN_BACKUPS = new Set(["opfree-connect", "opfree", "opfree-install", "restore"]);
@@ -68,7 +68,8 @@ class LoaderPanel {
   private engines: CatalogueEngine[] = [];
   private catalogueError: string | null = null;
   private choice: Choice | null = null;
-  private groupId: GroupId = read<GroupId>(KEYS.group) ?? "synth";
+  /** The track shown in step 1 (0 kick … 9 fx2); bass to start, next to the synth lab. */
+  private track: number = clampTrack(read<number>(KEYS.track));
   private open: number = read<number>(KEYS.step) ?? 1;
   private store: LoaderStore = new MemoryLoaderStore();
   private controller!: LoaderController;
@@ -133,15 +134,22 @@ class LoaderPanel {
     }
     this.choice = sanitizeChoice(read(KEYS.choice), this.engines);
     // the lab starts with the featured engines ticked: tell it where the loader's (stored) picks differ
-    const picked = new Set(GROUPS.flatMap((g) => this.choice![g.id].picks));
-    for (const e of this.engines) if (!!e.featured !== picked.has(e.dir) && GROUPS.some((g) => groupEngines(this.engines, g.id).includes(e))) this.tellLab(e.dir, picked.has(e.dir));
+    const picked = new Set(pickedDirs(this.choice));
+    for (const e of this.engines) if (!!e.featured !== picked.has(e.dir) && engineTracks(e).length) this.tellLab(e.dir, picked.has(e.dir));
     await this.reloadBackups();
     this.render();
   }
 
   // -- state ----------------------------------------------------------------------------------------------------
 
-  private setChoice(next: Choice): void {
+  /** A new choice; the lab hears about every engine that is now on some track, or on none. */
+  private setChoice(next: Choice, tell = true): void {
+    if (tell && this.choice) {
+      const before = new Set(pickedDirs(this.choice));
+      const after = new Set(pickedDirs(next));
+      for (const d of after) if (!before.has(d)) this.tellLab(d, true);
+      for (const d of before) if (!after.has(d)) this.tellLab(d, false);
+    }
     this.choice = next;
     write(KEYS.choice, next);
     this.render();
@@ -158,10 +166,10 @@ class LoaderPanel {
     this.first = this.controller?.connected ? firstBackup(this.backups, this.store.source) : null;
   }
 
-  /** Slots each group must skip (the visitor's samples on every track), once connected. */
-  private blocked(id: GroupId): number[] {
+  /** The keys of a track holding the visitor's samples, once connected: never changed. */
+  private blocked(track: number): number[] {
     const d = this.controller?.device;
-    return d ? blockedSlots(id, userSampleCells(d)) : [];
+    return d ? blockedKeys(track, userSampleCells(d)) : [];
   }
 
   private plan(): LoaderPlan | null {
@@ -199,13 +207,14 @@ class LoaderPanel {
   private pickFromLab(e: PickEvent): void {
     if (!this.choice || this.telling) return;
     const engine = this.engines.find((x) => x.dir === e.detail?.dir);
-    const g = engine && GROUPS.find((x) => groupEngines(this.engines, x.id).includes(engine));
-    if (!engine || !g) return;
-    const edit = togglePick(this.choice[g.id], engine.dir, e.detail.picked, this.blocked(g.id));
-    this.groupId = g.id;
+    const tracks = engine ? engineTracks(engine) : [];
+    if (!engine || !tracks.length) return;
+    // the lab's tick means "on my OP-Z": on every track it is made for, or off all of them
+    const edit = pickEverywhere(this.choice, this.engines, engine.dir, e.detail.picked, (t) => this.blocked(t));
+    if (!tracks.includes(this.track)) this.track = tracks[0];
     this.notice = edit.refused ? { text: edit.refused, kind: "warn" } : null;
     if (edit.refused) this.tellLab(engine.dir, false);
-    this.setChoice({ ...this.choice, [g.id]: edit.choice });
+    this.setChoice(edit.choice, false);
   }
 
   // -- connection -----------------------------------------------------------------------------------------------
@@ -269,6 +278,16 @@ class LoaderPanel {
     }
     const d = this.controller.device;
     if (d && this.controller.kind === "midi") this.sampleLast = sampleCheck(d);
+    // a track still on its default moves its engines past the keys holding the visitor's samples
+    if (d && this.choice) {
+      const samples = userSampleCells(d);
+      const same = (a: TrackChoice, b: TrackChoice) => JSON.stringify(a) === JSON.stringify(b);
+      this.choice = this.choice.map((keys, t) => {
+        const blocked = blockedKeys(t, samples);
+        return blocked.length && same(keys, defaultTrack(this.engines, t)) ? defaultTrack(this.engines, t, blocked) : keys;
+      });
+      write(KEYS.choice, this.choice);
+    }
     if (this.open < 3) this.setOpen(3);
     else this.render();
   }
@@ -345,8 +364,7 @@ class LoaderPanel {
 
   private bakeEngines(): BakeEngine[] {
     if (!this.choice) return [];
-    const dirs = GROUPS.flatMap((g) => (this.choice![g.id].source === "community" ? this.choice![g.id].picks : []));
-    return dirs.map((d) => this.engines.find((e) => e.dir === d)!).filter(Boolean)
+    return pickedDirs(this.choice).map((d) => this.engines.find((e) => e.dir === d)!).filter(Boolean)
       .map((e) => ({ name: e.dir, manifest: e.manifest, presets: presetDocs(e) }));
   }
 
@@ -459,7 +477,11 @@ class LoaderPanel {
     const c = this.controller;
     if (!this.choice) return "";
     switch (n) {
-      case 1: return GROUPS.map((g) => `${this.choice![g.id].source === "original" ? "orig." : this.choice![g.id].picks.length} ${g.title.toLowerCase()}`).join(" · ");
+      case 1: {
+        const engines = pickedDirs(this.choice).length;
+        const keys = this.choice.reduce((n, t) => n + trackPicks(t).length, 0);
+        return `${engines} engine${engines === 1 ? "" : "s"} · ${keys} key${keys === 1 ? "" : "s"}`;
+      }
       case 2: return c?.connected ? (this.first ? "backed up" : "connected") : "";
       case 3: return this.lastInstall?.ok ? "verified" : "";
       case 4: return this.lastBake?.ok ? "presets baked" : "";
@@ -471,50 +493,66 @@ class LoaderPanel {
 
   private stepPick(): Child[] {
     if (!this.choice) return [h("p", { class: "dim" }, "Loading the engines…")];
-    const g = group(this.groupId);
-    const c = this.choice[g.id];
-    const blocked = this.blocked(g.id);
-    const cap = capacity(c, blocked);
-    const list = groupEngines(this.engines, g.id);
+    const t = this.track;
+    const g = trackGroup(t);
+    const keys = this.choice[t];
+    const blocked = this.blocked(t);
+    const list = trackEngines(this.engines, t);
     const midi = this.controller?.kind === "midi";
-    const tabs = h("div", { class: "ld-tabs", role: "tablist", "aria-label": "Track group" }, GROUPS.map((x) => h("button", {
-      type: "button", role: "tab", class: "ld-tab", "aria-selected": String(x.id === g.id), "data-key": `tab-${x.id}`,
-      onclick: () => { this.groupId = x.id; write(KEYS.group, x.id); this.render(); },
-    }, x.title, h("small", null, this.choice![x.id].source === "original" ? "orig." : `${this.choice![x.id].picks.length}/${MAX_PICKS}`))));
-    const tracks = g.tracks.map((t) => TRACK_LABELS[t]).join(" · ");
-    const source = h("div", { class: "ld-seg", role: "radiogroup", "aria-label": "Sounds for this group" }, (["community", "original"] as const).map((s) => h("button", {
-      type: "button", role: "radio", class: "ld-seg__b", "aria-checked": String(c.source === s), "data-key": `src-${s}`,
-      onclick: () => this.setChoice({ ...this.choice!, [g.id]: setSource(c, s) }),
-    }, s === "community" ? "Community" : "Original")));
-    const out: Child[] = [tabs, h("p", { class: "ld-small dim" }, tracks), source, this.slotStrip()];
-    if (c.source === "original") {
-      out.push(h("p", { class: "ld-note" }, `Every slot on the ${tracks} tracks gets ${this.controller?.connected ? "the plug it had before (from your first backup)" : "your OP-Z's own sound back"}: `
-        + "teenage engineering's sounds are already on your OP-Z, so nothing is uploaded. Your ticks are kept for when you switch back."));
-    } else {
-      const left = SLOTS_PER_TRACK - c.picks.length - c.original.length - blocked.length;
-      out.push(h("p", { class: "ld-count", "data-testid": "pick-count" }, `${c.picks.length} of ${cap} ticked`,
-        h("span", { class: "dim" }, ` · ${left > 1 ? `${left} slots stay as they are` : left === 1 ? "1 slot stays as it is" : "no slot left as it is"}`)));
-    }
-    out.push(h("ul", { class: `ld-engines ${c.source === "original" ? "is-muted" : ""}`, "data-testid": "engine-list" }, list.map((e) => {
-      const on = c.picks.includes(e.dir);
-      const slotNo = on ? [...slotIntents(c, blocked)].find(([, i]) => i.kind === "engine" && i.dir === e.dir)?.[0] : undefined;
+    const tabs = h("div", { class: "ld-tracks", role: "tablist", "aria-label": "OP-Z track" }, TRACKS.map((x) => h("button", {
+      type: "button", role: "tab", class: `ld-track is-${trackGroup(x).id}`, "aria-selected": String(x === t), "data-key": `track-${x}`,
+      title: `Track ${x + 1}: ${TRACK_LABELS[x]}`,
+      onclick: () => { this.track = x; write(KEYS.track, x); this.render(); },
+    }, h("span", { class: "ld-track__n" }, String(x + 1)), h("span", { class: "ld-track__l" }, TRACK_LABELS[x]),
+    h("small", null, String(trackPicks(this.choice![x]).length)))));
+    const others = g.tracks.filter((x) => x !== t);
+    const kind = g.id === "fx" ? "effects" : g.id === "drum" ? "drum engines" : "synths";
+    const out: Child[] = [
+      h("p", { class: "ld-small dim ld-tracks__key" }, "Drums 1–4 · synths 5–8 · effects 9–10, as on the OP-Z. Each track gets its own sounds."),
+      tabs,
+      h("h3", { class: "ld-track-title" }, `Track ${t + 1} · ${TRACK_LABELS[t]}`, h("span", { class: "dim" }, ` · ${kind} only`)),
+      this.keyStrip(),
+      h("div", { class: "ld-row" },
+        h("button", { type: "button", class: "btn btn--small btn--ghost", "data-key": "track-featured", onclick: () => this.editTrack(this.withTrackKeys(t, defaultTrack(this.engines, t, blocked))) }, "Featured"),
+        h("button", { type: "button", class: "btn btn--small btn--ghost", "data-key": "track-original", onclick: () => this.editTrack(allOriginal(this.choice!, t, blocked)) }, "All original"),
+        others.length ? h("button", {
+          type: "button", class: "btn btn--small btn--ghost", "data-key": "track-copy",
+          onclick: () => {
+            let next = this.choice!;
+            const dropped: string[] = [];
+            for (const o of others) {
+              const r = copyTrack(next, this.engines, t, o, this.blocked(o));
+              next = r.choice;
+              dropped.push(...r.dropped.map((d) => `${TRACK_LABELS[o]}: ${d}`));
+            }
+            this.notice = { kind: dropped.length ? "warn" : "ok", text: `Copied ${TRACK_LABELS[t]} to ${others.map((o) => TRACK_LABELS[o]).join(", ")}.`
+              + (dropped.length ? ` Left as they were: ${dropped.join("; ")}.` : "") };
+            this.setChoice(next);
+          },
+        }, `Copy to ${others.map((o) => TRACK_LABELS[o]).join(", ")}`) : null),
+    ];
+    const n = trackPicks(keys).length;
+    const left = keys.filter((k, i) => k.kind === "keep" && !blocked.includes(i + 1)).length;
+    out.push(h("p", { class: "ld-count", "data-testid": "pick-count" }, `${n} engine${n === 1 ? "" : "s"} on ${TRACK_LABELS[t]}`,
+      h("span", { class: "dim" }, ` · ${left === 1 ? "1 key stays as it is" : `${left || "no"} keys stay as they are`}`)));
+    out.push(h("ul", { class: "ld-engines", "data-testid": "engine-list" }, list.map((e) => {
+      const at = keyOf(keys, e.dir);
       const unbuilt = e.engine === null;
-      return h("li", { class: `ld-engine ${on ? "is-on" : ""}` },
+      const only = engineTracks(e);
+      return h("li", { class: `ld-engine ${at ? "is-on" : ""}` },
         h("label", { class: "ld-engine__pick" },
           h("input", {
-            type: "checkbox", checked: on, disabled: c.source === "original", "data-key": `pick-${e.dir}`,
+            type: "checkbox", checked: at !== null, "data-key": `pick-${e.dir}`,
             onchange: (ev: Event) => {
-              const box = ev.target as HTMLInputElement;
-              const edit = togglePick(c, e.dir, box.checked, blocked);
+              const edit = tickEngine(this.choice!, this.engines, t, e.dir, (ev.target as HTMLInputElement).checked, blocked);
               this.notice = edit.refused ? { text: edit.refused, kind: "warn" } : null;
-              if (!edit.refused) this.tellLab(e.dir, box.checked);
-              this.setChoice({ ...this.choice!, [g.id]: edit.choice });
+              this.setChoice(edit.choice);
             },
           }),
           h("span", { class: "ld-engine__name" }, e.label,
-            slotNo ? h("small", { class: "ld-engine__slot", title: `slot ${slotNo} (black key ${slotNo % 10})` }, `slot ${slotNo}`) : null,
+            at ? h("small", { class: "ld-engine__slot", title: `black key ${at % 10} on ${TRACK_LABELS[t]}` }, `key ${at % 10}`) : null,
             unbuilt ? h("small", { class: "ld-tag", title: "The catalogue has no built .engine for it" }, midi ? "not built" : "not built · demo only") : null,
-            engineTracks(e, g).length < g.tracks.length ? h("small", { class: "ld-tag" }, engineTracks(e, g).map((t) => TRACK_LABELS[t]).join("+") + " only") : null),
+            only.length < g.tracks.length ? h("small", { class: "ld-tag" }, only.map((x) => TRACK_LABELS[x]).join("+") + " only") : null),
           e.summary ? h("span", { class: "ld-engine__sum" }, e.summary) : null,
           cautionOf(e) ? h("span", { class: "ld-engine__caution", "data-testid": `caution-${e.dir}` },
             `${cautionOf(e)} ${midi ? "It can't be installed on your OP-Z." : "Demo only."}`) : null),
@@ -523,54 +561,67 @@ class LoaderPanel {
           onclick: () => document.dispatchEvent(new CustomEvent("opfree:audition", { detail: { dir: e.dir } }) as AuditionEvent),
         }, "Listen"));
     })));
-    if (!list.length) out.push(h("p", { class: "dim" }, "No engines for this group in the catalogue yet."));
+    if (!list.length) out.push(h("p", { class: "dim" }, `No engines for ${TRACK_LABELS[t]} in the catalogue yet.`));
     out.push(h("div", { class: "ld-row ld-row--end" }, h("button", { type: "button", class: "btn btn--primary btn--small", onclick: () => this.setOpen(this.controller?.connected ? 3 : 2) },
       this.controller?.connected ? "Next: install →" : "Next: connect →")));
     return out;
   }
 
-  /** Slots 1…10 of the group: what each gets. Click a slot to keep it original (community only). */
-  private slotStrip(): Child {
-    const g = group(this.groupId);
-    const c = this.choice![g.id];
-    const blocked = this.blocked(g.id);
-    const intents = slotIntents(c, blocked);
+  private withTrackKeys(t: number, keys: TrackChoice): Choice {
+    return this.choice!.map((x, i) => (i === t ? keys : x));
+  }
+
+  private editTrack(next: Choice): void {
+    this.notice = null;
+    this.setChoice(next);
+  }
+
+  /** The current track's black keys 1…0: what each gets, chosen per key. */
+  private keyStrip(): Child {
+    const t = this.track;
+    const keys = this.choice![t];
+    const blocked = this.blocked(t);
     const d = this.controller?.device;
     const orig = this.first ? backupSlots(this.first) : null;
     const plan = this.plan();
-    const originalName = (s: number) => {
-      if (!orig || !d) return "your OP-Z's own sound in this slot";
-      const names = [...new Set(g.tracks.map((t) => {
-        const id = (orig.tracks ?? []).find((x: { index: number }) => x.index === t)?.packs.find((p: { slot: number }) => p.slot === s)?.id ?? null;
-        return plugLabel(d.plugs, id, this.engines);
-      }))];
-      return names.join(", ");
-    };
-    const skippedHere = plan?.skipped.filter((x) => g.tracks.includes(x.track)) ?? [];
-    return h("div", { class: "ld-strip-wrap" },
-      h("ol", { class: "ld-strip", "aria-label": "Slots 1 to 10 (black keys)" }, [...intents].map(([s, i]) => {
-        const e = i.kind === "engine" ? this.engines.find((x) => x.dir === i.dir) : null;
-        const title = i.kind === "engine" ? `slot ${s}: ${e?.label ?? i.dir}`
-          : i.kind === "original" ? `slot ${s}: original — ${originalName(s)}`
-            : i.kind === "blocked" ? `slot ${s}: your samples — never touched`
-              : `slot ${s}: stays as it is`;
-        const clickable = c.source === "community" && i.kind !== "blocked";
-        return h("li", null, h("button", {
-          type: "button", class: `ld-slot is-${i.kind}`, title, "aria-label": title + (clickable ? (i.kind === "original" ? ". Click to give it to the picks." : ". Click to keep it original.") : ""),
-          disabled: !clickable, "data-key": `slot-${s}`,
-          onclick: () => {
-            const edit = toggleOriginalSlot(c, s, blocked);
-            this.notice = edit.refused ? { text: edit.refused, kind: "warn" } : null;
-            this.setChoice({ ...this.choice!, [g.id]: edit.choice });
+    const list = trackEngines(this.engines, t);
+    const plugAt = (doc: { tracks?: { index: number; packs: { slot: number; id: number }[] }[] } | null, s: number) =>
+      doc?.tracks?.find((x) => x.index === t)?.packs.find((p) => p.slot === s)?.id ?? null;
+    const originalName = (s: number) => (orig && d ? plugLabel(d.plugs, plugAt(orig, s), this.engines) : null);
+    const nowName = (s: number) => (d ? plugLabel(d.plugs, plugAt(d.slots, s), this.engines) : null);
+    const skippedHere = plan?.skipped.filter((x) => x.track === t) ?? [];
+    return h("div", { class: "ld-keys-wrap" },
+      h("ol", { class: "ld-keys", "aria-label": `Black keys 1 to 0 on ${TRACK_LABELS[t]}` }, keys.map((k, i) => {
+        const s = i + 1;
+        const n = String(s % 10);
+        if (blocked.includes(s)) {
+          return h("li", { class: "ld-key-row is-blocked" }, h("span", { class: "ld-key-row__n" }, n),
+            h("span", { class: "ld-key-row__v", title: "Your own sample: never changed" }, `${nowName(s) ?? "your sample"} · never changed`));
+        }
+        const value = k.kind === "engine" ? `e:${k.dir}` : k.kind;
+        const o = originalName(s);
+        const now = nowName(s);
+        return h("li", { class: `ld-key-row is-${k.kind}` }, h("span", { class: "ld-key-row__n" }, n),
+          h("select", {
+            class: "ld-key-row__v", "aria-label": `Black key ${n} on ${TRACK_LABELS[t]}`, "data-key": `key-${t}-${s}`,
+            onchange: (ev: Event) => {
+              const v = (ev.target as HTMLSelectElement).value;
+              const pick: KeyPick = v.startsWith("e:") ? { kind: "engine", dir: v.slice(2) } : v === "original" ? { kind: "original" } : { kind: "keep" };
+              const edit = setKey(this.choice!, this.engines, t, s, pick, blocked);
+              this.notice = edit.refused ? { text: edit.refused, kind: "warn" } : null;
+              this.setChoice(edit.choice);
+            },
           },
-        }, h("span", { class: "ld-slot__n" }, String(s % 10)),
-        h("span", { class: "ld-slot__v" }, i.kind === "engine" ? (e?.label ?? i.dir).slice(0, 6) : i.kind === "original" ? "orig" : i.kind === "blocked" ? "yours" : "—")));
+          h("option", { value: "keep", selected: value === "keep" }, now ? `Leave as it is (${now})` : "Leave as it is"),
+          h("option", { value: "original", selected: value === "original" }, o ? `Original: ${o}` : "Original sound"),
+          h("optgroup", { label: `Engines for ${TRACK_LABELS[t]}` }, list.map((e) => h("option", { value: `e:${e.dir}`, selected: value === `e:${e.dir}` },
+            e.label + (keyOf(keys, e.dir) && keyOf(keys, e.dir) !== s ? ` (now on key ${keyOf(keys, e.dir)! % 10})` : ""))))));
       })),
-      h("p", { class: "ld-small dim" }, "Black keys 1…0. ", c.source === "community" ? "Tap a slot to keep it original. " : "",
+      h("p", { class: "ld-small dim" }, `Hold ${TRACK_LABELS[t]} on the OP-Z and tap black key 1…0 to pick these sounds. `,
         d ? (skippedHere.length
-          ? `Skipped, your samples: ${skippedHere.map((x) => `${TRACK_LABELS[x.track]} ${x.slot}`).join(", ")}.`
-          : "Slots with your own samples are never touched.")
-          : "Slots holding your own samples are never touched (checked when you connect)."));
+          ? `Skipped, your samples: ${skippedHere.map((x) => `key ${x.slot % 10}`).join(", ")}.`
+          : "Keys holding your own samples are never changed.")
+          : "Keys holding your own samples are never changed (checked when you connect)."));
   }
 
   // step 2 -------------------------------------------------------------------------------------------------------
@@ -745,6 +796,10 @@ class LoaderPanel {
       h("p", { class: "ld-small dim" }, "A restore writes only the slot map: plugs installed since stay installed. Slots holding your samples stay as they are."),
     ];
   }
+}
+
+function clampTrack(t: number | null): number {
+  return Number.isInteger(t) && t! >= 0 && t! < TRACKS.length ? t! : 4;
 }
 
 /** Stand-in bytes for an engine that is not built, for the demo only (the demo OP-Z never runs it). */
