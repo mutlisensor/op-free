@@ -25,7 +25,7 @@ Do this before any firmware work, and keep the backup somewhere safe.
 Before content mode, make sure every sample of your own sits in a slot: content mode deletes user samples that are
 in no slot ([SAFETY.md](../SAFETY.md)).
 
-## 3. Read the OS off your OP-Z
+## 2. Read the OS off your OP-Z
 
 Your OP-Z stores its OS unencrypted, as `/yaffs2/os.ldr`. In update mode the bootloader's serial console can send
 any file back whole, so you can read your installed OS with **no key** [proven: hardware check H-U1, 2026-11-02, in
@@ -55,7 +55,7 @@ You need Python 3 and pyserial (`python3 -m pip install pyserial`). Then:
 Nothing in these steps writes to the OP-Z [code; on H-U1 the NAND's page-write counter didn't change across the
 reads, proven]. Keep `os.ldr` to yourself: it is teenage engineering's code.
 
-## 2. Get the official update file (your undo)
+## 3. Get the official update file (your undo)
 
 teenage engineering offers every OP-Z firmware on its download page:
 **<https://teenage.engineering/downloads/op-z>**. The research and the planned mods target **firmware 1.2.45**,
@@ -112,7 +112,7 @@ each ZIP entry's CRC: there is no signature [code]. Whether the bootloader also 
 ## 5. Decrypting the update file (optional, needs your own key)
 
 `tools/opz_zfw.py` decrypts your own `.zfw` on your computer, offline, with Python 3 alone (no packages to
-install). It checks the file's SHA-256 against the table in step 2, decrypts it with a key **you supply**
+install). It checks the file's SHA-256 against the table in step 3, decrypts it with a key **you supply**
 (`--key-file`: 32 bytes, or 64 hex digits on the first line of a text file), checks every ZIP entry's CRC and the
 SHA-256 of `opz.ldr`, and writes the ZIP to a folder you choose. It stops at the first check that fails, and it
 never prints the key or talks to an OP-Z.
@@ -125,13 +125,13 @@ python3 tools/opz_zfw.py z_firmware_1_2_45.zfw --key-file my-key.txt --out ~/opz
 
 The folder must be outside any git repository, or inside one's git-ignored `build/` folder, so the firmware can't
 end up in a commit. OP-FREE doesn't ship the key or say where it is, so this is only for people who already have
-it. Firmware mods don't need it: they start from the OS you read off your unit in step 3.
+it. Firmware mods don't need it: they start from the OS you read off your unit in step 2.
 
 ## 6. How the firmware builder will use your copy
 
 When firmware mods exist, the builder will:
 
-1. take the `os.ldr` you read off your OP-Z, with step 3's tool or on the website itself, which will read it over
+1. take the `os.ldr` you read off your OP-Z, with step 2's tool or on the website itself, which will read it over
    Web Serial (Chrome and Edge on a computer) with the same five frames;
 2. check its SHA-256 against the version the chosen mods were made for, and stop if it doesn't match;
 3. apply each mod's patch records (each one says where, what bytes it expects there, what it writes, and why it

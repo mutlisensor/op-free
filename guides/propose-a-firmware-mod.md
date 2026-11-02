@@ -86,7 +86,7 @@ The patcher refuses unless the source file matches **exactly** (size, SHA-256, C
 are where the record says, and each file offset maps to the stated device address in the image's block layout. It
 writes the result to a local file and never talks to an OP-Z. A record whose `status` starts with `DRAFT` is
 refused. Packaging the patched OS as an installable update, and the browser builder that does all of this with
-your own file ([how it will work](extract-your-firmware.md#4-how-the-firmware-builder-will-use-your-file)), are
+your own file ([how it will work](extract-your-firmware.md#6-how-the-firmware-builder-will-use-your-copy)), are
 not written yet.
 
 Keep each patch small and about one thing. The smallest useful one we know of changes two 8-byte numbers (the CPU
