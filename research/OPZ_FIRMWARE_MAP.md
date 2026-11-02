@@ -265,7 +265,7 @@ and [hidden-engines.md](hidden-engines.md).
 | **Normal-mode SysEx file server** (`F0 00 20 76 01 <id> … F7`, messages `$33 $34 $35 $51 $52 $53 $55`) | proven [notes] | Host serves a `syncjob.json` manifest. The OP-Z pulls each file in 200-byte zlib parts and swaps it in after a CRC match. `patch.json` triggers plug import. Custom engines have been installed this way. Removal: `{"operation":"remove","plugId":N}`, which deletes the plug and its sample but **leaves the engine file** behind. |
 | Content mode (mass storage) | partly known | The importer filters `wav\|aif\|aiff\|engine` and can log "rejecting invalid engine", but engine import through content mode is undocumented. |
 | Firmware update ZIP | possible, not needed | Engines can ship in an update, but that touches the install path. Avoid it. |
-| Serial console (update mode) | **avoid for writes** | It is a root shell: `0x15` formats NAND, `0x10`/`0x14` write or format SPI flash, `0x31` runs code. Only read-only commands (`0x00 0x02 0x07 0x17 0x19 0x21 0x27 0x35 0x39`) are safe. |
+| Serial console (update mode) | **avoid for writes** | It is a root shell: `0x15` formats NAND (on the header alone, no payload), `0x10`/`0x14` write or format SPI flash, `0x11` writes and `0x29` deletes yaffs2 files, `0x31` runs code. Only read-only commands (`0x00 0x02 0x07 0x17 0x19 0x21 0x27 0x35 0x39`) are safe. `0x19` reads a whole yaffs2 file, `os.ldr` included, with no key (Q-52) [code; proven 2026-11-02, H-U1]. Every command: [research/update-console.md](update-console.md). |
 
 ---
 
