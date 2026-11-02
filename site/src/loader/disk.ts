@@ -61,7 +61,7 @@ export interface BakeConfirm {
 
 export interface BakeDeps {
   log: (line: string) => void;
-  /** Keep a copy of the original (in this browser and as a download); returns its id. Throws: nothing is written. */
+  /** Keep a copy of the original (in this browser; also a download where the browser can't keep it); returns its id. Throws: nothing is written. */
   backup: (data: Uint8Array, source: string, sha256: string) => Promise<string>;
   confirm: (c: BakeConfirm) => Promise<boolean>;
 }

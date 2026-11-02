@@ -130,7 +130,8 @@ export async function bakeSheet(c: BakeConfirm): Promise<boolean> {
     body.push(h("p", { class: "ld-question" }, `Put ${c.request.source} back as config/userPresets.dat on ${c.disk}?`));
   }
   body.push(h("p", { class: "ld-tested" }, "The bake is proven on hardware with the command-line tool (H-9); from the browser it is not yet tested on hardware."));
-  body.push(safety(c.backupId, false, "Read back after writing; the original goes back on the disk if the bytes differ."));
+  body.push(safety(c.backupId, false, "Read back after writing; the original goes back on the disk if the bytes differ. "
+    + "The backup is the preset file on your OP-Z now, kept in this browser: step 5 puts it back."));
   body.push(details(c.lines));
   return (await openSheet("Content mode: presets that stay", body, [{ value: "cancel", label: "Cancel" }, { value: "yes", label: c.request.kind === "bake" ? "Write presets" : "Put it back", kind: "primary" }], "bake-confirm")) === "yes";
 }
