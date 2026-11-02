@@ -40,6 +40,8 @@ export interface CatalogueEngine {
   author: string | null;
   /** True for engines on the default selection (the eight ticked per track group). */
   featured?: boolean;
+  /** Set when the engine has crashed or frozen a real OP-Z: the lab shows it, the loader should warn or refuse. */
+  caution?: string | null;
 }
 
 export interface Catalogue {
