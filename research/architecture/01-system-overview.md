@@ -75,7 +75,7 @@ NAND with one byte — see [SAFETY.md](../../SAFETY.md).
 | `/yaffs2/system/content/` | Factory copies used to seed `user/` |
 | `/yaffs2/logs/{system,upgrade,import,battery}` | Logs |
 
-The `.zfw` firmware update is an encrypted wrapper around an ordinary ZIP. The installer's only integrity check is each
+The `.zfw` firmware update is AES-256-CBC around an ordinary ZIP. The installer's only integrity check is each
 ZIP entry's CRC. [code] We do **not** need to build firmware updates to ship engines.
 
 ## Signal flow at a glance

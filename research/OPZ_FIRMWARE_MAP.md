@@ -50,7 +50,8 @@ Storage [code/notes]:
 Boot modes: plain power-on → normal (synth) mode; SCREEN held → update mode ("OP-Z Boot", CDC serial
 console, update volume); TRACK held → content mode ("OP-Z Disk", mass storage).
 
-The `.zfw` update is an encrypted wrapper around a ZIP (the details of the encryption are not published). Install integrity is the per-entry ZIP CRC only. [code]
+The `.zfw` update is AES-256-CBC (key not published, IV at `0x70`, filename slot at `0x300`, payload from
+`0x400` as one CBC stream) wrapping a ZIP. Install integrity is the per-entry ZIP CRC only. [code]
 
 ---
 
