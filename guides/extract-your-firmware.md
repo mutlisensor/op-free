@@ -5,9 +5,9 @@
 > the website alone and never touch the firmware.
 
 Firmware mods (planned, see [firmware mods](../firmware-mods/README.md)) will be small patches applied to **your
-own** copy of teenage engineering's official firmware file. OP-FREE does not host firmware, keys, or any file of
-teenage engineering's, and never will. This page explains how to back up your OP-Z, where your copy of the firmware
-comes from, and what is inside it.
+own** copy of teenage engineering's firmware. OP-FREE does not host firmware, keys, or any file of teenage
+engineering's, and never will. This page explains how to back up your OP-Z, how to read the OS off your own unit
+(no key needed), where the official update file comes from, and what is inside it.
 
 ## 1. Back up your OP-Z first
 
@@ -25,7 +25,37 @@ Do this before any firmware work, and keep the backup somewhere safe.
 Before content mode, make sure every sample of your own sits in a slot: content mode deletes user samples that are
 in no slot ([SAFETY.md](../SAFETY.md)).
 
-## 2. Get the official firmware file
+## 3. Read the OS off your OP-Z
+
+Your OP-Z stores its OS unencrypted, as `/yaffs2/os.ldr`. In update mode the bootloader's serial console can send
+any file back whole, so you can read your installed OS with **no key** [proven: hardware check H-U1, 2026-11-02, in
+[the update console](../research/update-console.md#8-hardware-check-h-u1-read-osldr-through-the-console-passed-2026-11-02)].
+This is the copy firmware mods start from.
+
+The same console has commands that erase the unit with a single wrong byte. **Use only `tools/opz_os_read.py`,
+never a serial terminal.** The tool can send exactly five fixed frames (a ping, two read-only status queries, and a
+read of `os.ldr` or `os.crc32`) and refuses any other byte string; `opz_os_read.py frames` prints all five.
+
+You need Python 3 and pyserial (`python3 -m pip install pyserial`). Then:
+
+1. **Check offline:** `python3 tools/opz_os_read.py frames`, then `python3 tools/opz_os_read.py read os.ldr
+   --dry-run`. Both print frames and open no port.
+2. **Update mode:** close teenage engineering's app, the OP-FREE site and any other serial tool. Switch the OP-Z
+   off, then on while holding *screen*. A disk called "OP-Z Boot" and a serial port appear. Copy nothing onto the
+   disk.
+3. `python3 tools/opz_os_read.py ping`: expect a pong. If not, stop and start again from step 2.
+4. `python3 tools/opz_os_read.py list`: the listing should show `/yaffs2/os.ldr: 828136` for 1.2.45. Another size
+   means another OS version: the mods for 1.2.45 won't apply.
+5. `python3 tools/opz_os_read.py read os.ldr`: about two seconds. The tool saves the file to `dumps/os-read-<time>/`
+   (git-ignored) and compares it with 1.2.45 (SHA-256
+   `5be99760c8797bdd4797ed20cfb9a92b6588889d3a81109bae5a45646a9bde07`); it exits with an error if it differs. A
+   short read saves nothing: run it again.
+6. Switch the OP-Z off with its switch, then on normally.
+
+Nothing in these steps writes to the OP-Z [code; on H-U1 the NAND's page-write counter didn't change across the
+reads, proven]. Keep `os.ldr` to yourself: it is teenage engineering's code.
+
+## 2. Get the official update file (your undo)
 
 teenage engineering offers every OP-Z firmware on its download page:
 **<https://teenage.engineering/downloads/op-z>**. The research and the planned mods target **firmware 1.2.45**,
@@ -40,7 +70,7 @@ which is listed there (checked 2026-11-02) [proven].
 - Download it **only from teenage engineering**. A file from anywhere else may be modified.
 - Check the hash (`shasum -a 256 z_firmware_1_2_45.zfw` on macOS and Linux, `certutil -hashfile
   z_firmware_1_2_45.zfw SHA256` on Windows) and keep the file **exactly as downloaded** next to your backup. Mods
-  refuse any file that differs from the version they were made for.
+  are made for one exact version.
 - If 1.2.45 is ever taken down, a mod made for it can't be applied to another version: it has to be ported and
   checked again.
 
@@ -50,7 +80,7 @@ appears, eject, and don't switch the OP-Z off until it has restarted [manual, p.
 serial device the OP-Z shows in update mode: it is a root console that can erase the unit
 ([SAFETY.md](../SAFETY.md), rule 1).
 
-## 3. What is inside
+## 4. What is inside the update file
 
 The `.zfw` is an ordinary ZIP archive, encrypted with **AES-256 in CBC mode** [code]:
 
@@ -78,49 +108,40 @@ In update mode the OP-Z unpacks the archive onto its internal storage. The only 
 each ZIP entry's CRC: there is no signature [code]. Whether the bootloader also checks `os.ldr` against
 `opz.crc32` at every start is open ([Q-48](../research/OPEN_QUESTIONS.md)).
 
-## 4. Decrypting your copy
+## 5. Decrypting the update file (optional, needs your own key)
 
-*Planned: the tool below is not written yet.*
+*Planned: the tool is not part of OP-FREE yet.*
 
-`tools/opz_zfw.py` will decrypt your own `.zfw` on your computer: it checks the file's SHA-256 against the table in
-step 2, decrypts it with a key **you supply** (`--key-file`), checks every ZIP entry's CRC and the SHA-256 of
-`opz.ldr`, and writes the ZIP to a folder you choose. The firmware builder on the website will do the same in your
-browser with the Web Crypto API; your file and key never leave your computer. Neither ships a key.
+`tools/opz_zfw.py` will decrypt a `.zfw` on your computer with a key **you supply** (`--key-file`), check every ZIP
+entry and the SHA-256 of `opz.ldr`, and write the ZIP to a folder you choose. OP-FREE doesn't ship the key or say
+where it is, so this is only for people who already have it. Firmware mods don't need it: they start from the OS you
+read off your unit in step 3.
 
-## 5. Reading the firmware off your OP-Z (not possible yet)
+## 6. How the firmware builder will use your copy
 
-Your unit holds the OS unencrypted, as `/yaffs2/os.ldr` on its internal storage, so reading it from the unit would
-need no key at all. No route is known yet:
+When firmware mods exist, the builder will:
 
-- the normal-mode file service serves only a short list of files, and the OS is not on it [notes, proven];
-- the update-mode disk holds logs and system information (`systeminfo/`) [code], not the OS [inferred];
-- the update-mode serial console can read the SPI flash, where the bootloader lives [proven], but the OS sits on
-  the NAND, and no console command that reads a NAND file is known. The same console has one-byte commands that
-  erase the unit, so no OP-FREE tool will use it until a read command has been found in the bootloader's code and
-  tested read-only.
-
-## 6. How the firmware builder will use your file
-
-When firmware mods exist, the builder on the website will:
-
-1. ask you to choose your own `.zfw` file (and your key, see step 4); both are read **in your browser** and never
-   uploaded;
+1. take the `os.ldr` you read off your OP-Z (step 3); a version on the website may read it for you over Web Serial,
+   with the same five frames;
 2. check its SHA-256 against the version the chosen mods were made for, and stop if it doesn't match;
 3. apply each mod's patch records (each one says where, what bytes it expects there, what it writes, and why it
    is safe; see [propose a firmware mod](propose-a-firmware-mod.md));
-4. give you the modified update file to save, with the steps to install it and to go back.
+4. give you the modified OS with the steps to install it and to go back. How a modified OS gets back onto the unit
+   is still open (below).
 
 ## Before this guide is published
 
 Decided (2026-11-02): the guide links teenage engineering's download page; the cipher and the package layout are
-described; tooling is published, without a key. Still open:
+described; decryption tooling is published without a key; firmware mods start from the OS read off the user's own
+unit, which needs no key. Still open:
 
-- [ ] **The key.** The tool and the builder need a key that OP-FREE won't publish or point to. Decide whether users
-      are expected to find it themselves, or whether the guide waits for the route in step 5.
-- [ ] **The tool** (`tools/opz_zfw.py`) written, tested against the 1.2.45 hashes, and added to the sync.
-- [ ] **Packaging**: whether the OP-Z installs a modified package only if it is encrypted again, or also as a plain
-      ZIP (the boot-time `firmware_auto.zip` path) [notes; open].
-- [ ] **Legal review** of publishing the description and the tool in the maintainer's jurisdiction, and of the
-      wording above.
+- [ ] **Reading in the browser:** whether the website may talk to the update-mode console over Web Serial at all,
+      next to commands that erase the unit on one wrong byte, or whether reading stays a command-line step.
+- [ ] **Putting a modified OS back:** whether the OP-Z accepts a changed `os.ldr` (does the bootloader compare it
+      with a stored CRC, [Q-48](../research/OPEN_QUESTIONS.md)), and by which route: an update package (encrypted
+      again, or a plain ZIP) or the console's own file upload [code; untested].
+- [ ] **The decryption tool** merged and added to the sync (step 5).
+- [ ] **Legal review** of publishing the description, the tools and the console research in the maintainer's
+      jurisdiction, and of the wording above.
 - [ ] **Recovery proven**: firmware mods stay unpublished until reinstalling the official file after a deliberately
       bad image is proven on a spare unit.
