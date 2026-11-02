@@ -394,7 +394,8 @@ class LoaderPanel {
       backup: async (data, source, sha) => {
         const meta = new TextEncoder().encode(backupMeta(source, sha, data.length));
         const id = await this.store.saveUserPresets(data, meta, demo ? "demo disk" : source);
-        if (!demo) download(`${id}-userPresets.dat`, data);
+        // the copy lives in this browser (step 5 puts it back); a file only when this browser can't keep it
+        if (!demo && this.store.volatile) download(presetBackupFile(id), data);
         return id;
       },
       confirm: (c) => bakeSheet(c),
@@ -406,7 +407,7 @@ class LoaderPanel {
     } else if (!result.written) {
       this.lastBake = { ok: true, text: result.lines.find((l) => l.startsWith("nothing to change")) ?? "Nothing to change." };
     } else {
-      this.lastBake = { ok: true, text: `Written and read back${result.backupId ? `; the original is backup ${result.backupId}` : ""}. Now eject the disk.` };
+      this.lastBake = { ok: true, text: `Written and read back${result.backupId ? "; your old preset file is kept in this browser (step 5)" : ""}. Now eject the disk.` };
     }
     if (result.warnings.length) this.lastBake.text += " " + result.warnings.join(" ");
     if (result.written) this.notice = { kind: "ok", text: this.lastBake.text };
@@ -730,6 +731,10 @@ class LoaderPanel {
       out.push(h("p", { class: "ld-callout ld-callout--info" }, "Choosing the disk needs Chrome or Edge on a computer (the folder picker)."));
     }
     if (this.lastBake) out.push(h("p", { class: this.lastBake.ok ? "ld-ok" : "ld-callout ld-callout--error", "data-testid": "bake-result" }, this.lastBake.text));
+    out.push(h("p", { class: "ld-small dim", "data-testid": "bake-backup-note" }, "Before writing, the site keeps a copy of the preset file "
+      + "that is on your OP-Z now, in this browser: step 5 puts it back if you want your old presets. Nothing to save yourself.",
+    !demo && this.store.volatile ? h("span", { class: "ld-warn" }, " This browser can't keep data, so that copy is also saved to your downloads "
+      + "as opz-preset-backup-….dat: keep it on your computer (it doesn't go on the OP-Z).") : null));
     out.push(h("div", { class: "ld-row" }, h("button", {
       type: "button", class: "btn btn--primary btn--small", "data-testid": "bake",
       disabled: !!c?.busy || !gateOpen(gate) || !engines.length || (!demo && !picker),
@@ -790,12 +795,21 @@ class LoaderPanel {
       rest.length ? h("details", { class: "ld-details" }, h("summary", null, `Every step's backup (${rest.length})`),
         h("ul", { class: "ld-backups" }, rest.slice(0, 40).map(row))) : null,
       presets.length ? [h("p", { class: "label" }, "Preset store backups (content mode)"),
+        h("p", { class: "ld-small dim" }, "The OP-Z's preset file as it was before each bake, kept in this browser. "
+          + "Put back restores it in content mode; Download saves a copy for your computer only (it doesn't go on the OP-Z)."),
         h("ul", { class: "ld-backups" }, presets.slice(0, 6).map((b) => h("li", null,
           h("span", null, formatTime(b.created), h("small", { class: "dim" }, ` ${b.source}`)),
-          h("button", { type: "button", class: "ld-link", disabled: !!c?.busy, onclick: () => void this.disk({ kind: "restore", data: b.files["userPresets.dat"], source: b.id }) }, "Put back on the disk…"))))] : null,
+          h("span", { class: "ld-row" },
+            h("button", { type: "button", class: "ld-link", onclick: () => download(presetBackupFile(b.id), b.files["userPresets.dat"]) }, "Download"),
+            h("button", { type: "button", class: "ld-link", disabled: !!c?.busy, onclick: () => void this.disk({ kind: "restore", data: b.files["userPresets.dat"], source: b.id }) }, "Put back on the disk…")))))] : null,
       h("p", { class: "ld-small dim" }, "A restore writes only the slot map: plugs installed since stay installed. Slots holding your samples stay as they are."),
     ];
   }
+}
+
+/** The file name of a preset-store backup saved to the computer. */
+function presetBackupFile(id: string): string {
+  return `opz-preset-backup-${id.replace(/-userpresets$/, "")}.dat`;
 }
 
 function clampTrack(t: number | null): number {
