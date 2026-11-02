@@ -87,8 +87,9 @@ The `.zfw` is an ordinary ZIP archive, encrypted with **AES-256 in CBC mode** [c
 | Bytes of the `.zfw` | What they hold |
 |---|---|
 | `0x070`–`0x07F` | the IV (initialisation vector) for the CBC stream |
-| `0x300` | a file-name field |
-| from `0x400` to the end | the ZIP archive, encrypted as one CBC stream |
+| `0x080`–`0x083` | the ZIP archive's length in bytes (little-endian) |
+| `0x300`–`0x3FF` | a file-name field, the start of the CBC stream |
+| from `0x400` to the end | the ZIP archive, the rest of the same CBC stream, padded to a whole 16-byte block |
 
 The key is 256 bits [code]. **OP-FREE does not publish the key, or where it can be found**, and never will.
 
@@ -110,19 +111,28 @@ each ZIP entry's CRC: there is no signature [code]. Whether the bootloader also 
 
 ## 5. Decrypting the update file (optional, needs your own key)
 
-*Planned: the tool is not part of OP-FREE yet.*
+`tools/opz_zfw.py` decrypts your own `.zfw` on your computer, offline, with Python 3 alone (no packages to
+install). It checks the file's SHA-256 against the table in step 2, decrypts it with a key **you supply**
+(`--key-file`: 32 bytes, or 64 hex digits on the first line of a text file), checks every ZIP entry's CRC and the
+SHA-256 of `opz.ldr`, and writes the ZIP to a folder you choose. It stops at the first check that fails, and it
+never prints the key or talks to an OP-Z.
 
-`tools/opz_zfw.py` will decrypt a `.zfw` on your computer with a key **you supply** (`--key-file`), check every ZIP
-entry and the SHA-256 of `opz.ldr`, and write the ZIP to a folder you choose. OP-FREE doesn't ship the key or say
-where it is, so this is only for people who already have it. Firmware mods don't need it: they start from the OS you
-read off your unit in step 3.
+```bash
+python3 tools/opz_zfw.py z_firmware_1_2_45.zfw --info
+python3 tools/opz_zfw.py z_firmware_1_2_45.zfw --key-file my-key.txt --check
+python3 tools/opz_zfw.py z_firmware_1_2_45.zfw --key-file my-key.txt --out ~/opz-firmware
+```
+
+The folder must be outside any git repository, or inside one's git-ignored `build/` folder, so the firmware can't
+end up in a commit. OP-FREE doesn't ship the key or say where it is, so this is only for people who already have
+it. Firmware mods don't need it: they start from the OS you read off your unit in step 3.
 
 ## 6. How the firmware builder will use your copy
 
 When firmware mods exist, the builder will:
 
-1. take the `os.ldr` you read off your OP-Z (step 3); a version on the website may read it for you over Web Serial,
-   with the same five frames;
+1. take the `os.ldr` you read off your OP-Z, with step 3's tool or on the website itself, which will read it over
+   Web Serial (Chrome and Edge on a computer) with the same five frames;
 2. check its SHA-256 against the version the chosen mods were made for, and stop if it doesn't match;
 3. apply each mod's patch records (each one says where, what bytes it expects there, what it writes, and why it
    is safe; see [propose a firmware mod](propose-a-firmware-mod.md));
@@ -132,15 +142,15 @@ When firmware mods exist, the builder will:
 ## Before this guide is published
 
 Decided (2026-11-02): the guide links teenage engineering's download page; the cipher and the package layout are
-described; decryption tooling is published without a key; firmware mods start from the OS read off the user's own
-unit, which needs no key. Still open:
+described; decryption tooling is published without a key (`tools/opz_zfw.py`); firmware mods start from the OS
+read off the user's own unit, which needs no key; the website may read it over Web Serial. Still open:
 
-- [ ] **Reading in the browser:** whether the website may talk to the update-mode console over Web Serial at all,
-      next to commands that erase the unit on one wrong byte, or whether reading stays a command-line step.
+- [ ] **Reading in the browser** (decided 2026-11-02: yes, over Web Serial): the website's reader, with the same
+      five fixed frames as `opz_os_read.py` and the same refusal of any other byte string, written and tested
+      against a fake console before it is offered.
 - [ ] **Putting a modified OS back:** whether the OP-Z accepts a changed `os.ldr` (does the bootloader compare it
       with a stored CRC, [Q-48](../research/OPEN_QUESTIONS.md)), and by which route: an update package (encrypted
       again, or a plain ZIP) or the console's own file upload [code; untested].
-- [ ] **The decryption tool** merged and added to the sync (step 5).
 - [ ] **Legal review** of publishing the description, the tools and the console research in the maintainer's
       jurisdiction, and of the wording above.
 - [ ] **Recovery proven**: firmware mods stay unpublished until reinstalling the official file after a deliberately
