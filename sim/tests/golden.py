@@ -15,7 +15,8 @@ reported; --spectral accepts renders within --tolerance dB (for refactors that c
 opzsim's static-size check measures the host (arm64) build, an estimate only. When the Blackfin toolchain is
 installed (~/opt/bfin-elf, research/toolchain-setup.md) each engine is also built for the device with
 tools/opz_build.py, whose linker refuses an image that leaves its slot window; an engine whose device build fits
-does not fail on the host estimate's size warning.
+does not fail on the host estimate's size warning. Without the toolchain the warning is reported, not failed: the
+device build checks the fit when the engine is built for the OP-Z.
 """
 
 import argparse
@@ -460,10 +461,11 @@ SIZE_WARNING = "B exceeds the "                     # opzsim's host-estimate slo
 
 
 def device_fit(name, tmp):
-    """Build the engine for the device. Returns a note ("device build ... fits") if it fits its slot window, None
-    without the toolchain; raises RuntimeError if the device build fails (e.g. it does not fit)."""
+    """Build the engine for the device. Returns a note ("device build ... fits") if it fits its slot window, or
+    saying the fit was not checked without the toolchain (CI, contributors without bfin-elf: opz_build.py checks it
+    when the engine is built for the device); raises RuntimeError if the device build fails (e.g. it does not fit)."""
     if not all(os.access(os.path.join(BFIN, "bin", "bfin-elf-" + t), os.X_OK) for t in ("gcc", "objdump")):
-        return None
+        return "no Blackfin toolchain, device fit not checked"
     tools = os.path.join(REPO, "tools")
     r = subprocess.run([sys.executable, os.path.join(tools, "opz_build.py"), os.path.join(ENGINES, name),
                         "--toolchain", BFIN, "-o", os.path.join(tmp, "bfin")], capture_output=True, text=True)
