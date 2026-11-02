@@ -57,8 +57,9 @@ The `.zfw` is an ordinary ZIP archive, encrypted with **AES-256 in CBC mode** [c
 | Bytes of the `.zfw` | What they hold |
 |---|---|
 | `0x070`–`0x07F` | the IV (initialisation vector) for the CBC stream |
-| `0x300` | a file-name field |
-| from `0x400` to the end | the ZIP archive, encrypted as one CBC stream |
+| `0x080`–`0x083` | the ZIP archive's length in bytes (little-endian) |
+| `0x300`–`0x3FF` | a file-name field, the start of the CBC stream |
+| from `0x400` to the end | the ZIP archive, the rest of the same CBC stream, padded to a whole 16-byte block |
 
 The key is 256 bits [code]. **OP-FREE does not publish the key, or where it can be found**, and never will.
 
@@ -80,12 +81,21 @@ each ZIP entry's CRC: there is no signature [code]. Whether the bootloader also 
 
 ## 4. Decrypting your copy
 
-*Planned: the tool below is not written yet.*
+`tools/opz_zfw.py` decrypts your own `.zfw` on your computer, offline, with Python 3 alone (no packages to
+install). It checks the file's SHA-256 against the table in step 2, decrypts it with a key **you supply**
+(`--key-file`: 32 bytes, or 64 hex digits on the first line of a text file), checks every ZIP entry's CRC and the
+SHA-256 of `opz.ldr`, and writes the ZIP to a folder you choose. It stops at the first check that fails, and it
+never prints the key or talks to an OP-Z.
 
-`tools/opz_zfw.py` will decrypt your own `.zfw` on your computer: it checks the file's SHA-256 against the table in
-step 2, decrypts it with a key **you supply** (`--key-file`), checks every ZIP entry's CRC and the SHA-256 of
-`opz.ldr`, and writes the ZIP to a folder you choose. The firmware builder on the website will do the same in your
-browser with the Web Crypto API; your file and key never leave your computer. Neither ships a key.
+```bash
+python3 tools/opz_zfw.py z_firmware_1_2_45.zfw --info
+python3 tools/opz_zfw.py z_firmware_1_2_45.zfw --key-file my-key.txt --check
+python3 tools/opz_zfw.py z_firmware_1_2_45.zfw --key-file my-key.txt --out ~/opz-firmware
+```
+
+The folder must be outside any git repository, or inside one's git-ignored `build/` folder, so the firmware can't
+end up in a commit. The firmware builder on the website (planned) will do the same in your browser with the Web
+Crypto API; your file and key never leave your computer. Neither ships a key.
 
 ## 5. Reading the firmware off your OP-Z (not possible yet)
 
@@ -117,7 +127,8 @@ described; tooling is published, without a key. Still open:
 
 - [ ] **The key.** The tool and the builder need a key that OP-FREE won't publish or point to. Decide whether users
       are expected to find it themselves, or whether the guide waits for the route in step 5.
-- [ ] **The tool** (`tools/opz_zfw.py`) written, tested against the 1.2.45 hashes, and added to the sync.
+- [x] **The tool** (`tools/opz_zfw.py`) written, tested against the 1.2.45 hashes, and added to the sync
+      (2026-11-02).
 - [ ] **Packaging**: whether the OP-Z installs a modified package only if it is encrypted again, or also as a plain
       ZIP (the boot-time `firmware_auto.zip` path) [notes; open].
 - [ ] **Legal review** of publishing the description and the tool in the maintainer's jurisdiction, and of the

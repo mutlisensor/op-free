@@ -51,7 +51,11 @@ Boot modes: plain power-on → normal (synth) mode; SCREEN held → update mode 
 console, update volume); TRACK held → content mode ("OP-Z Disk", mass storage).
 
 The `.zfw` update is AES-256-CBC (key not published, IV at `0x70`, filename slot at `0x300`, payload from
-`0x400` as one CBC stream) wrapping a ZIP. Install integrity is the per-entry ZIP CRC only. [code]
+`0x400` as one CBC stream) wrapping a ZIP. Install integrity is the per-entry ZIP CRC only. [code] The CBC stream
+starts at `0x300`: the 256-byte name field (NUL-padded; `firmware_bin_only_with_bootloader.zip` in 1.2.45) and the
+ZIP are one stream, and the ZIP's length is the little-endian u32 at `0x80` (1,490,575 in 1.2.45, followed by one
+byte of PKCS#7 padding) [proven: `tools/opz_zfw.py` on 1.2.45, output identical to the lab's earlier decryption].
+`tools/opz_zfw.py` decrypts the user's own copy with a key they supply and checks every CRC and the OS image's hash.
 
 ---
 
