@@ -11,7 +11,7 @@ import { type Doc, FakeOpz, assign, dumps, loads, parseUserPresets, recordPlugId
 import { type LoaderConfirm, LoaderController } from "../controller.ts";
 import { DEMO_USER_SAMPLES, DemoDisk, demoFiles } from "../demo.ts";
 import { runBake } from "../disk.ts";
-import { type Choice, defaultChoice, setSource } from "../model.ts";
+import { type Choice, allOriginal, defaultChoice, pickedDirs } from "../model.ts";
 import { presetDocs } from "../plan.ts";
 import { gateOpen, sampleGate } from "../samplegate.ts";
 import { MemoryLoaderStore, firstBackup } from "../store.ts";
@@ -111,13 +111,13 @@ test("a missing engine file stops the batch before anything is asked or written"
   assert.deepEqual([...fake.files.keys()].sort(), [...before.keys()].sort());
 });
 
-test("original for a group puts TE's plugs back with a slot-map write only", async () => {
+test("original on every synth track puts TE's plugs back with a slot-map write only", async () => {
   const { fake, c, asked } = setup();
   const before = docs(fake);
   await c.backup();
   assert.ok((await install(c, defaultChoice(engines))).ok);
-  const choice = defaultChoice(engines);
-  choice.synth = setSource(choice.synth, "original");
+  let choice = defaultChoice(engines);
+  for (const t of [4, 5, 6, 7]) choice = allOriginal(choice, t);
   const r = await install(c, choice);
   assert.ok(r.ok, r.lines.join("\n"));
   const sheet = asked.at(-1)!;
@@ -178,7 +178,7 @@ test("content mode: the gate, then the bake of the picks' presets onto the demo 
 
   const disk = new DemoDisk();
   const picked = defaultChoice(engines);
-  const bake = Object.values(picked).flatMap((g) => g.picks).map((dir) => engines.find((e) => e.dir === dir)!)
+  const bake = pickedDirs(picked).map((dir) => engines.find((e) => e.dir === dir)!)
     .map((e) => ({ name: e.dir, manifest: e.manifest, presets: presetDocs(e) }));
   const backups: Uint8Array[] = [];
   const r = await runBake(disk, { kind: "bake", engines: bake, overwriteUser: false }, {
