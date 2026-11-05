@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Doc, assign, loads, slotCells } from "../core.ts";
 import { DEMO_USER_SAMPLES, demoFiles } from "../demo.ts";
-import { type Choice, type KeyPick, allOriginal, defaultChoice, setKey, tickEngine } from "../model.ts";
+import { type Choice, type KeyPick, allOriginal, defaultChoice, featuredChoice, setKey, tickEngine } from "../model.ts";
 import { type Device, blockedKeys, cellsToDoc, planLoader, plugLabel, restoreTarget, userSampleCells } from "../plan.ts";
 import { catalogue } from "./fixtures.ts";
 
@@ -52,7 +52,7 @@ function applied(d: Device, choice: Choice, original: Doc | null = null): Device
 
 test("the default picks fill keys 1–8 of every track they are made for; 9 and 0 stay", () => {
   const d = demoDevice();
-  const plan = planLoader({ engines, choice: defaultChoice(engines), device: d, original: d.slots, demo: true });
+  const plan = planLoader({ engines, choice: featuredChoice(engines), device: d, original: d.slots, demo: true });
   assert.deepEqual(plan.errors, []);
   for (const t of [4, 5, 6, 7]) {
     for (let s = 1; s <= 8; s++) assert.equal(cell(plan.target, t, s), id(`syn${s}`), `synth track ${t} slot ${s}`);
@@ -70,7 +70,7 @@ test("the default picks fill keys 1–8 of every track they are made for; 9 and 
 
 test("a slot holding the visitor's sample is skipped on that track only, and never changes", () => {
   const d = demoDevice();
-  let choice = defaultChoice(engines);
+  let choice = featuredChoice(engines);
   for (const dir of ["drm4", "drm5"]) choice = each(choice, DRUM, (c, t) => tickEngine(c, engines, t, dir, true));
   const plan = planLoader({ engines, choice, device: d, original: d.slots, demo: true });
   assert.deepEqual(plan.errors, []);
@@ -88,7 +88,7 @@ test("no choice ever changes a cell that holds a user sample", () => {
   const all = engines.filter((e) => e.kind === "drum").map((e) => e.dir);
   const choices: Choice[] = [];
   for (let n = 0; n <= all.length; n++) {
-    let c = defaultChoice(engines);
+    let c = featuredChoice(engines);
     for (const dir of all) c = each(c, DRUM, (x, t) => tickEngine(x, engines, t, dir, false));
     for (const dir of all.slice(0, n)) c = each(c, DRUM, (x, t) => tickEngine(x, engines, t, dir, true));
     const original: KeyPick = { kind: "original" };
@@ -101,7 +101,7 @@ test("no choice ever changes a cell that holds a user sample", () => {
   }
 });
 
-test("the default made once connected moves past the keys holding the visitor's samples", () => {
+test("Featured made once connected moves past the keys holding the visitor's samples", () => {
   const d = demoDevice();
   let slots = d.slots;
   for (const t of [0, 1, 2]) slots = assign(slots, t, 2, 1_513_459_487);
@@ -109,7 +109,7 @@ test("the default made once connected moves past the keys holding the visitor's 
   const samples = userSampleCells(device);
   assert.deepEqual(blockedKeys(0, samples), [2]);
   assert.deepEqual(blockedKeys(3, samples), [4, 9, 10]);
-  const plan = planLoader({ engines, choice: defaultChoice(engines, (t) => blockedKeys(t, samples)), device, original: slots, demo: true });
+  const plan = planLoader({ engines, choice: featuredChoice(engines, (t) => blockedKeys(t, samples)), device, original: slots, demo: true });
   assert.deepEqual(plan.blocked[0], [2]);
   assert.deepEqual(plan.skipped, []);
   for (const t of [0, 1, 2]) {
@@ -122,10 +122,10 @@ test("the default made once connected moves past the keys holding the visitor's 
 
 test("original puts back what the first backup had; community and original per slot", () => {
   const first = demoDevice();
-  const after = applied(first, defaultChoice(engines), first.slots);
+  const after = applied(first, featuredChoice(engines), first.slots);
   assert.equal(cell(after.slots, 5, 3), id("syn3"));
 
-  let choice = setKey(defaultChoice(engines), engines, 5, 3, { kind: "original" }).choice;
+  let choice = setKey(featuredChoice(engines), engines, 5, 3, { kind: "original" }).choice;
   choice = setKey(choice, engines, 5, 10, { kind: "engine", dir: "syn3" }).choice;
   const plan = planLoader({ engines, choice, device: after, original: first.slots, demo: true });
   assert.equal(cell(plan.target, 5, 3), cell(first.slots, 5, 3), "lead key 3 is original again");
@@ -140,24 +140,23 @@ test("original puts back what the first backup had; community and original per s
   assert.ok(!back.installs.some((i) => i.dir.startsWith("syn")), "no synth is placed, so none is sent");
 });
 
-test("an engine no longer picked goes back to the original; others are left as they are", () => {
+test("an engine no longer picked stays where it is; Original takes it off; a fresh start changes nothing", () => {
   const first = demoDevice();
-  const after = applied(first, defaultChoice(engines), first.slots);
-  let choice = defaultChoice(engines);
+  const after = applied(first, featuredChoice(engines), first.slots);
+  let choice = featuredChoice(engines);
   for (const dir of ["syn7", "syn8"]) choice = each(choice, SYNTH, (c, t) => tickEngine(c, engines, t, dir, false));
   const plan = planLoader({ engines, choice, device: after, original: first.slots, demo: true });
-  for (const t of [4, 5, 6, 7]) {
-    assert.equal(cell(plan.target, t, 7), cell(first.slots, t, 7));
-    assert.equal(cell(plan.target, t, 8), cell(first.slots, t, 8));
-  }
-  assert.deepEqual(plan.changes.map((c) => c.why).filter((w, i, a) => a.indexOf(w) === i), ["revert"]);
-  const unknown = planLoader({ engines, choice, device: after, original: null, demo: true });
-  assert.equal(unknown.changes.length, 0, "without a first backup the original is unknown: nothing moves");
+  assert.equal(plan.changes.length, 0, "left as it is: our engine stays on the OP-Z");
+  const fresh = planLoader({ engines, choice: defaultChoice(), device: after, original: first.slots, demo: true });
+  assert.equal(fresh.changes.length, 0, "a visit with a fresh browser (every key as it is) changes nothing");
+  const off = planLoader({ engines, choice: allOriginal(choice, 4), device: after, original: first.slots, demo: true });
+  for (let s = 1; s <= 10; s++) assert.equal(cell(off.target, 4, s), cell(first.slots, 4, s), `bass ${s}: the original`);
+  assert.ok(off.changes.every((c) => c.track === 4 && c.why === "original"));
 });
 
 test("an engine made for fx1 only is not on fx2", () => {
   const d = demoDevice();
-  const plan = planLoader({ engines, choice: defaultChoice(engines), device: d, original: d.slots, demo: true });
+  const plan = planLoader({ engines, choice: featuredChoice(engines), device: d, original: d.slots, demo: true });
   assert.equal(cell(plan.target, 8, 3), id("fxonly1"));
   assert.equal(cell(plan.target, 9, 3), id("fxd"), "fx2 has its own keys");
   assert.equal(cell(plan.target, 9, 4), cell(d.slots, 9, 4));
@@ -166,7 +165,7 @@ test("an engine made for fx1 only is not on fx2", () => {
 
 test("a hand-made choice can't cross the line: effects only on fx1/fx2, synths and drums only on their own tracks", () => {
   const d = demoDevice();
-  const forged = defaultChoice(engines);
+  const forged = featuredChoice(engines);
   forged[5] = forged[5].map((k, i) => (i === 8 ? { kind: "engine", dir: "fxa" } : k));
   forged[8] = forged[8].map((k, i) => (i === 8 ? { kind: "engine", dir: "syn1" } : k));
   forged[0] = forged[0].map((k, i) => (i === 8 ? { kind: "engine", dir: "syn2" } : k));
@@ -180,32 +179,32 @@ test("a hand-made choice can't cross the line: effects only on fx1/fx2, synths a
 
 test("installs: new, already there, upgrade with restart; refusals", () => {
   const d = demoDevice();
-  const after = applied(d, defaultChoice(engines), d.slots);
+  const after = applied(d, featuredChoice(engines), d.slots);
   const newer = engines.map((e) => (e.dir === "syn1" ? { ...e, manifest: { ...e.manifest, engine_version: 2, plug: { ...e.manifest.plug, version: 2 } } } : e));
   after.plugs.engines = [...(after.plugs.engines ?? []), { memoryslot: engines.find((e) => e.dir === "syn1")!.manifest.memoryslot, path: "engines/syn1.engine", version: 1 }];
-  const plan = planLoader({ engines: newer, choice: defaultChoice(engines), device: after, original: d.slots, demo: true });
+  const plan = planLoader({ engines: newer, choice: featuredChoice(engines), device: after, original: d.slots, demo: true });
   const syn1 = plan.installs.find((i) => i.dir === "syn1")!;
   assert.equal(syn1.action, "upgrade");
   assert.equal(syn1.restart, true);
   assert.equal(plan.installs.find((i) => i.dir === "syn2")!.action, "ready");
 
   const unbuilt = engines.map((e) => (e.dir === "syn2" ? { ...e, engine: null } : e));
-  assert.match(planLoader({ engines: unbuilt, choice: defaultChoice(engines), device: d, original: d.slots, demo: false }).errors.join(),
+  assert.match(planLoader({ engines: unbuilt, choice: featuredChoice(engines), device: d, original: d.slots, demo: false }).errors.join(),
     /syn2 is not built yet/);
-  assert.deepEqual(planLoader({ engines: unbuilt, choice: defaultChoice(engines), device: d, original: d.slots, demo: true }).errors, [],
+  assert.deepEqual(planLoader({ engines: unbuilt, choice: featuredChoice(engines), device: d, original: d.slots, demo: true }).errors, [],
     "the demo installs a placeholder");
 
   const clash = engines.map((e) => (e.dir === "syn3" ? { ...e, manifest: { ...e.manifest, memoryslot: 27 } } : e));
-  assert.match(planLoader({ engines: clash, choice: defaultChoice(engines), device: d, original: d.slots, demo: true }).errors.join(),
+  assert.match(planLoader({ engines: clash, choice: featuredChoice(engines), device: d, original: d.slots, demo: true }).errors.join(),
     /syn3: memory slot 27 is already used by engines\/analoga.engine/, "the core's own check, before anything is asked");
   const twice = engines.map((e) => (e.dir === "syn4" ? { ...e, manifest: { ...e.manifest, memoryslot: engines.find((x) => x.dir === "syn5")!.manifest.memoryslot } } : e));
-  assert.match(planLoader({ engines: twice, choice: defaultChoice(engines), device: d, original: d.slots, demo: true }).errors.join(),
+  assert.match(planLoader({ engines: twice, choice: featuredChoice(engines), device: d, original: d.slots, demo: true }).errors.join(),
     /syn5: memory slot \d+ is already used by engines\/syn4.engine/, "two engines of one batch in one memory slot");
 });
 
 test("a restore puts the backup's cells back but keeps the visitor's samples and missing plugs' cells", () => {
   const first = demoDevice();
-  const after = applied(first, defaultChoice(engines), first.slots);
+  const after = applied(first, featuredChoice(engines), first.slots);
   // since the first backup: a new user sample in kick slot 10, and plug 3 removed
   const plugs = structuredClone(after.plugs);
   plugs.plugs.push({ engine: "engines/sampleplayergain.engine", flags: 2, id: 1_600_000_000, samples: "samplepacks/user/new.aif", version: 1 });
@@ -232,9 +231,9 @@ test("names: ours by label, TE's by engine or sample file, the visitor's samples
 test("an engine with a caution is refused on a real OP-Z, allowed in the demo", () => {
   const d = demoDevice();
   const risky = engines.map((e) => (e.dir === "syn2" ? { ...e, caution: "Froze the OP-Z twice." } : e));
-  const real = planLoader({ engines: risky, choice: defaultChoice(engines), device: d, original: d.slots, demo: false });
+  const real = planLoader({ engines: risky, choice: featuredChoice(engines), device: d, original: d.slots, demo: false });
   assert.match(real.errors.join(), /syn2 can't go on a real OP-Z yet: Froze the OP-Z twice/);
-  const demo = planLoader({ engines: risky, choice: defaultChoice(engines), device: d, original: d.slots, demo: true });
+  const demo = planLoader({ engines: risky, choice: featuredChoice(engines), device: d, original: d.slots, demo: true });
   assert.deepEqual(demo.errors, []);
   assert.ok(demo.warnings.some((w) => w.startsWith("syn2: Froze")));
 });

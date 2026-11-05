@@ -13,13 +13,13 @@ import "./loader.css";
 import { type CatalogueEngine, loadCatalogue } from "../shared/catalogue.ts";
 import { clearDiag, copyReport, diagLines, note, reportPart } from "../shared/diag.ts";
 import type { AuditionEvent, Mounted, PickEvent } from "../shared/mount.ts";
-import { type LoaderConfirm, LoaderController, type OpResult } from "./controller.ts";
+import { type LoaderConfirm, LoaderController, type OpResult, type OpenWait } from "./controller.ts";
 import { DemoDisk, demoFiles } from "./demo.ts";
 import { type BakeEngine, FakeOpz, isUserSample } from "./core.ts";
 import { type BakeRequest, type DiskDir, backupMeta, diskPicker, runBake } from "./disk.ts";
 import { type Child, clear, download, formatTime, h } from "./dom.ts";
 import {
-  type Choice, type KeyPick, TRACKS, TRACK_LABELS, type TrackChoice, allOriginal, cautionOf, copyTrack, defaultTrack, engineTracks, keyOf,
+  type Choice, type KeyPick, TRACKS, TRACK_LABELS, type TrackChoice, allOriginal, cautionOf, copyTrack, defaultChoice, engineTracks, featuredChoice, featuredTrack, keyOf,
   pickEverywhere, pickedDirs, sanitizeChoice, setKey, tickEngine, trackEngines, trackGroup, trackPicks,
 } from "./model.ts";
 import { type LoaderPlan, blockedKeys, planLoader, plugLabel, presetDocs, userSampleCells } from "./plan.ts";
@@ -53,6 +53,16 @@ function write(key: string, value: unknown): void {
   } catch {
     // private window or blocked storage: the panel just forgets
   }
+}
+
+/** The busy line's countdown once the OP-Z has kept a session open waiting for 2 s (a normal open takes ~0.5 s). */
+function waitText(w: OpenWait | null): string {
+  if (!w) return "";
+  const elapsed = (Date.now() - w.since) / 1000;
+  if (elapsed < 2) return "";
+  const left = Math.max(0, Math.ceil(w.seconds - elapsed));
+  return `The OP-Z hasn't answered yet${w.attempt === 2 ? " (second try)" : ""}: ${left} s left. Nothing is sent until it does. `
+    + "Is TE's OP-Z app closed, on this computer and on your phone?";
 }
 
 /** Why Web MIDI can't be used here, or null. */
@@ -89,6 +99,7 @@ class LoaderPanel {
   private dropReport: () => void = () => {};
   private reportCopied: string | null = null;
   private logOpen = false;
+  private waitTimer: ReturnType<typeof setInterval> | null = null;
   private destroyed = false;
   private readonly onPick = (e: Event) => this.pickFromLab(e as PickEvent);
   /** Set while the loader sends its own opfree:pick, so it doesn't handle its own event. */
@@ -106,6 +117,7 @@ class LoaderPanel {
     this.destroyed = true;
     document.removeEventListener("opfree:pick", this.onPick);
     this.dropReport();
+    if (this.waitTimer) clearInterval(this.waitTimer);
     if (this.controller?.connected) this.controller.forceDisconnect();
     this.el.classList.remove("ld");
     this.el.replaceChildren();
@@ -135,6 +147,9 @@ class LoaderPanel {
       this.catalogueError = (e as Error).message;
     }
     this.choice = sanitizeChoice(read(KEYS.choice), this.engines);
+    // until 2026-11-05 every track started on Featured (and connecting stored it): such an untouched choice now
+    // starts as everything left as it is, like a first visit
+    if (JSON.stringify(this.choice) === JSON.stringify(featuredChoice(this.engines))) this.choice = defaultChoice();
     // the lab starts with the featured engines ticked: tell it where the loader's (stored) picks differ
     const picked = new Set(pickedDirs(this.choice));
     for (const e of this.engines) if (!!e.featured !== picked.has(e.dir) && engineTracks(e).length) this.tellLab(e.dir, picked.has(e.dir));
@@ -280,13 +295,13 @@ class LoaderPanel {
     }
     const d = this.controller.device;
     if (d && this.controller.kind === "midi") this.sampleLast = sampleCheck(d);
-    // a track still on its default moves its engines past the keys holding the visitor's samples
+    // a track still on Featured moves its engines past the keys holding the visitor's samples
     if (d && this.choice) {
       const samples = userSampleCells(d);
       const same = (a: TrackChoice, b: TrackChoice) => JSON.stringify(a) === JSON.stringify(b);
       this.choice = this.choice.map((keys, t) => {
         const blocked = blockedKeys(t, samples);
-        return blocked.length && same(keys, defaultTrack(this.engines, t)) ? defaultTrack(this.engines, t, blocked) : keys;
+        return blocked.length && same(keys, featuredTrack(this.engines, t)) ? featuredTrack(this.engines, t, blocked) : keys;
       });
       write(KEYS.choice, this.choice);
     }
@@ -428,6 +443,16 @@ class LoaderPanel {
     const pre = this.el.querySelector<HTMLElement>('[data-testid="log"]');
     if (pre) pre.scrollTop = pre.scrollHeight;   // the newest lines in view
     if (focusKey) this.el.querySelector<HTMLElement>(`[data-key="${CSS.escape(focusKey)}"]`)?.focus();
+    // while the OP-Z hasn't answered a session open: the countdown ticks without a whole re-render
+    if (this.controller?.waiting && !this.waitTimer) {
+      this.waitTimer = setInterval(() => {
+        const span = this.el.querySelector<HTMLElement>('[data-testid="wait"]');
+        if (span) span.textContent = waitText(this.controller.waiting);
+      }, 500);
+    } else if (!this.controller?.waiting && this.waitTimer) {
+      clearInterval(this.waitTimer);
+      this.waitTimer = null;
+    }
   }
 
   private view(): Child[] {
@@ -441,7 +466,8 @@ class LoaderPanel {
     const out: Child[] = [head];
     if (busy) {
       out.push(h("p", { class: "ld-busy", role: "status", "data-testid": "busy" }, h("i", { class: "ld-spin", "aria-hidden": "true" }),
-        busy === "install" ? "Installing… keep this tab in front and the OP-Z connected." : busy === "restore" ? "Restoring…" : "Reading the OP-Z…"));
+        busy === "install" ? "Installing… keep this tab in front and the OP-Z connected." : busy === "restore" ? "Restoring…" : "Reading the OP-Z…",
+        h("span", { class: "ld-wait", "data-testid": "wait" }, waitText(c.waiting))));
     }
     if (c?.interrupted) {
       const r = c.interrupted;
@@ -557,9 +583,13 @@ class LoaderPanel {
       h("p", { class: "ld-small dim ld-tracks__key" }, "Drums 1–4 · synths 5–8 · effects 9–10, as on the OP-Z. Each track gets its own sounds."),
       tabs,
       h("h3", { class: "ld-track-title" }, `Track ${t + 1} · ${TRACK_LABELS[t]}`, h("span", { class: "dim" }, ` · ${kind} only`)),
+      keys.some((k) => k.kind !== "keep") ? null : h("p", { class: "ld-small dim", "data-testid": "track-empty" },
+        `Every key keeps the sound your OP-Z has there. Pick one of our ${kind} for a key to replace it, or `, h("b", null, "Featured"),
+        " to fill keys 1–8."),
       this.keyStrip(),
       h("div", { class: "ld-row" },
-        h("button", { type: "button", class: "btn btn--small btn--ghost", "data-key": "track-featured", onclick: () => this.editTrack(this.withTrackKeys(t, defaultTrack(this.engines, t, blocked))) }, "Featured"),
+        h("button", { type: "button", class: "btn btn--small btn--ghost", "data-key": "track-featured", onclick: () => this.editTrack(this.withTrackKeys(t, featuredTrack(this.engines, t, blocked))),
+          title: `Our featured ${kind} on keys 1–8` }, "Featured"),
         h("button", { type: "button", class: "btn btn--small btn--ghost", "data-key": "track-original", onclick: () => this.editTrack(allOriginal(this.choice!, t, blocked)) }, "All original"),
         others.length ? h("button", {
           type: "button", class: "btn btn--small btn--ghost", "data-key": "track-copy",
@@ -727,7 +757,11 @@ class LoaderPanel {
     if (!c?.connected) return [h("p", { class: "dim" }, "Connect first (step 2): the plan is made from your OP-Z's own settings.")];
     const plan = this.plan();
     const out: Child[] = [];
-    if (plan) {
+    const nothing = !!plan && !plan.changes.length && !plan.installs.length;
+    if (nothing) {
+      out.push(h("p", { class: "ld-callout", "data-testid": "nothing-picked" }, "Nothing picked yet: every key is left as it is. In step 1, "
+        + "choose one of our sounds for each key you want to change."));
+    } else if (plan) {
       const work = plan.installs.filter((i) => i.action !== "ready");
       out.push(h("ul", { class: "ld-facts", "data-testid": "plan-summary" },
         h("li", null, `${work.length} engine${work.length === 1 ? "" : "s"} to send`, work.length ? h("span", { class: "dim" }, ` (${work.map((i) => i.label).join(", ")})`) : null),
@@ -744,7 +778,7 @@ class LoaderPanel {
     out.push(h("p", { class: "ld-small dim" }, "One sheet shows every slot before → after, then each engine goes through the same backup, check and "
       + "read-back as the command-line tools. Pushed presets stay until the OP-Z restarts; step 4 keeps them for good."));
     out.push(h("div", { class: "ld-row" }, h("button", {
-      type: "button", class: "btn btn--primary btn--small", "data-testid": "install", disabled: !!c.busy || !plan || plan.errors.length > 0,
+      type: "button", class: "btn btn--primary btn--small", "data-testid": "install", disabled: !!c.busy || !plan || plan.errors.length > 0 || nothing,
       onclick: () => void this.install(),
     }, "Review and install…")));
     return out;

@@ -9,7 +9,7 @@ slot map back if it differs. Nothing here writes to an OP-Z any other way.
 
 | Step | What happens | Writes |
 |---|---|---|
-| 1 Pick | **Per track**, as on the OP-Z: tabs for tracks 1–10 (kick, snare, perc, sample · bass, lead, arp, chord · fx1, fx2), and for the track shown its ten black keys, each set to one of our engines, *Original* (the sound the first backup had there) or *Leave as it is*. Ticking an engine in the track's list puts it on the first key left as it is. *Featured* (the default: the catalogue's `featured` engines on keys 1–8, at most `DEFAULT_PICKS`), *All original*, and *Copy to* the other tracks of the same kind. *Listen* sends `opfree:audition` to the lab; the lab's `opfree:pick` puts an engine on (or takes it off) every track it is made for | none |
+| 1 Pick | **Per track**, as on the OP-Z: tabs for tracks 1–10 (kick, snare, perc, sample · bass, lead, arp, chord · fx1, fx2), and for the track shown its ten black keys, each set to one of our engines, *Original* (the sound the first backup had there) or *Leave as it is*. Every key starts as *Leave as it is*, so nothing changes until the visitor picks a sound for a key (step 3 stays off until then). Ticking an engine in the track's list puts it on the first key left as it is. *Featured* (the catalogue's `featured` engines on keys 1–8, at most `FEATURED_PICKS`), *All original*, and *Copy to* the other tracks of the same kind. *Listen* sends `opfree:audition` to the lab; the lab's `opfree:pick` puts an engine on (or takes it off) every track it is made for | none |
 | 2 Connect & back up | Web MIDI with SysEx (Chrome or Edge on a computer, https or localhost) with the *quit TE's app* warning, or the **demo OP-Z** (the core's `FakeOpz`). Reads the settings and backs them up at once: the first backup of an OP-Z in this browser is what *original* and *Restore original layout* go back to | none (a read) |
 | 3 Install | One confirm sheet: every slot before → after, the slots left alone (the visitor's samples), the engines and files sent, restart needed, the backup id. Then the core's `install` per engine (install only, no slot), `presetsPush` for engines already installed, and one `writeSlotMap` for the layout, each with its own backup, checks and read-back; the batch stops at the first failure | engines, `patch.json`, the slot map |
 | 4 Content mode | The user-sample check (no disk action while any sample the visitor made sits in no slot), the device gesture (hold *track* while switching on, manual p.61), then the bake of the picks' presets into `config/userPresets.dat` through the folder picker: backup (in this browser; saved as a file only when the browser can't keep data, e.g. a private window), confirm, write, read back, the original put back on a mismatch | `config/userPresets.dat` only |
@@ -19,6 +19,9 @@ slot map back if it differs. Nothing here writes to an OP-Z any other way.
 10), as the OP-Z is laid out; within that, an engine only on the tracks of its kind (synths on bass–chord, drums on
 kick–sample) that its trackmask names (`model.ts` `canGoOn`). The panel offers nothing else, a stored choice is cleaned
 on load, and `plan.ts` refuses a cell that crosses the line. Cross-placement stays off until it is tested on hardware.
+
+**Leave as it is** keeps whatever the slot holds, one of our engines included: a visit from a fresh browser changes
+nothing, and unpicking an engine leaves it where it is. Taking one of ours off a key is *Original* there.
 
 **Original** means the plug the first backup had in that slot: teenage engineering's own sound, which every OP-Z
 already carries. TE's engines are never uploaded or hosted; a TE plug we displace stays installed, so putting it back
@@ -30,6 +33,15 @@ track and can't be given anything; a track still on its default moves its engine
 that names such a cell is skipped there (listed on the sheet); the core's `writeSlotMap`
 refuses any map that would leave one in no slot, a restore keeps their current cells, and step 4 stays locked while
 one is loose (SAFETY.md rule 5).
+
+**When the OP-Z doesn't answer.** Each session open waits up to 15 s for the OP-Z's `$34` (normally ~0.5 s), then,
+after a 3 s pause, tries once more (`controller.ts` `TrackingOpz.session`); after 2 s the busy line counts down. The
+OP-Z receives no file before it answers, so the second try repeats no step of a flow [code: `web/core/src/session.ts`
+`open`, `push`]. A friend's first install stopped right there on 2026-11-05: 30 s with no `$34`, 2 ms after the
+backup's session closed; the cause is open (another client such as TE's app is the first guess). The interrupted-write
+banner appears only when a push went out and was never read back; otherwise the log says *nothing written* or
+*nothing was left half-written*. The core's warning about tracks 12–15 is dropped here: every OP-Z's slot map lists
+them [proven: our own backups].
 
 **The problem log.** The panel's *Log* is the site's problem log (`src/shared/diag.ts`): the loader's and the bake's
 lines, uncaught errors, `console.error`, the page being frozen (a visible tab's timer more than 2 s late), page opens
@@ -61,8 +73,8 @@ that crashed or froze a real OP-Z): shown on its row, never ticked by default, r
 errors), allowed on the demo. Test plugs (60900–60999) are never offered.
 
 **The lab's ticks.** The lab starts with the featured engines ticked and follows `opfree:pick` from anyone. A tick
-there means "on my OP-Z": the loader puts the engine on every track it is made for (first key left as it is) or takes
-it off all of them. It sends `opfree:pick {dir, picked}` when an engine comes onto its first track or leaves its last
+there means "on my OP-Z": the loader puts the engine on every track it is made for (first key left as it is); an untick
+takes it out of the picks (those keys go back to *Leave as it is*, so an engine already installed stays on the OP-Z). It sends `opfree:pick {dir, picked}` when an engine comes onto its first track or leaves its last
 one, for each stored pick that differs from the featured set after it loads, and `picked: false` back when it refuses
 a tick from the lab (every key of those tracks taken).
 
@@ -95,7 +107,7 @@ bake`, H-9); the panel says so where it matters. Hardware checklist for the devi
    sound is back on key 1, our plug stays installed (`opz.py status`: displaced).
 5. **Different sounds per track.** Bass and lead with different engines on the same key, one effect on fx1 only: the
    sheet and the OP-Z (hold the track, tap the key) agree, track by track.
-6. **The default batch** (*Featured* on every track): note how long it takes; keys 1–8 hold the picks, 9 and 0 are
+6. **The featured batch** (*Featured* on every track): note how long it takes; keys 1–8 hold the picks, 9 and 0 are
    unchanged, the samples untouched. A restart warning appears only for an upgrade.
 7. **Restart** the OP-Z: engines and slots stay, presets are gone (RAM); connect and install again: the sheet offers to
    push the presets again only.
