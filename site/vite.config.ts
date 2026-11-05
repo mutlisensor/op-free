@@ -11,6 +11,8 @@ const coreDir = existsSync(publicCore) ? publicCore : labCore;
 // Relative base: the built site runs from any folder, including https://<user>.github.io/op-free/.
 export default defineConfig({
   base: "./",
+  // the build the problem report names (src/shared/diag.ts): the commit on GitHub's runner, else "local"
+  define: { __OPFREE_BUILD__: JSON.stringify((process.env.GITHUB_SHA ?? "local").slice(0, 7)) },
   resolve: { alias: { "@opz/core": `${coreDir}/index.ts` } },
   server: { port: 5180, fs: { allow: [".", coreDir] } },
   build: { target: "es2022" },

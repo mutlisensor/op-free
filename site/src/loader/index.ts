@@ -11,6 +11,7 @@
 
 import "./loader.css";
 import { type CatalogueEngine, loadCatalogue } from "../shared/catalogue.ts";
+import { clearDiag, copyReport, diagLines, note, reportPart } from "../shared/diag.ts";
 import type { AuditionEvent, Mounted, PickEvent } from "../shared/mount.ts";
 import { type LoaderConfirm, LoaderController, type OpResult } from "./controller.ts";
 import { DemoDisk, demoFiles } from "./demo.ts";
@@ -85,7 +86,9 @@ class LoaderPanel {
   private sampleLast: SampleCheck | null = null;
   private sampleConfirmed = false;
   private overwriteUser = false;
-  private log: string[] = [];
+  private dropReport: () => void = () => {};
+  private reportCopied: string | null = null;
+  private logOpen = false;
   private destroyed = false;
   private readonly onPick = (e: Event) => this.pickFromLab(e as PickEvent);
   /** Set while the loader sends its own opfree:pick, so it doesn't handle its own event. */
@@ -95,12 +98,14 @@ class LoaderPanel {
     this.el = el;
     el.classList.add("ld");
     document.addEventListener("opfree:pick", this.onPick);
+    this.dropReport = reportPart("loader", () => this.reportLines());
     void this.start();
   }
 
   destroy(): void {
     this.destroyed = true;
     document.removeEventListener("opfree:pick", this.onPick);
+    this.dropReport();
     if (this.controller?.connected) this.controller.forceDisconnect();
     this.el.classList.remove("ld");
     this.el.replaceChildren();
@@ -110,10 +115,7 @@ class LoaderPanel {
     this.render();
     this.store = await openStore();
     this.controller = new LoaderController(this.store, {
-      log: (line) => {
-        this.log.push(line);
-        if (this.log.length > 400) this.log.splice(0, this.log.length - 400);
-      },
+      log: (line) => note("loader", line),
       confirm: (r) => this.confirm(r),
       changed: () => this.render(),
       hold: async () => {
@@ -390,7 +392,7 @@ class LoaderPanel {
     }
     const demo = dir === this.demoDisk;
     const result = await runBake(dir, request, {
-      log: (line) => this.log.push(line),
+      log: (line) => note("disk", line),
       backup: async (data, source, sha) => {
         const meta = new TextEncoder().encode(backupMeta(source, sha, data.length));
         const id = await this.store.saveUserPresets(data, meta, demo ? "demo disk" : source);
@@ -423,6 +425,8 @@ class LoaderPanel {
     const scroll = this.el.scrollTop;
     clear(this.el, this.view());
     this.el.scrollTop = scroll;
+    const pre = this.el.querySelector<HTMLElement>('[data-testid="log"]');
+    if (pre) pre.scrollTop = pre.scrollHeight;   // the newest lines in view
     if (focusKey) this.el.querySelector<HTMLElement>(`[data-key="${CSS.escape(focusKey)}"]`)?.focus();
   }
 
@@ -469,8 +473,49 @@ class LoaderPanel {
           h("span", { class: "ld-step__s" }, this.stepSummary(n))),
         isOpen ? h("div", { class: "ld-step__body" }, bodies[i]()) : null);
     })));
-    out.push(h("details", { class: "ld-log" }, h("summary", null, "Log"), h("pre", { class: "ld-pre" }, this.log.slice(-200).join("\n") || "Nothing yet.")));
+    out.push(this.logPanel());
     if (this.store.volatile) out.push(h("p", { class: "dim ld-small" }, "This browser blocks storage: backups last only while the page is open."));
+    return out;
+  }
+
+  /** The site's problem log (src/shared/diag.ts): this visit and the ones before, with *Copy report*. */
+  private logPanel(): HTMLElement {
+    const lines = diagLines();
+    return h("details", { class: "ld-log", open: this.logOpen || null, ontoggle: (e: Event) => { this.logOpen = (e.target as HTMLDetailsElement).open; } },
+      h("summary", null, "Log"),
+      h("p", { class: "dim ld-small" }, "Kept in this browser, across visits, never sent. If something hangs or goes wrong, ",
+        h("b", null, "Copy report"), " and paste it into your message: it holds this log, your browser and your picks."),
+      h("div", { class: "ld-row" },
+        h("button", { type: "button", class: "btn btn--small", "data-key": "copy-report", "data-testid": "copy-report", onclick: () => void this.copyReport() },
+          this.reportCopied ?? "Copy report"),
+        h("button", { type: "button", class: "btn btn--small btn--ghost", "data-key": "clear-log", disabled: !lines.length,
+          onclick: () => { clearDiag(); this.render(); } }, "Clear")),
+      h("pre", { class: "ld-pre", "data-testid": "log" }, lines.slice(-200).join("\n") || "Nothing yet."));
+  }
+
+  private async copyReport(): Promise<void> {
+    this.reportCopied = (await copyReport()) ? "Copied: paste it into your report" : "Saved as a text file";
+    this.render();
+    setTimeout(() => { this.reportCopied = null; this.render(); }, 4000);
+  }
+
+  /** The loader's section of the problem report. */
+  private reportLines(): string[] {
+    const c = this.controller;
+    const out = [
+      `connection ${c?.connected ? (c.kind === "demo" ? "demo OP-Z" : `USB · ${c.deviceName}`) : "none"}${c?.busy ? ` · busy: ${c.busy}` : ""}`,
+      `step open ${this.open} · current ${c ? this.current() : 1}${this.store.volatile ? " · storage blocked" : ""}`,
+    ];
+    if (this.catalogueError) out.push(`catalogue failed: ${this.catalogueError}`);
+    if (c?.interrupted) out.push(`interrupted: ${c.interrupted.op} (${c.interrupted.error})`);
+    if (this.lastInstall) out.push(`last install: ${this.lastInstall.ok ? "ok" : this.lastInstall.cancelled ? "cancelled" : "failed"}${this.lastInstall.highlights.length ? ` · ${this.lastInstall.highlights.slice(0, 5).join(" · ")}` : ""}`);
+    if (this.lastBake) out.push(`last bake: ${this.lastBake.ok ? "ok" : "failed"} · ${this.lastBake.text}`);
+    if (this.choice) {
+      for (const t of TRACKS) {
+        const keys = this.choice[t].map((k, i) => `${(i + 1) % 10}:${k.kind === "engine" ? k.dir : k.kind === "original" ? "orig" : "-"}`);
+        out.push(`${TRACK_LABELS[t].padEnd(6)} ${keys.join(" ")}`);
+      }
+    }
     return out;
   }
 

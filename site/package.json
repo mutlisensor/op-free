@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "node --import ./src/loader/test/register.ts --test \"src/loader/test/*.test.ts\""
+    "test": "node --import ./src/loader/test/register.ts --test \"src/loader/test/*.test.ts\" \"src/shared/test/*.test.ts\""
   },
   "dependencies": {
     "gsap": "3.13.0",
