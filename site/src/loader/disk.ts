@@ -10,10 +10,17 @@
  *
  * Nothing else on the disk is written: only config/userPresets.dat, and only after the confirm. (Chrome writes
  * through a swap file next to it, `userPresets.dat.crswap`, and moves it over the file when the write closes.)
+ *
+ * An OP-Z on which no preset was ever stored by hand has no userPresets.dat, so its disk has none either. The bake then
+ * makes the file: an empty store (version 1, 200 free records) with our presets in it. Content mode imports the file at
+ * the eject even onto an OP-Z that has none [code, device: the config import callback `0x80034d68`,
+ * docs/research/presets.md]; nothing is backed up because there was nothing; a file that reads back differently is
+ * deleted again. Hardware check H-9b (src/loader/README.md).
  */
 
 import {
-  type BakeEngine, type BakePlan, USER_PRESETS, bytesEqual as same, planBake, planRestore, readUserPresetsFile, toHex,
+  type BakeEngine, type BakePlan, USER_PRESETS, USER_PRESETS_RECORD, USER_PRESETS_RECORDS, bytesEqual as same, planBake, planRestore,
+  readUserPresetsFile, serialiseUserPresets, toHex,
 } from "./core.ts";
 
 /** The part of FileSystemFileHandle the bake uses (a fake in the tests). */
@@ -29,7 +36,13 @@ export interface DiskDir {
   readonly kind: "directory";
   readonly name: string;
   getDirectoryHandle(name: string): Promise<DiskDir>;
-  getFileHandle(name: string): Promise<DiskFile>;
+  getFileHandle(name: string, options?: { create?: boolean }): Promise<DiskFile>;
+  removeEntry(name: string): Promise<void>;
+}
+
+/** An empty user-preset store as the OP-Z writes it (version 1, 200 free records). */
+export function emptyUserPresets(): Uint8Array {
+  return serialiseUserPresets(Array.from({ length: USER_PRESETS_RECORDS }, () => new Uint8Array(USER_PRESETS_RECORD)));
 }
 
 type Picker = (options: { id?: string; mode: "read" | "readwrite"; startIn?: string }) => Promise<DiskDir>;
@@ -53,8 +66,10 @@ export interface BakeConfirm {
   disk: string;
   /** The plan (bake only). */
   plan: BakePlan | null;
-  /** The backup just made of the file on the disk. */
-  backupId: string;
+  /** The backup just made of the file on the disk; null when the file is new (there was none to back up). */
+  backupId: string | null;
+  /** The disk had no userPresets.dat: the bake makes one. */
+  created: boolean;
   /** The core's lines so far (read, summary, plan). */
   lines: string[];
 }
@@ -71,6 +86,8 @@ export interface BakeResult {
   cancelled: boolean;
   /** Written and read back. */
   written: boolean;
+  /** The file was not on the disk and was made. */
+  created: boolean;
   lines: string[];
   error: string | null;
   backupId: string | null;
@@ -120,7 +137,7 @@ export async function runBake(disk: DiskDir, request: BakeRequest, deps: BakeDep
   const lines: string[] = [];
   const warnings: string[] = [];
   const result = (ok: boolean, extra: Partial<BakeResult> = {}): BakeResult => ({
-    ok, cancelled: false, written: false, lines, error: null, backupId: null, plan: null, summary: [], warnings, ...extra,
+    ok, cancelled: false, written: false, created: false, lines, error: null, backupId: null, plan: null, summary: [], warnings, ...extra,
   });
   const log = (line: string) => {
     lines.push(line);
@@ -140,13 +157,18 @@ export async function runBake(disk: DiskDir, request: BakeRequest, deps: BakeDep
     return fail(`${disk.name} has no config folder: pick the OP-Z's content-mode disk itself (the top folder, `
       + "usually OP-Z). Content mode: switch the OP-Z off, hold track while switching it on. Nothing written.");
   }
-  let file: DiskFile;
+  let file: DiskFile | null = null;
   try {
     file = await config.getFileHandle("userPresets.dat");
   } catch (e) {
-    if (named(e) !== "NotFoundError" && named(e) !== "TypeMismatchError") throw e;
-    return fail(`${path} not found. The OP-Z writes it when the first preset is stored by hand: store one (hold track `
-      + "+ a white key 2 s), then start content mode again (hold track at power-on).");
+    if (named(e) === "TypeMismatchError") return fail(`${path} is a folder, not the OP-Z's preset file. Nothing written.`);
+    if (named(e) !== "NotFoundError") throw e;
+  }
+  if (!file) {
+    if (request.kind !== "bake") {
+      return fail(`${path} is not on the disk: no preset was ever stored on this OP-Z, so there is ${request.kind === "show" ? "nothing to show" : "nothing to put back over"}.`);
+    }
+    return createStore(disk.name, config, request, deps, { lines, log, fail, result });
   }
   const data = await bytesOf(file);
   const read = await readUserPresetsFile(data, path);
@@ -181,7 +203,7 @@ export async function runBake(disk: DiskDir, request: BakeRequest, deps: BakeDep
     return fail(`the backup failed (${(e as Error).message}). Nothing written.`, { plan, summary });
   }
   log(`backup: ${backupId}`);
-  if (!(await deps.confirm({ request, disk: disk.name, plan, backupId, lines: [...lines] }))) {
+  if (!(await deps.confirm({ request, disk: disk.name, plan, backupId, created: false, lines: [...lines] }))) {
     log("cancelled.");
     return result(false, { cancelled: true, backupId, plan, summary });
   }
@@ -216,6 +238,60 @@ export async function runBake(disk: DiskDir, request: BakeRequest, deps: BakeDep
       : "They are user presets from then on and stay with nothing connected.")
     + ` To undo: content mode again, then put the backup ${backupId} back (step 5, Restore).`);
   return result(true, { written: true, backupId, plan, summary });
+}
+
+interface Steps {
+  lines: string[];
+  log(line: string): void;
+  fail(error: string, extra?: Partial<BakeResult>): BakeResult;
+  result(ok: boolean, extra?: Partial<BakeResult>): BakeResult;
+}
+
+/** The disk has no userPresets.dat (see the file comment): plan into an empty store, ask, create, read back. */
+async function createStore(diskName: string, config: DiskDir, request: Extract<BakeRequest, { kind: "bake" }>, deps: BakeDeps, s: Steps): Promise<BakeResult> {
+  const path = `${diskName}/${USER_PRESETS}`;
+  s.log(`${path} is not on the disk: no preset was ever stored on this OP-Z. A new file is made with only our presets; `
+    + "the OP-Z takes it at the eject even though it had none.");
+  const plan = planBake(emptyUserPresets(), request.engines, request.overwriteUser);
+  for (const l of plan.lines) s.log(l);
+  if (!plan.ok) return s.fail(plan.lines.at(-1)!.replace(/^error: +/, ""), { plan });
+  if (!plan.data) {
+    s.log("nothing to write: none of the picks has presets.");
+    return s.result(true, { plan });
+  }
+  const next = plan.data;
+  s.log("backup: none needed (there is no file yet)");
+  if (!(await deps.confirm({ request, disk: diskName, plan, backupId: null, created: true, lines: [...s.lines] }))) {
+    s.log("cancelled.");
+    return s.result(false, { cancelled: true, plan });
+  }
+  if (await exists(config, "userPresets.dat")) return s.fail(`${path} appeared since the disk was read. Nothing written; run it again.`, { plan });
+
+  const dotBefore = await exists(config, APPLE_DOUBLE);
+  let ok: boolean;
+  try {
+    ok = await writeChecked(await config.getFileHandle("userPresets.dat", { create: true }), next);
+  } catch (e) {
+    ok = false;
+    s.log(`error:   writing ${path} failed (${(e as Error).message})`);
+  }
+  if (!ok) {
+    s.log("verify:  the new file is not right; deleting it so the OP-Z doesn't take it");
+    const gone = await config.removeEntry("userPresets.dat").then(() => true, (e) => named(e) === "NotFoundError");
+    return s.fail(gone ? `${path} could not be written correctly; it is deleted again, the disk is as it was.`
+      : `${path} could not be written correctly and could not be deleted: delete config/userPresets.dat on the disk before you eject.`, { plan });
+  }
+  s.log(`written and read back (sha256 ${(await sha256(next)).slice(0, 16)}).`);
+  const warnings: string[] = [];
+  if (await exists(config, APPLE_DOUBLE)) {
+    const w = `config/${APPLE_DOUBLE} is on the disk${dotBefore ? "" : " (macOS wrote it with this write: file attributes on a FAT disk)"}; `
+      + "the OP-Z will move it to rejected/ at the eject (harmless). This app leaves it alone.";
+    warnings.push(w);
+    s.log(`warning: ${w}`);
+  }
+  s.log("Now eject the OP-Z disk: the OP-Z imports the new file, loads the presets and restarts. They are user presets "
+    + "from then on and stay with nothing connected. Nothing to undo: the OP-Z had no stored presets before.");
+  return s.result(true, { written: true, created: true, plan, warnings });
 }
 
 async function sha256(data: Uint8Array): Promise<string> {

@@ -12,7 +12,7 @@ slot map back if it differs. Nothing here writes to an OP-Z any other way.
 | 1 Pick | **Per track**, as on the OP-Z: tabs for tracks 1–10 (kick, snare, perc, sample · bass, lead, arp, chord · fx1, fx2), and for the track shown its ten black keys, each set to one of our engines, *Original* (the sound the first backup had there) or *Leave as it is*. Every key starts as *Leave as it is*, so nothing changes until the visitor picks a sound for a key (step 3 stays off until then). Ticking an engine in the track's list puts it on the first key left as it is. *Featured* (the catalogue's `featured` engines on keys 1–8, at most `FEATURED_PICKS`), *All original*, and *Copy to* the other tracks of the same kind. *Listen* sends `opfree:audition` to the lab; the lab's `opfree:pick` puts an engine on (or takes it off) every track it is made for | none |
 | 2 Connect & back up | Web MIDI with SysEx (Chrome or Edge on a computer, https or localhost) with the *quit TE's app* warning, or the **demo OP-Z** (the core's `FakeOpz`). Reads the settings and backs them up at once: the first backup of an OP-Z in this browser is what *original* and *Restore original layout* go back to | none (a read) |
 | 3 Install | One confirm sheet: every slot before → after, the slots left alone (the visitor's samples), the engines and files sent, restart needed, the backup id. Then the core's `install` per engine (install only, no slot), `presetsPush` for engines already installed, and one `writeSlotMap` for the layout, each with its own backup, checks and read-back; the batch stops at the first failure | engines, `patch.json`, the slot map |
-| 4 Content mode | The user-sample check (no disk action while any sample the visitor made sits in no slot), the device gesture (hold *track* while switching on, manual p.61), then the bake of the picks' presets into `config/userPresets.dat` through the folder picker: backup (in this browser; saved as a file only when the browser can't keep data, e.g. a private window), confirm, write, read back, the original put back on a mismatch | `config/userPresets.dat` only |
+| 4 Content mode | The user-sample check (no disk action while any sample the visitor made sits in no slot), the device gesture (hold *track* while switching on, manual p.61), then the bake of the picks' presets into `config/userPresets.dat` through the folder picker: backup (in this browser; saved as a file only when the browser can't keep data, e.g. a private window), confirm, write, read back, the original put back on a mismatch. An OP-Z on which no preset was ever stored by hand has no such file: the bake then **makes** it (an empty store with only our presets; nothing to back up; deleted again on a mismatch), not yet tested on hardware (H-9b below). The demo has *Try it as a new OP-Z* for that case | `config/userPresets.dat` only |
 | 5 Eject & play | Eject, pick a sound (hold *track*, tap a black key), and **Restore**: any settings backup (through `writeSlotMap`), or a preset-store backup back onto the disk | the slot map, or `userPresets.dat` |
 
 **Which engine goes on which track.** Synth and drum engines only on tracks 1–8, effects only on fx1 and fx2 (9 and
@@ -117,5 +117,32 @@ bake`, H-9); the panel says so where it matters. Hardware checklist for the devi
    `opz.py presets bake --disk … --show` lists them.
 9. **Put back** that preset-store backup from step 8 in content mode: the file is the original again.
 10. **Restore original layout** in normal mode: the sheet lists every cell; verified; the OP-Z has its first layout.
+
+### H-9b: making the preset file on an OP-Z that has none
+
+Content mode takes a `config/userPresets.dat` from the disk at the eject even when the OP-Z has none [code, device:
+the config import callback `0x80034d68`, docs/research/presets.md]; no OP-Z has been seen to yet. Run it from this
+branch on `http://localhost:5181/#/synths` (the `op-free-loader` dev server), not the live site.
+
+1. **Keep what's on it.** Before formatting: content mode, copy the whole OP-Z disk to the Mac (projects,
+   samplepacks, `config/userPresets.dat` with your hand-stored presets), eject; in normal mode `opz.py backup`.
+2. **Format** the OP-Z your usual way.
+3. **No file yet.** Content mode: the disk's `config/` has **no** `userPresets.dat` (look only), eject. If it is there,
+   stop: the format kept it, and this check needs an OP-Z without one.
+4. **One engine.** Normal mode, desktop Chrome, step 2 *Connect over USB*, step 1 one engine with presets (e.g. table
+   on bass key 1), step 3 *Review and install…* (check the sheet: one cell, one engine) → *Install* → verified.
+5. **Make the file.** Disconnect, content mode, step 4 *Choose the OP-Z disk and bake…*. Expected: the sheet says
+   *Create config/userPresets.dat on OP-Z with our presets?*, no *Backed up first* line → *Write presets* → *The preset
+   file was made and read back*. On the Mac: `config/userPresets.dat` is 351,202 bytes;
+   `opz.py presets bake --disk /Volumes/OP-Z --show` lists table's presets.
+6. **Eject.** Expected: the OP-Z imports and restarts. Hold *bass*: the white keys of table's presets lit **solid**.
+   Switch off and on with nothing connected: still there.
+7. **The OP-Z keeps it.** Content mode again: `config/userPresets.dat` is back on the disk (the OP-Z's own copy),
+   `--show` lists the same presets. Then store one preset by hand on another key, restart: ours and that one both
+   there.
+
+If step 6 shows no presets: next content mode, look in `rejected/` and `config/`, and send *Copy report* plus
+`--show`. Rollback: none needed (the OP-Z had no stored presets); step 1's copy brings back the old projects and
+presets (put `userPresets.dat` back in `config/` in content mode, eject).
 
 Report each step's sheet and result, and after a failure or a hang *Copy report* (in the *Log* at the bottom of the panel).

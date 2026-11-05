@@ -7,10 +7,10 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Doc, FakeOpz, type Transport, assign, dumps, loads, parseUserPresets, recordPlugId, slotCells, utf8 } from "../core.ts";
+import { type Doc, FakeOpz, type Transport, assign, dumps, loads, parseUserPresets, recordPlugId, slotCells, storedUserPresets, utf8 } from "../core.ts";
 import { type LoaderConfirm, LoaderController, OPEN_WAIT, type OpenWait } from "../controller.ts";
 import { DEMO_USER_SAMPLES, DemoDisk, demoFiles } from "../demo.ts";
-import { runBake } from "../disk.ts";
+import { type BakeConfirm, emptyUserPresets, runBake } from "../disk.ts";
 import { type Choice, allOriginal, defaultChoice, featuredChoice, pickedDirs } from "../model.ts";
 import { presetDocs } from "../plan.ts";
 import { gateOpen, sampleGate } from "../samplegate.ts";
@@ -272,4 +272,63 @@ test("the start (every key as it is): nothing to install, nothing asked, nothing
   assert.ok(r.ok);
   assert.equal(asked.length, 0);
   assert.deepEqual([...fake.files.keys()].sort(), [...before.keys()].sort());
+});
+
+const bakeEngines = () => pickedDirs(featuredChoice(engines)).map((dir) => engines.find((e) => e.dir === dir)!)
+  .map((e) => ({ name: e.dir, manifest: e.manifest, presets: presetDocs(e) }));
+
+test("a new OP-Z's disk (no preset file): the bake makes one with only our presets, user bits set", async () => {
+  const disk = DemoDisk.fresh();
+  const bake = bakeEngines();
+  const asked: BakeConfirm[] = [];
+  let backedUp = 0;
+  const r = await runBake(disk, { kind: "bake", engines: bake, overwriteUser: false }, {
+    log: () => {}, backup: async () => (backedUp++, "b"), confirm: async (c) => (asked.push(c), true),
+  });
+  assert.ok(r.ok && r.written && r.created, r.lines.join("\n"));
+  assert.equal(backedUp, 0, "nothing to back up");
+  assert.equal(asked.length, 1);
+  assert.ok(asked[0].created && asked[0].backupId === null);
+  const data = disk.files.get("config/userPresets.dat")!;
+  assert.equal(data.length, 351_202, "the size the OP-Z reads (2 + 200 × 1756)");
+  assert.deepEqual([...data.subarray(0, 2)], [1, 0], "version 1");
+  const records = parseUserPresets(data);
+  const ours = records.filter((rec) => recordPlugId(rec) !== 0);
+  assert.deepEqual(ours.map(recordPlugId).sort(), bake.filter((e) => e.presets.length).map((e) => e.manifest.plug.id).sort());
+  for (const rec of ours) {
+    const e = bake.find((x) => x.manifest.plug.id === recordPlugId(rec))!;
+    assert.equal(storedUserPresets(rec).length, e.presets.length, `${e.name}: every preset with its user bit`);
+  }
+  // the next bake finds the file and changes nothing
+  const again = await runBake(disk, { kind: "bake", engines: bake, overwriteUser: false }, { log: () => {}, backup: async () => "b", confirm: async () => true });
+  assert.ok(again.ok && !again.written && !again.created);
+});
+
+test("a new OP-Z's disk: cancel writes nothing; a bad read-back deletes the new file; show and restore refuse", async () => {
+  const disk = DemoDisk.fresh();
+  const no = await runBake(disk, { kind: "bake", engines: bakeEngines(), overwriteUser: false }, { log: () => {}, backup: async () => "b", confirm: async () => false });
+  assert.ok(no.cancelled && !disk.files.size);
+
+  class Garbling extends DemoDisk {
+    override async getDirectoryHandle(name: string) {
+      const dir = (await super.getDirectoryHandle(name)) as DemoDisk;
+      const getFile = dir.getFileHandle.bind(dir);
+      dir.getFileHandle = async (n, o) => {
+        const f = await getFile(n, o);
+        return { ...f, createWritable: async () => { const w = await f.createWritable(); return { ...w, write: (d: Uint8Array) => w.write(d.subarray(1)) }; } };
+      };
+      return dir;
+    }
+  }
+  const bad = new Garbling(new Map());
+  const r = await runBake(bad, { kind: "bake", engines: bakeEngines(), overwriteUser: false }, { log: () => {}, backup: async () => "b", confirm: async () => true });
+  assert.ok(!r.ok && !r.written);
+  assert.match(r.error!, /deleted again, the disk is as it was/);
+  assert.equal(bad.files.size, 0);
+
+  for (const request of [{ kind: "show" } as const, { kind: "restore", data: emptyUserPresets(), source: "b1" } as const]) {
+    const x = await runBake(disk, request, { log: () => {}, backup: async () => "b", confirm: async () => true });
+    assert.ok(!x.ok && !disk.files.size, request.kind);
+    assert.match(x.error!, /no preset was ever stored/);
+  }
 });
