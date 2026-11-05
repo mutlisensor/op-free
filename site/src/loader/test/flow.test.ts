@@ -11,7 +11,7 @@ import { type Doc, FakeOpz, type Transport, assign, dumps, loads, parseUserPrese
 import { type LoaderConfirm, LoaderController, OPEN_WAIT, type OpenWait } from "../controller.ts";
 import { DEMO_USER_SAMPLES, DemoDisk, demoFiles } from "../demo.ts";
 import { runBake } from "../disk.ts";
-import { type Choice, allOriginal, defaultChoice, pickedDirs } from "../model.ts";
+import { type Choice, allOriginal, defaultChoice, featuredChoice, pickedDirs } from "../model.ts";
 import { presetDocs } from "../plan.ts";
 import { gateOpen, sampleGate } from "../samplegate.ts";
 import { MemoryLoaderStore, firstBackup } from "../store.ts";
@@ -47,7 +47,7 @@ test("back up, then install the default picks: one confirm, every engine and slo
   const first = firstBackup(await store.list(), "demo");
   assert.ok(first, "the first backup of this OP-Z");
 
-  const r = await install(c, defaultChoice(engines));
+  const r = await install(c, featuredChoice(engines));
   assert.ok(r.ok, r.lines.join("\n"));
   assert.equal(asked.length, 1, "asked once for the whole batch");
   const sheet = asked[0];
@@ -67,7 +67,7 @@ test("back up, then install the default picks: one confirm, every engine and slo
   assert.ok(fake.files.has("engines/syn1.engine"));
   assert.equal(c.device?.slots && slotCells(c.device.slots).get("4:1"), 61010, "the status is the read-back");
 
-  const again = await install(c, defaultChoice(engines));
+  const again = await install(c, featuredChoice(engines));
   assert.ok(again.ok);
   assert.equal(asked.length, 2, "the presets are pushed again (the OP-Z forgets them at a restart)");
   assert.equal(asked[1].changes.length, 0);
@@ -79,7 +79,7 @@ test("cancel at the sheet: nothing written", async () => {
   await c.backup();
   const before = new Map(fake.files);
   say(false);
-  const r = await install(c, defaultChoice(engines));
+  const r = await install(c, featuredChoice(engines));
   assert.equal(r.ok, false);
   assert.ok(r.cancelled);
   assert.deepEqual([...fake.files.keys()].sort(), [...before.keys()].sort());
@@ -91,7 +91,7 @@ test("a refused plan writes nothing and asks nothing", async () => {
   await c.backup();
   const clash = engines.map((e) => (e.dir === "syn3" ? { ...e, manifest: { ...e.manifest, memoryslot: 27 } } : e));
   const before = new Map(fake.files);
-  const r = await c.install({ engines: clash, choice: defaultChoice(engines), bytes: async () => placeholder() });
+  const r = await c.install({ engines: clash, choice: featuredChoice(engines), bytes: async () => placeholder() });
   assert.equal(r.ok, false);
   assert.equal(asked.length, 0);
   assert.ok(r.highlights.some((l) => /memory slot 27/.test(l)));
@@ -102,7 +102,7 @@ test("a missing engine file stops the batch before anything is asked or written"
   const { fake, c, asked } = setup();
   await c.backup();
   const before = new Map(fake.files);
-  const r = await c.install({ engines, choice: defaultChoice(engines), bytes: async (e) => {
+  const r = await c.install({ engines, choice: featuredChoice(engines), bytes: async (e) => {
     if (e.dir === "syn5") throw new Error("syn5.engine: HTTP 404");
     return placeholder();
   } });
@@ -115,8 +115,8 @@ test("original on every synth track puts TE's plugs back with a slot-map write o
   const { fake, c, asked } = setup();
   const before = docs(fake);
   await c.backup();
-  assert.ok((await install(c, defaultChoice(engines))).ok);
-  let choice = defaultChoice(engines);
+  assert.ok((await install(c, featuredChoice(engines))).ok);
+  let choice = featuredChoice(engines);
   for (const t of [4, 5, 6, 7]) choice = allOriginal(choice, t);
   const r = await install(c, choice);
   assert.ok(r.ok, r.lines.join("\n"));
@@ -133,7 +133,7 @@ test("restore: the first backup's layout comes back through the core's writeSlot
   const { fake, store, c, asked } = setup();
   const before = docs(fake);
   await c.backup();
-  await install(c, defaultChoice(engines));
+  await install(c, featuredChoice(engines));
   const first = firstBackup(await store.list(), "demo")!;
   const r = await c.restore(first.id, engines.map((e) => e.manifest));
   assert.ok(r.ok, r.lines.join("\n"));
@@ -163,7 +163,7 @@ test("restore keeps a sample the visitor made since the backup", async () => {
 test("content mode: the gate, then the bake of the picks' presets onto the demo disk", async () => {
   const { c } = setup();
   await c.backup();
-  await install(c, defaultChoice(engines));
+  await install(c, featuredChoice(engines));
   const gate = sampleGate({ midi: true, device: c.device, last: null, confirmed: false });
   assert.equal(gate.kind, "checked");
   assert.ok(gate.kind === "checked" && gate.check.total === 3);
@@ -177,7 +177,7 @@ test("content mode: the gate, then the bake of the picks' presets onto the demo 
   assert.equal(gateOpen(blocked), false);
 
   const disk = new DemoDisk();
-  const picked = defaultChoice(engines);
+  const picked = featuredChoice(engines);
   const bake = pickedDirs(picked).map((dir) => engines.find((e) => e.dir === dir)!)
     .map((e) => ({ name: e.dir, manifest: e.manifest, presets: presetDocs(e) }));
   const backups: Uint8Array[] = [];
@@ -226,7 +226,7 @@ function setupUnanswered(from: number, seconds = Infinity) {
 test("a session open the OP-Z doesn't answer is tried once more, and the install goes on", async () => {
   // 0 the batch's backup, 1 the first engine's backup, 2 its push: unanswered (a friend's install, 2026-11-05)
   const { c, fake, lines, waits } = setupUnanswered(2, OPEN_WAIT + 1);
-  const r = await install(c, defaultChoice(engines));
+  const r = await install(c, featuredChoice(engines));
   assert.ok(r.ok, r.lines.join("\n"));
   assert.ok(lines.some((l) => l.startsWith(`the OP-Z did not answer within ${OPEN_WAIT} s`)));
   assert.ok(fake.files.has("engines/drm1.engine") && fake.files.has("engines/syn1.engine"));
@@ -238,7 +238,7 @@ test("a session open the OP-Z doesn't answer is tried once more, and the install
 test("no answer at all before a push: nothing written, no interrupted-write banner", async () => {
   const { c, fake } = setupUnanswered(2);
   const before = new Map(fake.files);
-  const r = await install(c, defaultChoice(engines));
+  const r = await install(c, featuredChoice(engines));
   assert.ok(!r.ok);
   assert.match(r.error!, /no \$34 reply/);
   assert.ok(r.highlights.includes("nothing written: the OP-Z didn't answer, so nothing was sent."));
@@ -248,7 +248,7 @@ test("no answer at all before a push: nothing written, no interrupted-write bann
 
 test("no answer for the read-back after a push: that write is unchecked, the banner says so", async () => {
   const { c } = setupUnanswered(3);
-  const r = await install(c, defaultChoice(engines));
+  const r = await install(c, featuredChoice(engines));
   assert.ok(!r.ok);
   assert.ok(c.interrupted, "the push went out and was never read back");
   assert.equal(c.interrupted!.op, "install");
@@ -257,10 +257,19 @@ test("no answer for the read-back after a push: that write is unchecked, the ban
 test("an engine installed and checked, then no answer: nothing half-written, no banner", async () => {
   // 0 batch backup; engine 1: 1 backup, 2 push, 3 read-back; engine 2: 4 backup… unanswered
   const { c, fake } = setupUnanswered(4);
-  const r = await install(c, defaultChoice(engines));
+  const r = await install(c, featuredChoice(engines));
   assert.ok(!r.ok);
   assert.ok(fake.files.has("engines/drm1.engine"), "the first engine of the batch");
   assert.ok(!fake.files.has("engines/drm2.engine"));
   assert.ok(r.highlights.some((l) => l.startsWith("nothing was left half-written")));
   assert.equal(c.interrupted, null);
+});
+
+test("the start (every key as it is): nothing to install, nothing asked, nothing written", async () => {
+  const { fake, c, asked } = setup();
+  const before = new Map(fake.files);
+  const r = await install(c, defaultChoice());
+  assert.ok(r.ok);
+  assert.equal(asked.length, 0);
+  assert.deepEqual([...fake.files.keys()].sort(), [...before.keys()].sort());
 });

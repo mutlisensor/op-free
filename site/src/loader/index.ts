@@ -19,7 +19,7 @@ import { type BakeEngine, FakeOpz, isUserSample } from "./core.ts";
 import { type BakeRequest, type DiskDir, backupMeta, diskPicker, runBake } from "./disk.ts";
 import { type Child, clear, download, formatTime, h } from "./dom.ts";
 import {
-  type Choice, type KeyPick, TRACKS, TRACK_LABELS, type TrackChoice, allOriginal, cautionOf, copyTrack, defaultTrack, engineTracks, keyOf,
+  type Choice, type KeyPick, TRACKS, TRACK_LABELS, type TrackChoice, allOriginal, cautionOf, copyTrack, defaultChoice, engineTracks, featuredChoice, featuredTrack, keyOf,
   pickEverywhere, pickedDirs, sanitizeChoice, setKey, tickEngine, trackEngines, trackGroup, trackPicks,
 } from "./model.ts";
 import { type LoaderPlan, blockedKeys, planLoader, plugLabel, presetDocs, userSampleCells } from "./plan.ts";
@@ -147,6 +147,9 @@ class LoaderPanel {
       this.catalogueError = (e as Error).message;
     }
     this.choice = sanitizeChoice(read(KEYS.choice), this.engines);
+    // until 2026-11-05 every track started on Featured (and connecting stored it): such an untouched choice now
+    // starts as everything left as it is, like a first visit
+    if (JSON.stringify(this.choice) === JSON.stringify(featuredChoice(this.engines))) this.choice = defaultChoice();
     // the lab starts with the featured engines ticked: tell it where the loader's (stored) picks differ
     const picked = new Set(pickedDirs(this.choice));
     for (const e of this.engines) if (!!e.featured !== picked.has(e.dir) && engineTracks(e).length) this.tellLab(e.dir, picked.has(e.dir));
@@ -292,13 +295,13 @@ class LoaderPanel {
     }
     const d = this.controller.device;
     if (d && this.controller.kind === "midi") this.sampleLast = sampleCheck(d);
-    // a track still on its default moves its engines past the keys holding the visitor's samples
+    // a track still on Featured moves its engines past the keys holding the visitor's samples
     if (d && this.choice) {
       const samples = userSampleCells(d);
       const same = (a: TrackChoice, b: TrackChoice) => JSON.stringify(a) === JSON.stringify(b);
       this.choice = this.choice.map((keys, t) => {
         const blocked = blockedKeys(t, samples);
-        return blocked.length && same(keys, defaultTrack(this.engines, t)) ? defaultTrack(this.engines, t, blocked) : keys;
+        return blocked.length && same(keys, featuredTrack(this.engines, t)) ? featuredTrack(this.engines, t, blocked) : keys;
       });
       write(KEYS.choice, this.choice);
     }
@@ -580,9 +583,13 @@ class LoaderPanel {
       h("p", { class: "ld-small dim ld-tracks__key" }, "Drums 1–4 · synths 5–8 · effects 9–10, as on the OP-Z. Each track gets its own sounds."),
       tabs,
       h("h3", { class: "ld-track-title" }, `Track ${t + 1} · ${TRACK_LABELS[t]}`, h("span", { class: "dim" }, ` · ${kind} only`)),
+      keys.some((k) => k.kind !== "keep") ? null : h("p", { class: "ld-small dim", "data-testid": "track-empty" },
+        `Every key keeps the sound your OP-Z has there. Pick one of our ${kind} for a key to replace it, or `, h("b", null, "Featured"),
+        " to fill keys 1–8."),
       this.keyStrip(),
       h("div", { class: "ld-row" },
-        h("button", { type: "button", class: "btn btn--small btn--ghost", "data-key": "track-featured", onclick: () => this.editTrack(this.withTrackKeys(t, defaultTrack(this.engines, t, blocked))) }, "Featured"),
+        h("button", { type: "button", class: "btn btn--small btn--ghost", "data-key": "track-featured", onclick: () => this.editTrack(this.withTrackKeys(t, featuredTrack(this.engines, t, blocked))),
+          title: `Our featured ${kind} on keys 1–8` }, "Featured"),
         h("button", { type: "button", class: "btn btn--small btn--ghost", "data-key": "track-original", onclick: () => this.editTrack(allOriginal(this.choice!, t, blocked)) }, "All original"),
         others.length ? h("button", {
           type: "button", class: "btn btn--small btn--ghost", "data-key": "track-copy",
@@ -750,7 +757,11 @@ class LoaderPanel {
     if (!c?.connected) return [h("p", { class: "dim" }, "Connect first (step 2): the plan is made from your OP-Z's own settings.")];
     const plan = this.plan();
     const out: Child[] = [];
-    if (plan) {
+    const nothing = !!plan && !plan.changes.length && !plan.installs.length;
+    if (nothing) {
+      out.push(h("p", { class: "ld-callout", "data-testid": "nothing-picked" }, "Nothing picked yet: every key is left as it is. In step 1, "
+        + "choose one of our sounds for each key you want to change."));
+    } else if (plan) {
       const work = plan.installs.filter((i) => i.action !== "ready");
       out.push(h("ul", { class: "ld-facts", "data-testid": "plan-summary" },
         h("li", null, `${work.length} engine${work.length === 1 ? "" : "s"} to send`, work.length ? h("span", { class: "dim" }, ` (${work.map((i) => i.label).join(", ")})`) : null),
@@ -767,7 +778,7 @@ class LoaderPanel {
     out.push(h("p", { class: "ld-small dim" }, "One sheet shows every slot before → after, then each engine goes through the same backup, check and "
       + "read-back as the command-line tools. Pushed presets stay until the OP-Z restarts; step 4 keeps them for good."));
     out.push(h("div", { class: "ld-row" }, h("button", {
-      type: "button", class: "btn btn--primary btn--small", "data-testid": "install", disabled: !!c.busy || !plan || plan.errors.length > 0,
+      type: "button", class: "btn btn--primary btn--small", "data-testid": "install", disabled: !!c.busy || !plan || plan.errors.length > 0 || nothing,
       onclick: () => void this.install(),
     }, "Review and install…")));
     return out;

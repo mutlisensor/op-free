@@ -4,8 +4,9 @@
  * Per track: each of the OP-Z's ten tracks (kick, snare, perc, sample, bass, lead, arp, chord, fx1, fx2) has ten sound
  * slots, the black keys 1…0 (manual p.25), and the visitor says for each key of each track what goes there: one of our
  * engines, the *original* sound, or nothing changed. Ticking an engine in a track's list puts it on that track's first
- * key left as it is; the key strip moves it anywhere. `DEFAULT_PICKS` (8) featured engines are on keys 1–8 of every
- * track they are made for, so keys 9 and 0 stay as they are, for the visitor's own samples and sounds.
+ * key left as it is; the key strip moves it anywhere. Every key starts as it is: nothing changes on the OP-Z until the
+ * visitor picks a sound for a key. *Featured* fills a track with up to `FEATURED_PICKS` (8) featured engines on keys
+ * 1–8, so keys 9 and 0 stay as they are, for the visitor's own samples and sounds.
  *
  * The boundary: synth and drum engines only on tracks 1–8, effects only on fx1 and fx2 (tracks 9 and 10), as the OP-Z
  * is laid out; within that, an engine goes only on the tracks of its kind (synths on bass–chord, drums on kick–sample)
@@ -20,8 +21,8 @@ import type { CatalogueEngine } from "../shared/catalogue.ts";
 
 /** Sound slots per track (the black keys 1…0). */
 export const SLOTS_PER_TRACK = 10;
-/** Featured engines put on each track by default: keys 9 and 0 stay as they are. */
-export const DEFAULT_PICKS = 8;
+/** Featured engines *Featured* puts on a track: keys 9 and 0 stay as they are. */
+export const FEATURED_PICKS = 8;
 /** Our test plugs (opz_test_*): never offered. */
 export const TEST_PLUG_MIN = 60900;
 export const TEST_PLUG_MAX = 60999;
@@ -139,13 +140,13 @@ export function pickedDirs(c: Choice): string[] {
 }
 
 /**
- * A track's default: its featured engines (no caution), at most DEFAULT_PICKS, on the first keys that are not
- * `blocked`; a catalogue that features none for the track gets its first DEFAULT_PICKS engines. Other keys: as they are.
+ * *Featured* on a track: its featured engines (no caution), at most FEATURED_PICKS, on the first keys that are not
+ * `blocked`; a catalogue that features none for the track gets its first FEATURED_PICKS engines. Other keys: as they are.
  */
-export function defaultTrack(engines: readonly CatalogueEngine[], track: number, blocked: readonly number[] = []): TrackChoice {
+export function featuredTrack(engines: readonly CatalogueEngine[], track: number, blocked: readonly number[] = []): TrackChoice {
   const list = trackEngines(engines, track).filter((e) => !cautionOf(e));
   const featured = list.filter((e) => e.featured);
-  const dirs = (featured.length ? featured : list).slice(0, DEFAULT_PICKS).map((e) => e.dir);
+  const dirs = (featured.length ? featured : list).slice(0, FEATURED_PICKS).map((e) => e.dir);
   const out: TrackChoice = Array.from({ length: SLOTS_PER_TRACK }, () => KEEP);
   let k = 0;
   for (const dir of dirs) {
@@ -156,8 +157,14 @@ export function defaultTrack(engines: readonly CatalogueEngine[], track: number,
   return out;
 }
 
-export function defaultChoice(engines: readonly CatalogueEngine[], blocked: Blocked = NOTHING_BLOCKED): Choice {
-  return TRACKS.map((t) => defaultTrack(engines, t, blocked(t)));
+/** The start: every key of every track as it is, so the visitor picks each sound that replaces one. */
+export function defaultChoice(): Choice {
+  return TRACKS.map(() => Array.from({ length: SLOTS_PER_TRACK }, () => KEEP));
+}
+
+/** *Featured* on every track (what the loader started with until 2026-11-05). */
+export function featuredChoice(engines: readonly CatalogueEngine[], blocked: Blocked = NOTHING_BLOCKED): Choice {
+  return TRACKS.map((t) => featuredTrack(engines, t, blocked(t)));
 }
 
 export interface Edit {
@@ -267,7 +274,7 @@ function keyPick(raw: unknown, engines: readonly CatalogueEngine[], track: numbe
  * left as they are, an engine twice on one track kept on its first key only. Anything else: the default.
  */
 export function sanitizeChoice(raw: unknown, engines: readonly CatalogueEngine[]): Choice {
-  if (!Array.isArray(raw) || raw.length !== TRACKS.length) return defaultChoice(engines);
+  if (!Array.isArray(raw) || raw.length !== TRACKS.length) return defaultChoice();
   return TRACKS.map((t) => {
     const keys = Array.isArray(raw[t]) ? raw[t] : [];
     const seen = new Set<string>();

@@ -10,8 +10,8 @@
  *   else is an error, so a stored or hand-made choice can't cross that line either;
  * - *original* puts back the plug the first backup of this OP-Z had in that cell (TE's own sound; it stays installed
  *   when we displace it, so this is a slot-map change only);
- * - a slot the picks leave alone keeps what it has, except one of our catalogue's plugs that is no longer picked
- *   there: that cell goes back to its original too.
+ * - a slot the picks leave alone keeps whatever it has, ours included: the loader starts with every key left as it
+ *   is, so a visit with a fresh browser changes nothing; taking one of our engines off a key is *original* there.
  */
 
 import type { CatalogueEngine } from "../shared/catalogue.ts";
@@ -30,8 +30,6 @@ export type CellWhy =
   | "engine"
   /** the original plug goes (back) here */
   | "original"
-  /** one of our plugs that is no longer picked here: back to the original */
-  | "revert"
   /** left as it is */
   | "keep"
   /** the visitor's own sample: never touched */
@@ -153,7 +151,6 @@ export function planLoader(input: PlanInput): LoaderPlan {
   const orig = input.original ? slotCells(input.original) : null;
   const installed = new Set<number>((device.plugs.plugs ?? []).map((p: Doc) => p.id));
   const samples = userSampleCells(device);
-  const ours = new Set(engines.map((e) => e.manifest.plug.id));
   const byDir = new Map(engines.map((e) => [e.dir, e]));
   const cells: Cell[] = [];
   const skipped: Cell[] = [];
@@ -188,9 +185,6 @@ export function planLoader(input: PlanInput): LoaderPlan {
         }
       } else if (intent.kind === "original") {
         cell = original();
-      } else if (from !== null && ours.has(from)) {
-        const back = original();
-        cell = back.why === "original" ? { ...back, why: "revert" } : back;
       } else {
         cell = { track: t, slot: s, from, to: from, why: "keep" };
       }
