@@ -13,6 +13,8 @@ const coreDir = existsSync(publicCore) ? publicCore : labCore;
 export default defineConfig({
   base: "./",
   plugins: [cataloguePlugin()],
+  // the build the problem report names (src/shared/diag.ts): the commit on GitHub's runner, else "local"
+  define: { __OPFREE_BUILD__: JSON.stringify((process.env.GITHUB_SHA ?? "local").slice(0, 7)) },
   resolve: { alias: { "@opz/core": `${coreDir}/index.ts` } },
   server: { port: 5180, fs: { allow: [".", coreDir] } },
   build: { target: "es2022" },

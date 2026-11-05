@@ -39,6 +39,8 @@ export const FOOTER = `
         ${ext(LINKS.guides, "Guides")}
         ${ext(LINKS.roadmap, "Roadmap")}
         ${ext(LINKS.issues, "Report a problem")}
+        <button type="button" class="foot__report" data-copy-report
+          title="Copies this browser's problem log (errors, freezes, what you played) to paste into your report. Nothing is sent.">Copy report</button>
       </nav>
     </div>
     <p class="foot__fine">An independent community project. Not affiliated with, endorsed, sponsored or supported by

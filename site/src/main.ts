@@ -9,8 +9,10 @@ import { mountLab } from "./lab/index.ts";
 import { mountLoader } from "./loader/index.ts";
 import { gateIntro, pageMotion, scrollTop } from "./motion.ts";
 import { FIRMWARE, FOOTER, GATE, HEADER, HOME, SYNTHS } from "./pages.ts";
+import { copyReport, startDiag } from "./shared/diag.ts";
 import type { Mounted } from "./shared/mount.ts";
 
+startDiag();
 const app = document.getElementById("app")!;
 let cleanups: Array<() => void> = [];
 
@@ -48,6 +50,7 @@ function renderPage(page: string, anchor: string | null): void {
     app.querySelector<HTMLElement>("#main")?.focus();
   });
   app.querySelector<HTMLElement>("#main")?.setAttribute("tabindex", "-1");
+  wireReport(app.querySelector<HTMLButtonElement>("[data-copy-report]"));
 
   const mounted: Mounted[] = [];
   if (page === "synths") {
@@ -59,6 +62,15 @@ function renderPage(page: string, anchor: string | null): void {
 
   if (anchor) requestAnimationFrame(() => document.getElementById(anchor)?.scrollIntoView());
   else scrollTop();
+}
+
+/** The footer's *Copy report*: the problem log on the clipboard (src/shared/diag.ts). */
+function wireReport(button: HTMLButtonElement | null): void {
+  button?.addEventListener("click", async () => {
+    const copied = await copyReport();
+    button.textContent = copied ? "Report copied" : "Report saved as a file";
+    setTimeout(() => (button.textContent = "Copy report"), 2500);
+  });
 }
 
 function render(): void {

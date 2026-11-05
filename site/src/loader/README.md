@@ -31,6 +31,14 @@ that names such a cell is skipped there (listed on the sheet); the core's `write
 refuses any map that would leave one in no slot, a restore keeps their current cells, and step 4 stays locked while
 one is loose (SAFETY.md rule 5).
 
+**The problem log.** The panel's *Log* is the site's problem log (`src/shared/diag.ts`): the loader's and the bake's
+lines, uncaught errors, `console.error`, the page being frozen (a visible tab's timer more than 2 s late), page opens
+and closes (a visit with no close crashed, froze or was killed), and the lab's `opfree:audition` / `opfree:pick`. Each
+line is saved to localStorage as it is written, so a frozen tab leaves it for the next visit; at most 600 lines. Nothing
+is sent anywhere: *Copy report* (in the Log and in every page's footer) puts the browser, the loader's state and picks
+(`reportPart`) and the log on the clipboard, or saves a text file where the clipboard is blocked. Testers paste it into
+their message or a GitHub issue.
+
 ## Files
 
 | File | What |
@@ -98,4 +106,4 @@ bake`, H-9); the panel says so where it matters. Hardware checklist for the devi
 9. **Put back** that preset-store backup from step 8 in content mode: the file is the original again.
 10. **Restore original layout** in normal mode: the sheet lists every cell; verified; the OP-Z has its first layout.
 
-Report each step's sheet, result and log (the *Log* at the bottom of the panel).
+Report each step's sheet and result, and after a failure or a hang *Copy report* (in the *Log* at the bottom of the panel).
