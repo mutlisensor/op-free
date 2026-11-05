@@ -13,7 +13,7 @@ import "./loader.css";
 import { type CatalogueEngine, loadCatalogue } from "../shared/catalogue.ts";
 import { clearDiag, copyReport, diagLines, note, reportPart } from "../shared/diag.ts";
 import type { AuditionEvent, Mounted, PickEvent } from "../shared/mount.ts";
-import { type LoaderConfirm, LoaderController, type OpResult } from "./controller.ts";
+import { type LoaderConfirm, LoaderController, type OpResult, type OpenWait } from "./controller.ts";
 import { DemoDisk, demoFiles } from "./demo.ts";
 import { type BakeEngine, FakeOpz, isUserSample } from "./core.ts";
 import { type BakeRequest, type DiskDir, backupMeta, diskPicker, runBake } from "./disk.ts";
@@ -55,6 +55,16 @@ function write(key: string, value: unknown): void {
   }
 }
 
+/** The busy line's countdown once the OP-Z has kept a session open waiting for 2 s (a normal open takes ~0.5 s). */
+function waitText(w: OpenWait | null): string {
+  if (!w) return "";
+  const elapsed = (Date.now() - w.since) / 1000;
+  if (elapsed < 2) return "";
+  const left = Math.max(0, Math.ceil(w.seconds - elapsed));
+  return `The OP-Z hasn't answered yet${w.attempt === 2 ? " (second try)" : ""}: ${left} s left. Nothing is sent until it does. `
+    + "Is TE's OP-Z app closed, on this computer and on your phone?";
+}
+
 /** Why Web MIDI can't be used here, or null. */
 function midiUnavailable(): string | null {
   if (typeof (navigator as Navigator & { requestMIDIAccess?: unknown }).requestMIDIAccess !== "function") {
@@ -89,6 +99,7 @@ class LoaderPanel {
   private dropReport: () => void = () => {};
   private reportCopied: string | null = null;
   private logOpen = false;
+  private waitTimer: ReturnType<typeof setInterval> | null = null;
   private destroyed = false;
   private readonly onPick = (e: Event) => this.pickFromLab(e as PickEvent);
   /** Set while the loader sends its own opfree:pick, so it doesn't handle its own event. */
@@ -106,6 +117,7 @@ class LoaderPanel {
     this.destroyed = true;
     document.removeEventListener("opfree:pick", this.onPick);
     this.dropReport();
+    if (this.waitTimer) clearInterval(this.waitTimer);
     if (this.controller?.connected) this.controller.forceDisconnect();
     this.el.classList.remove("ld");
     this.el.replaceChildren();
@@ -428,6 +440,16 @@ class LoaderPanel {
     const pre = this.el.querySelector<HTMLElement>('[data-testid="log"]');
     if (pre) pre.scrollTop = pre.scrollHeight;   // the newest lines in view
     if (focusKey) this.el.querySelector<HTMLElement>(`[data-key="${CSS.escape(focusKey)}"]`)?.focus();
+    // while the OP-Z hasn't answered a session open: the countdown ticks without a whole re-render
+    if (this.controller?.waiting && !this.waitTimer) {
+      this.waitTimer = setInterval(() => {
+        const span = this.el.querySelector<HTMLElement>('[data-testid="wait"]');
+        if (span) span.textContent = waitText(this.controller.waiting);
+      }, 500);
+    } else if (!this.controller?.waiting && this.waitTimer) {
+      clearInterval(this.waitTimer);
+      this.waitTimer = null;
+    }
   }
 
   private view(): Child[] {
@@ -441,7 +463,8 @@ class LoaderPanel {
     const out: Child[] = [head];
     if (busy) {
       out.push(h("p", { class: "ld-busy", role: "status", "data-testid": "busy" }, h("i", { class: "ld-spin", "aria-hidden": "true" }),
-        busy === "install" ? "Installing… keep this tab in front and the OP-Z connected." : busy === "restore" ? "Restoring…" : "Reading the OP-Z…"));
+        busy === "install" ? "Installing… keep this tab in front and the OP-Z connected." : busy === "restore" ? "Restoring…" : "Reading the OP-Z…",
+        h("span", { class: "ld-wait", "data-testid": "wait" }, waitText(c.waiting))));
     }
     if (c?.interrupted) {
       const r = c.interrupted;

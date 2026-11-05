@@ -13,7 +13,8 @@
 
 import type { CatalogueEngine } from "../shared/catalogue.ts";
 import {
-  type Clock, type Doc, type Engine, Opz, SLOTS, TRACKS, type Transport, decodeFrame, loads, readU16le, slotMapChanges,
+  type Clock, type Doc, type Engine, FileSession, Opz, SLOTS, SessionError, TRACKS, type Transport, decodeFrame, loads, readU16le,
+  slotMapChanges,
 } from "./core.ts";
 import type { Choice } from "./model.ts";
 import { type Cell, type InstallItem, cellName, planLoader, restoreTarget, toEngine } from "./plan.ts";
@@ -89,14 +90,75 @@ export interface InstallRequest {
 
 const WRITES = new Set<OpName>(["install", "restore"]);
 
-/** Opz that remembers the last settings it read: every flow ends with a read-back, which is the new status. */
+/** How long a session open waits for the OP-Z's `$34`, then the pause before the one more try (seconds). */
+export const OPEN_WAIT = 15;
+export const OPEN_PAUSE = 3;
+const NO_ANSWER = /no \$34 reply/;
+
+/** A session open the OP-Z hasn't answered yet: the panel shows a countdown. */
+export interface OpenWait {
+  attempt: 1 | 2;
+  seconds: number;
+  /** Date.now() when this try started. */
+  since: number;
+}
+
+/**
+ * Opz that remembers the last settings it read (every flow ends with a read-back, which is the new status), counts
+ * pushes, knows whether the last one has been read back yet, and opens each session with one more try: the OP-Z
+ * sends nothing and receives no file before it answers `$34`, so trying the open again repeats no step of a flow. A
+ * friend's install timed out right there, 2 ms after the backup's session closed (2026-11-05).
+ */
 class TrackingOpz extends Opz {
   lastRead: [Uint8Array, Uint8Array] | null = null;
+  pushes = 0;
+  /** A push started and no read-back has completed since: an error now may leave a write unchecked. */
+  unverified = false;
+  onWait: (w: OpenWait | null) => void = () => {};
 
   override async readSettings(): Promise<[Uint8Array, Uint8Array]> {
     const result = await super.readSettings();
     this.lastRead = result;
+    this.unverified = false;
     return result;
+  }
+
+  /** As the core's push(); counted once the OP-Z has answered the open, the moment files can start to go out. */
+  override push(files: Array<[string, Uint8Array]>, remove: number[] | null = null) {
+    return this.session((s) => {
+      this.pushes++;
+      this.unverified = true;
+      return s.push(files, remove);
+    });
+  }
+
+  /** As the core's session(), with open() tried twice. */
+  override async session<T>(body: (s: FileSession) => Promise<T>): Promise<T> {
+    const s = await this.openSession();
+    try {
+      return await body(s);
+    } finally {
+      await s.close();
+    }
+  }
+
+  private async openSession(): Promise<FileSession> {
+    for (const attempt of [1, 2] as const) {
+      const s = new FileSession(this.transport, { log: (m) => this.log("  " + m), clock: this.clock });
+      this.onWait({ attempt, seconds: OPEN_WAIT, since: Date.now() });
+      try {
+        await s.open(OPEN_WAIT);
+        return s;
+      } catch (e) {
+        if (attempt === 2 || !(e instanceof SessionError) || !NO_ANSWER.test(e.message)) throw e;
+        this.log(`the OP-Z did not answer within ${OPEN_WAIT} s (nothing was sent in this session); trying once more in ${OPEN_PAUSE} s`);
+        const until = this.clock() + OPEN_PAUSE;
+        while (this.clock() < until) await this.transport.receive(Math.max(1, (until - this.clock()) * 1000));
+      } finally {
+        this.onWait(null);
+      }
+    }
+    throw new Error("unreachable");
   }
 }
 
@@ -150,6 +212,8 @@ export class LoaderController {
   device: DeviceState | null = null;
   busy: OpName | null = null;
   interrupted: InterruptedWrite | null = null;
+  /** A session open the OP-Z hasn't answered yet, or null. */
+  waiting: OpenWait | null = null;
   private opz: TrackingOpz | null = null;
   private opLines: string[] | null = null;
   private lastBackupId: string | null = null;
@@ -181,6 +245,10 @@ export class LoaderController {
     const watched = new WatchedTransport(transport, (id) => this.log(`warning: the OP-Z is also sending file-service frames to `
       + `client ${id}: is TE's app or another tab connected? Close it (one client at a time).`));
     this.opz = new TrackingOpz(watched, { log: (line) => this.log(line), backups: this.store, confirm: (q) => this.coreConfirm(q), clock });
+    this.opz.onWait = (w) => {
+      this.waiting = w;
+      this.hooks.changed();
+    };
     this.hooks.changed();
   }
 
@@ -241,6 +309,8 @@ export class LoaderController {
     this.lastBackupId = null;
     this.lastBackup = null;
     opz.lastRead = null;
+    opz.unverified = false;
+    const pushes = opz.pushes;
     this.hooks.changed();
     const release = op === "status" ? null : await this.hooks.hold?.().catch(() => null);
     let ok = false;
@@ -256,8 +326,15 @@ export class LoaderController {
     if (opz.lastRead && this.opz === opz) {
       this.device = { plugs: loads(opz.lastRead[0]), slots: loads(opz.lastRead[1]), at: new Date().toISOString() };
     }
-    if (error !== undefined && WRITES.has(op) && this.lastBackupId !== null) {
-      this.setInterrupted({ op, backupId: this.lastBackupId, error, at: new Date().toISOString() });
+    if (error !== undefined && WRITES.has(op)) {
+      // only a push that wasn't read back can have left the OP-Z in a state nobody checked
+      if (opz.unverified && this.lastBackupId !== null) {
+        this.setInterrupted({ op, backupId: this.lastBackupId, error, at: new Date().toISOString() });
+      } else if (opz.pushes === pushes) {
+        this.log("nothing written: the OP-Z didn't answer, so nothing was sent.");
+      } else {
+        this.log("nothing was left half-written: everything sent before this was read back and checked.");
+      }
     }
     const lines = this.opLines;
     this.opLines = null;
@@ -268,7 +345,7 @@ export class LoaderController {
       op, ok, error, lines,
       cancelled: lines.includes("cancelled."),
       restart: ok && lines.some((l) => l.startsWith("RESTART THE OP-Z")),
-      highlights: lines.filter((l) => /^(error|warning|verify|restoring|slot map restore|slot map written|nothing to change|installed|nothing written|RESTART|presets pushed|batch:)/.test(l))
+      highlights: lines.filter((l) => /^(error|warning|verify|restoring|slot map restore|slot map written|nothing to change|installed|nothing written|nothing was left|RESTART|presets pushed|batch:)/.test(l))
         .map((l) => l.split("\n")[0]),
     };
   }

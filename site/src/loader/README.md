@@ -31,6 +31,15 @@ that names such a cell is skipped there (listed on the sheet); the core's `write
 refuses any map that would leave one in no slot, a restore keeps their current cells, and step 4 stays locked while
 one is loose (SAFETY.md rule 5).
 
+**When the OP-Z doesn't answer.** Each session open waits up to 15 s for the OP-Z's `$34` (normally ~0.5 s), then,
+after a 3 s pause, tries once more (`controller.ts` `TrackingOpz.session`); after 2 s the busy line counts down. The
+OP-Z receives no file before it answers, so the second try repeats no step of a flow [code: `web/core/src/session.ts`
+`open`, `push`]. A friend's first install stopped right there on 2026-11-05: 30 s with no `$34`, 2 ms after the
+backup's session closed; the cause is open (another client such as TE's app is the first guess). The interrupted-write
+banner appears only when a push went out and was never read back; otherwise the log says *nothing written* or
+*nothing was left half-written*. The core's warning about tracks 12–15 is dropped here: every OP-Z's slot map lists
+them [proven: our own backups].
+
 **The problem log.** The panel's *Log* is the site's problem log (`src/shared/diag.ts`): the loader's and the bake's
 lines, uncaught errors, `console.error`, the page being frozen (a visible tab's timer more than 2 s late), page opens
 and closes (a visit with no close crashed, froze or was killed), and the lab's `opfree:audition` / `opfree:pick`. Each

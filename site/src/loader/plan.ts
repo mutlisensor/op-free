@@ -248,7 +248,8 @@ export function planLoader(input: PlanInput): LoaderPlan {
   const target = cellsToDoc(targetCells, device.slots);
   const [slotErrors, slotWarnings] = slotMapProblems(plugs, target, device.slots);
   errors.push(...slotErrors);
-  warnings.push(...slotWarnings);
+  // every OP-Z's slot map lists tracks 12–15 (our own backups do): the core's note about them is no news here
+  warnings.push(...slotWarnings.filter((w) => !/is not a sound track/.test(w)));
   return { cells, changes: cells.filter((c) => c.from !== c.to), target, installs, errors, warnings, blocked, skipped };
 }
 

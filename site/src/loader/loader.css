@@ -31,7 +31,9 @@
 .ld-warn { color: var(--yellow); }
 .ld-note { font-size: 13.5px; color: var(--muted); }
 .ld-tested { font: 400 11px/1.5 var(--mono); letter-spacing: .02em; color: var(--yellow); }
-.ld-busy { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--muted); }
+.ld-busy { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 13.5px; color: var(--muted); }
+.ld-wait { flex: 1 1 100%; color: var(--text); }
+.ld-wait:empty { display: none; }
 .ld-spin { width: 12px; height: 12px; border: 2px solid var(--line-2); border-top-color: var(--yellow); border-radius: 50%; animation: ld-spin .8s linear infinite; }
 @keyframes ld-spin { to { transform: rotate(360deg); } }
 

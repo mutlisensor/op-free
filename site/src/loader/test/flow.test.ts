@@ -7,8 +7,8 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { type Doc, FakeOpz, assign, dumps, loads, parseUserPresets, recordPlugId, slotCells, utf8 } from "../core.ts";
-import { type LoaderConfirm, LoaderController } from "../controller.ts";
+import { type Doc, FakeOpz, type Transport, assign, dumps, loads, parseUserPresets, recordPlugId, slotCells, utf8 } from "../core.ts";
+import { type LoaderConfirm, LoaderController, OPEN_WAIT, type OpenWait } from "../controller.ts";
 import { DEMO_USER_SAMPLES, DemoDisk, demoFiles } from "../demo.ts";
 import { runBake } from "../disk.ts";
 import { type Choice, allOriginal, defaultChoice, pickedDirs } from "../model.ts";
@@ -193,4 +193,74 @@ test("content mode: the gate, then the bake of the picks' presets onto the demo 
   const put = await runBake(disk, { kind: "restore", data: backups[0], source: "b1" }, { log: () => {}, backup: async () => "b2", confirm: async () => true });
   assert.ok(put.ok && put.written);
   assert.ok(parseUserPresets(disk.files.get("config/userPresets.dat")!).every((rec) => recordPlugId(rec) === 0), "put back");
+});
+
+/**
+ * The OP-Z stops answering session opens: from its `from`-th `$34` (0 = the first) every `$34` is lost for `seconds`
+ * of its clock (the re-sent adverts included).
+ */
+function setupUnanswered(from: number, seconds = Infinity) {
+  const fake = new FakeOpz(demoFiles());
+  let n = 0;
+  let until: number | null = null;
+  const transport: Transport = {
+    send: (raw) => fake.send(raw),
+    async receive(ms) {
+      const raw = await fake.receive(ms);
+      if (!raw || raw[5] !== 0x34) return raw;
+      if (until === null && n++ === from) until = fake.now + seconds;
+      return until !== null && fake.now < until ? null : raw;
+    },
+  };
+  const store = new MemoryLoaderStore();
+  const lines: string[] = [];
+  const waits: Array<OpenWait | null> = [];
+  const c = new LoaderController(store, { log: (l) => lines.push(l), confirm: async () => true, changed: () => {} });
+  c.connect(transport, "demo", "demo", undefined, () => fake.now);
+  const tracked = { c, fake, lines, waits };
+  const changed = c.hooks.changed;
+  c.hooks.changed = () => { waits.push(c.waiting); changed(); };
+  return tracked;
+}
+
+test("a session open the OP-Z doesn't answer is tried once more, and the install goes on", async () => {
+  // 0 the batch's backup, 1 the first engine's backup, 2 its push: unanswered (a friend's install, 2026-11-05)
+  const { c, fake, lines, waits } = setupUnanswered(2, OPEN_WAIT + 1);
+  const r = await install(c, defaultChoice(engines));
+  assert.ok(r.ok, r.lines.join("\n"));
+  assert.ok(lines.some((l) => l.startsWith(`the OP-Z did not answer within ${OPEN_WAIT} s`)));
+  assert.ok(fake.files.has("engines/drm1.engine") && fake.files.has("engines/syn1.engine"));
+  assert.ok(waits.some((w) => w?.attempt === 2), "the panel saw the second try");
+  assert.equal(c.waiting, null);
+  assert.equal(c.interrupted, null);
+});
+
+test("no answer at all before a push: nothing written, no interrupted-write banner", async () => {
+  const { c, fake } = setupUnanswered(2);
+  const before = new Map(fake.files);
+  const r = await install(c, defaultChoice(engines));
+  assert.ok(!r.ok);
+  assert.match(r.error!, /no \$34 reply/);
+  assert.ok(r.highlights.includes("nothing written: the OP-Z didn't answer, so nothing was sent."));
+  assert.equal(c.interrupted, null, "nothing to check: nothing was sent");
+  assert.deepEqual([...fake.files.keys()].sort(), [...before.keys()].sort());
+});
+
+test("no answer for the read-back after a push: that write is unchecked, the banner says so", async () => {
+  const { c } = setupUnanswered(3);
+  const r = await install(c, defaultChoice(engines));
+  assert.ok(!r.ok);
+  assert.ok(c.interrupted, "the push went out and was never read back");
+  assert.equal(c.interrupted!.op, "install");
+});
+
+test("an engine installed and checked, then no answer: nothing half-written, no banner", async () => {
+  // 0 batch backup; engine 1: 1 backup, 2 push, 3 read-back; engine 2: 4 backup… unanswered
+  const { c, fake } = setupUnanswered(4);
+  const r = await install(c, defaultChoice(engines));
+  assert.ok(!r.ok);
+  assert.ok(fake.files.has("engines/drm1.engine"), "the first engine of the batch");
+  assert.ok(!fake.files.has("engines/drm2.engine"));
+  assert.ok(r.highlights.some((l) => l.startsWith("nothing was left half-written")));
+  assert.equal(c.interrupted, null);
 });

@@ -5,6 +5,8 @@
  * transport's, mapped to what probably happened, what state the OP-Z is in, and what to do next.
  */
 
+import { OPEN_WAIT } from "./controller.ts";
+
 export interface Advice {
   /** One line: what probably happened. */
   title: string;
@@ -36,6 +38,7 @@ export function explain(error: string, op: string): Advice | null {
     return {
       title: "The OP-Z did not answer the file service.",
       steps: [
+        `It was asked twice (${OPEN_WAIT} s, then once more). The loader sends nothing until the OP-Z answers, so this step wrote nothing; the log says what came before.`,
         "Is TE's OP-Z app (or another tab of this app) connected? Close it: one client at a time.",
         "Is the OP-Z in normal mode (not content or update mode), and are the right ports picked?",
         "Unplug and replug the OP-Z, then connect again.",
