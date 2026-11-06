@@ -169,7 +169,7 @@ class Device:
         logs, start = [], time.monotonic()
         last, started, pend = start, False, None
         while True:
-            chunk = self.port.read(self.port.in_waiting)
+            chunk = self.port.read(self.port.in_waiting or 1)
             now = time.monotonic()
             if chunk:
                 last = now
