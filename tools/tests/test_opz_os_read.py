@@ -84,6 +84,13 @@ class FakeConsole:
     def flush(self):
         pass
 
+    @property
+    def in_waiting(self):
+        k = min(self.chunk, len(self.queue))
+        if self.stall_after is not None:
+            k = min(k, max(0, self.stall_after - self.sent))
+        return k
+
     def read(self, n):
         if self.stall_after is not None and self.sent >= self.stall_after:
             self.clock.t += 0.5
