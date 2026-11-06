@@ -332,3 +332,26 @@ test("a new OP-Z's disk: cancel writes nothing; a bad read-back deletes the new 
     assert.match(x.error!, /no preset was ever stored/);
   }
 });
+
+test("the bake takes the OP-Z disk's config folder (Chrome won't open the top of a disk)", async () => {
+  const disk = new DemoDisk();
+  const config = await disk.getDirectoryHandle("config");
+  assert.equal(config.name, "config");
+  const asked: BakeConfirm[] = [];
+  const r = await runBake(config, { kind: "bake", engines: bakeEngines(), overwriteUser: true }, {
+    log: () => {}, backup: async () => "b", confirm: async (c) => (asked.push(c), true),
+  });
+  assert.ok(r.ok && r.written, r.lines.join("\n"));
+  assert.equal(asked[0].disk, "OP-Z");
+  assert.ok(r.lines.some((l) => l.includes("OP-Z/config/userPresets.dat")), "named as on the disk, not config/config/…");
+  assert.ok(parseUserPresets(disk.files.get("config/userPresets.dat")!).some((rec) => recordPlugId(rec) !== 0));
+
+  const fresh = await DemoDisk.fresh().getDirectoryHandle("config");
+  const made = await runBake(fresh, { kind: "bake", engines: bakeEngines(), overwriteUser: true }, { log: () => {}, backup: async () => "b", confirm: async () => true });
+  assert.ok(made.ok && made.created, "a new OP-Z's config folder: the file is made in it");
+
+  const elsewhere = new DemoDisk(new Map([["Documents/x.txt", new Uint8Array(1)]]), "Downloads", "", new Set());
+  const wrong = await runBake(elsewhere, { kind: "bake", engines: bakeEngines(), overwriteUser: true }, { log: () => {}, backup: async () => "b", confirm: async () => true });
+  assert.ok(!wrong.ok);
+  assert.match(wrong.error!, /not the OP-Z's config folder/);
+});

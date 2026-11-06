@@ -95,7 +95,8 @@ class LoaderPanel {
   private lastBake: { ok: boolean; text: string } | null = null;
   private sampleLast: SampleCheck | null = null;
   private sampleConfirmed = false;
-  private overwriteUser = false;
+  /** Our presets replace hand-stored ones on the same keys unless the visitor unticks it (the old file is kept, step 5). */
+  private overwriteUser = true;
   private dropReport: () => void = () => {};
   private reportCopied: string | null = null;
   private logOpen = false;
@@ -803,8 +804,10 @@ class LoaderPanel {
           onclick: () => { this.demoDisk = DemoDisk.fresh(); this.lastBake = null; this.notice = { kind: "ok", text: "The demo disk is now a new OP-Z's: no preset file yet." }; this.render(); },
         }, "Try it as a new OP-Z (no preset file)"))
         : [h("li", null, "Disconnect here, then switch the OP-Z off."),
-          h("li", null, "Hold the track key while you switch it on (content mode, manual p.61). It shows up as a disk named OP-Z."),
-          h("li", null, "Choose that disk below.")]));
+          h("li", null, "Hold the track key while you switch it on (content mode, manual p.61). It shows up on your computer as a disk named OP-Z."),
+          h("li", { "data-testid": "pick-config" }, "Click the button below. In the window that opens, click ", h("b", null, "OP-Z"),
+            " in the sidebar, open the folder ", h("b", null, "config"), " and click Select. Pick that config folder, not the disk "
+            + "itself: Chrome refuses the top of a disk (“contains system files”). Nothing is saved to your computer.")]));
     const engines = this.bakeEngines();
     const picker = diskPicker();
     out.push(h("label", { class: "ld-check" }, h("input", {
@@ -823,7 +826,7 @@ class LoaderPanel {
       type: "button", class: "btn btn--primary btn--small", "data-testid": "bake",
       disabled: !!c?.busy || !gateOpen(gate) || !engines.length || (!demo && !picker),
       onclick: () => void this.disk({ kind: "bake", engines, overwriteUser: this.overwriteUser }),
-    }, demo ? "Bake onto the demo disk…" : "Choose the OP-Z disk and bake…")));
+    }, demo ? "Bake onto the demo disk…" : "Choose the OP-Z's config folder and bake…")));
     out.push(h("p", { class: "ld-small dim" }, `${engines.length} engine${engines.length === 1 ? "" : "s"} with presets picked. `
       + "Proven on hardware with the command-line tool; from the browser not yet tested on hardware."));
     return out;
@@ -880,7 +883,7 @@ class LoaderPanel {
         h("ul", { class: "ld-backups" }, rest.slice(0, 40).map(row))) : null,
       presets.length ? [h("p", { class: "label" }, "Preset store backups (content mode)"),
         h("p", { class: "ld-small dim" }, "The OP-Z's preset file as it was before each bake, kept in this browser. "
-          + "Put back restores it in content mode; Download saves a copy for your computer only (it doesn't go on the OP-Z)."),
+          + "Put back restores it in content mode (choose the OP-Z disk's config folder, as in step 4); Download saves a copy for your computer only (it doesn't go on the OP-Z)."),
         h("ul", { class: "ld-backups" }, presets.slice(0, 6).map((b) => h("li", null,
           h("span", null, formatTime(b.created), h("small", { class: "dim" }, ` ${b.source}`)),
           h("span", { class: "ld-row" },

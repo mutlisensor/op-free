@@ -3,7 +3,8 @@
  *
  * Bake our presets into the OP-Z's own user-preset store, config/userPresets.dat, on its content-mode disk (the
  * OP-Z mounted as a USB disk: hold track while switching it on). What `opz.py presets bake --disk /Volumes/OP-Z` does,
- * through Chrome's File System Access API: the user picks the disk, and this reads the one file, checks it strictly,
+ * through Chrome's File System Access API: the user picks the disk's config folder (Chrome refuses the top of a disk
+ * as "system files"; the disk itself is taken too where a browser allows it), and this reads the one file, checks it strictly,
  * plans (the core's userpresets.ts), backs the original up, asks, writes it in place and reads it back. The OP-Z
  * imports the file when the disk is ejected; from then on the presets are user presets and survive every restart
  * with nothing connected (docs/research/presets.md, "Presets that stay"; hardware check H-9).
@@ -147,15 +148,19 @@ export async function runBake(disk: DiskDir, request: BakeRequest, deps: BakeDep
     log(`error:   ${error}`);
     return result(false, { error, ...extra });
   };
-  const path = `${disk.name}/${USER_PRESETS}`;
+  // Chrome won't open the top of a disk ("contains system files"), so the visitor picks the disk's config folder;
+  // the disk itself still works where a browser allows it
+  const atConfig = disk.name === "config";
+  const diskName = atConfig ? "OP-Z" : disk.name;
+  const path = `${diskName}/${USER_PRESETS}`;
 
   let config: DiskDir;
   try {
-    config = await disk.getDirectoryHandle("config");
+    config = atConfig ? disk : await disk.getDirectoryHandle("config");
   } catch (e) {
     if (named(e) !== "NotFoundError" && named(e) !== "TypeMismatchError") throw e;
-    return fail(`${disk.name} has no config folder: pick the OP-Z's content-mode disk itself (the top folder, `
-      + "usually OP-Z). Content mode: switch the OP-Z off, hold track while switching it on. Nothing written.");
+    return fail(`${disk.name} is not the OP-Z's config folder: open the OP-Z disk (in content mode it shows up as OP-Z) `
+      + "and choose the folder named config in it. Content mode: switch the OP-Z off, hold track while switching it on. Nothing written.");
   }
   let file: DiskFile | null = null;
   try {
@@ -168,7 +173,7 @@ export async function runBake(disk: DiskDir, request: BakeRequest, deps: BakeDep
     if (request.kind !== "bake") {
       return fail(`${path} is not on the disk: no preset was ever stored on this OP-Z, so there is ${request.kind === "show" ? "nothing to show" : "nothing to put back over"}.`);
     }
-    return createStore(disk.name, config, request, deps, { lines, log, fail, result });
+    return createStore(diskName, config, request, deps, { lines, log, fail, result });
   }
   const data = await bytesOf(file);
   const read = await readUserPresetsFile(data, path);
@@ -203,7 +208,7 @@ export async function runBake(disk: DiskDir, request: BakeRequest, deps: BakeDep
     return fail(`the backup failed (${(e as Error).message}). Nothing written.`, { plan, summary });
   }
   log(`backup: ${backupId}`);
-  if (!(await deps.confirm({ request, disk: disk.name, plan, backupId, created: false, lines: [...lines] }))) {
+  if (!(await deps.confirm({ request, disk: diskName, plan, backupId, created: false, lines: [...lines] }))) {
     log("cancelled.");
     return result(false, { cancelled: true, backupId, plan, summary });
   }
