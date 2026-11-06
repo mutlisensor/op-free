@@ -424,7 +424,8 @@ class LoaderPanel {
     } else if (!result.written) {
       this.lastBake = { ok: true, text: result.lines.find((l) => l.startsWith("nothing to change")) ?? "Nothing to change." };
     } else {
-      this.lastBake = { ok: true, text: `Written and read back${result.backupId ? "; your old preset file is kept in this browser (step 5)" : ""}. Now eject the disk.` };
+      this.lastBake = { ok: true, text: result.created ? "The preset file was made and read back. Now eject the disk: the OP-Z takes it and restarts."
+        : `Written and read back${result.backupId ? "; your old preset file is kept in this browser (step 5)" : ""}. Now eject the disk.` };
     }
     if (result.warnings.length) this.lastBake.text += " " + result.warnings.join(" ");
     if (result.written) this.notice = { kind: "ok", text: this.lastBake.text };
@@ -797,7 +798,10 @@ class LoaderPanel {
     out.push(this.gateView(gate));
     const demo = c?.kind === "demo";
     out.push(h("ol", { class: "ld-howto" },
-      demo ? h("li", null, "Demo: the demo OP-Z's disk stands in for content mode; nothing to switch.")
+      demo ? h("li", null, "Demo: the demo OP-Z's disk stands in for content mode; nothing to switch. ",
+        h("button", { type: "button", class: "ld-link", "data-testid": "demo-fresh-disk", disabled: !!c?.busy,
+          onclick: () => { this.demoDisk = DemoDisk.fresh(); this.lastBake = null; this.notice = { kind: "ok", text: "The demo disk is now a new OP-Z's: no preset file yet." }; this.render(); },
+        }, "Try it as a new OP-Z (no preset file)"))
         : [h("li", null, "Disconnect here, then switch the OP-Z off."),
           h("li", null, "Hold the track key while you switch it on (content mode, manual p.61). It shows up as a disk named OP-Z."),
           h("li", null, "Choose that disk below.")]));
@@ -811,7 +815,8 @@ class LoaderPanel {
     }
     if (this.lastBake) out.push(h("p", { class: this.lastBake.ok ? "ld-ok" : "ld-callout ld-callout--error", "data-testid": "bake-result" }, this.lastBake.text));
     out.push(h("p", { class: "ld-small dim", "data-testid": "bake-backup-note" }, "Before writing, the site keeps a copy of the preset file "
-      + "that is on your OP-Z now, in this browser: step 5 puts it back if you want your old presets. Nothing to save yourself.",
+      + "that is on your OP-Z now, in this browser: step 5 puts it back if you want your old presets. Nothing to save yourself. "
+      + "An OP-Z on which no preset was ever stored by hand has no preset file: the site then makes one with only our presets.",
     !demo && this.store.volatile ? h("span", { class: "ld-warn" }, " This browser can't keep data, so that copy is also saved to your downloads "
       + "as opz-preset-backup-….dat: keep it on your computer (it doesn't go on the OP-Z).") : null));
     out.push(h("div", { class: "ld-row" }, h("button", {

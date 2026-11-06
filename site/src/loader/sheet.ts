@@ -120,8 +120,14 @@ export async function confirmSheet(r: LoaderConfirm, engines: readonly Catalogue
 /** The bake's confirm: per engine what goes in, which hand-stored presets stay or are replaced. */
 export async function bakeSheet(c: BakeConfirm): Promise<boolean> {
   const body: Child[] = [];
-  if (c.request.kind === "bake" && c.plan) {
+  if (c.request.kind === "bake" && c.plan && c.created) {
+    body.push(h("p", { class: "ld-question" }, `Create config/userPresets.dat on ${c.disk} with our presets?`));
+    body.push(h("p", { "data-testid": "bake-created" }, "Your OP-Z has no preset file yet: it makes one only when a preset is first stored "
+      + "by hand. This makes it, with only our presets in it; the OP-Z takes it when you eject."));
+  } else if (c.request.kind === "bake" && c.plan) {
     body.push(h("p", { class: "ld-question" }, `Write ${c.plan.changed.length} preset record${c.plan.changed.length === 1 ? "" : "s"} into config/userPresets.dat on ${c.disk}?`));
+  }
+  if (c.request.kind === "bake" && c.plan) {
     body.push(h("ul", { class: "ld-list", "data-testid": "bake-plan" }, [...c.plan.report].map(([name, r]) => h("li", null,
       `${name}: ${r.new} new, ${r.updated} updated, ${r.replaced} replaced, ${r.same} already there`
       + (r.kept.length ? ` · your stored ${r.kept.map(([s, i, n]) => `“${n}” (slot ${s} key ${i + 1})`).join(", ")} stay` : "")))));
@@ -129,9 +135,13 @@ export async function bakeSheet(c: BakeConfirm): Promise<boolean> {
   } else if (c.request.kind === "restore") {
     body.push(h("p", { class: "ld-question" }, `Put ${c.request.source} back as config/userPresets.dat on ${c.disk}?`));
   }
-  body.push(h("p", { class: "ld-tested" }, "The bake is proven on hardware with the command-line tool (H-9); from the browser it is not yet tested on hardware."));
-  body.push(safety(c.backupId, false, "Read back after writing; the original goes back on the disk if the bytes differ. "
-    + "The backup is the preset file on your OP-Z now, kept in this browser: step 5 puts it back."));
+  body.push(h("p", { class: "ld-tested" }, c.created
+    ? "Making the file is not yet tested on hardware: the OP-Z's code takes a new file at the eject, but no OP-Z has been seen to (H-9b)."
+    : "The bake is proven on hardware with the command-line tool (H-9); from the browser it is not yet tested on hardware."));
+  body.push(safety(c.backupId, false, c.created
+    ? "Read back after writing; the new file is deleted again if the bytes differ. Nothing to back up: there was no file."
+    : "Read back after writing; the original goes back on the disk if the bytes differ. "
+      + "The backup is the preset file on your OP-Z now, kept in this browser: step 5 puts it back."));
   body.push(details(c.lines));
   return (await openSheet("Content mode: presets that stay", body, [{ value: "cancel", label: "Cancel" }, { value: "yes", label: c.request.kind === "bake" ? "Write presets" : "Put it back", kind: "primary" }], "bake-confirm")) === "yes";
 }

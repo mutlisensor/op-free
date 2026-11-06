@@ -7,8 +7,8 @@
  * core already lists as TE's (TE_ENGINES), nothing of teenage engineering's is in it.
  */
 
-import { type DiskDir, type DiskFile } from "./disk.ts";
-import { USER_PRESETS_RECORD, USER_PRESETS_RECORDS, dumps, serialiseUserPresets, utf8 } from "./core.ts";
+import { type DiskDir, type DiskFile, emptyUserPresets } from "./disk.ts";
+import { dumps, utf8 } from "./core.ts";
 
 const SYNTHS = ["analoga", "digital", "fm003b", "saw013a", "organ", "ep", "electric", "cluster", "chord", "ministringshort"];
 const FX = ["delay", "reverb", "fdnreverb", "chorus", "chorus2", "dist", "crush"];
@@ -58,41 +58,49 @@ export function demoFiles(): Map<string, Uint8Array> {
   ]);
 }
 
-/** An empty user-preset store as the OP-Z writes it (version 1, 200 free records). */
-export function emptyUserPresets(): Uint8Array {
-  return serialiseUserPresets(Array.from({ length: USER_PRESETS_RECORDS }, () => new Uint8Array(USER_PRESETS_RECORD)));
-}
-
 function notFound(): Error {
   return Object.assign(new Error("not found"), { name: "NotFoundError" });
 }
 
 /**
- * The demo OP-Z's content-mode disk, in memory: a top folder "OP-Z" with config/userPresets.dat. It stands in for the
- * folder picker, so the bake (backup, confirm, write, read-back) runs exactly as on a real disk.
+ * The demo OP-Z's content-mode disk, in memory: a top folder "OP-Z" with config/userPresets.dat, or, as on an OP-Z on
+ * which no preset was ever stored by hand (`fresh`), an empty config folder. It stands in for the folder picker, so the
+ * bake (backup, confirm, write, read-back) runs exactly as on a real disk.
  */
 export class DemoDisk implements DiskDir {
   readonly kind = "directory";
   readonly name: string;
   readonly files: Map<string, Uint8Array>;
+  /** Folders that exist even with no file in them. */
+  readonly folders: Set<string>;
   private readonly prefix: string;
 
-  constructor(files: Map<string, Uint8Array> = new Map([["config/userPresets.dat", emptyUserPresets()]]), name = "OP-Z", prefix = "") {
+  constructor(files: Map<string, Uint8Array> = new Map([["config/userPresets.dat", emptyUserPresets()]]), name = "OP-Z", prefix = "",
+    folders = new Set(["config/"])) {
     this.files = files;
     this.name = name;
     this.prefix = prefix;
+    this.folders = folders;
+  }
+
+  /** The disk of an OP-Z on which no preset was ever stored: config/ has no userPresets.dat. */
+  static fresh(): DemoDisk {
+    return new DemoDisk(new Map());
   }
 
   async getDirectoryHandle(name: string): Promise<DiskDir> {
     const p = this.prefix + name + "/";
-    if (![...this.files.keys()].some((k) => k.startsWith(p))) throw notFound();
-    return new DemoDisk(this.files, name, p);
+    if (!this.folders.has(p) && ![...this.files.keys()].some((k) => k.startsWith(p))) throw notFound();
+    return new DemoDisk(this.files, name, p, this.folders);
   }
 
-  async getFileHandle(name: string): Promise<DiskFile> {
+  async getFileHandle(name: string, options: { create?: boolean } = {}): Promise<DiskFile> {
     const path = this.prefix + name;
     const files = this.files;
-    if (!files.has(path)) throw notFound();
+    if (!files.has(path)) {
+      if (!options.create) throw notFound();
+      files.set(path, new Uint8Array(0));
+    }
     return {
       kind: "file", name,
       getFile: async () => ({ arrayBuffer: async () => files.get(path)!.slice().buffer }),
@@ -105,5 +113,9 @@ export class DemoDisk implements DiskDir {
         };
       },
     };
+  }
+
+  async removeEntry(name: string): Promise<void> {
+    if (!this.files.delete(this.prefix + name)) throw notFound();
   }
 }
