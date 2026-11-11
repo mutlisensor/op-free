@@ -13,19 +13,19 @@
 
 import type { CatalogueEngine } from "../shared/catalogue.ts";
 import {
-  type Clock, type Doc, type Engine, FileSession, Opz, SLOTS, SessionError, TRACKS, type Transport, decodeFrame, loads, readU16le,
-  slotMapChanges,
+  type Clock, type Doc, type Engine, FileSession, Opz, ROOM_LOW, SLOTS, SessionError, TRACKS, type Transport, decodeFrame, loads,
+  planRemoveOurs, readU16le, roomLevel, slotMapChanges, spaceReport,
 } from "./core.ts";
 import type { Choice } from "./model.ts";
 import { type Cell, type InstallItem, cellName, planLoader, restoreTarget, toEngine } from "./plan.ts";
 import { type BackupRecord, type LoaderStore, backupSlots, firstBackup } from "./store.ts";
 
 export type ConnectionKind = "demo" | "midi";
-export type OpName = "status" | "backup" | "install" | "restore";
+export type OpName = "status" | "backup" | "install" | "restore" | "remove";
 
 /** What the confirm sheet shows. */
 export interface LoaderConfirm {
-  op: "install" | "restore";
+  op: "install" | "restore" | "remove";
   question: string;
   /** The backup this flow made before asking. */
   backupId: string | null;
@@ -40,6 +40,8 @@ export interface LoaderConfirm {
   files: string[];
   effects: string[];
   restart: boolean;
+  /** Room left for a content-mode restore after this write, when it gets short (docs/roadmap/restore-space.md). */
+  room?: string;
   /** The core's lines so far. */
   lines: string[];
 }
@@ -88,7 +90,7 @@ export interface InstallRequest {
   bytes(e: CatalogueEngine): Promise<Uint8Array>;
 }
 
-const WRITES = new Set<OpName>(["install", "restore"]);
+const WRITES = new Set<OpName>(["install", "restore", "remove"]);
 
 /** How long a session open waits for the OP-Z's `$34`, then the pause before the one more try (seconds). */
 export const OPEN_WAIT = 15;
@@ -221,6 +223,8 @@ export class LoaderController {
   private onDisconnect: (() => void) | null = null;
   /** The restore in progress: what the sheet shows when the core asks. */
   private pendingRestore: { target: Doc; kept: Cell[]; missing: number[]; from: string } | null = null;
+  /** removeAll: the first backup whose layout goes back where our plugs leave. */
+  private pendingRemove: BackupRecord | null = null;
 
   constructor(store: LoaderStore, hooks: LoaderHooks) {
     this.store = store;
@@ -284,8 +288,9 @@ export class LoaderController {
     this.hooks.log(line);
   }
 
-  /** The core asks (restore through writeSlotMap): show what the restore changes, from the backup it just made. */
+  /** The core asks (restore through writeSlotMap, or removeOurs): show what changes, from the backup it just made. */
   private async coreConfirm(question: string): Promise<boolean> {
+    if (this.busy === "remove") return this.removeConfirm(question);
     const r = this.pendingRestore;
     if (!r || this.busy !== "restore") return false;
     const now = this.lastBackup ? { plugs: loads(this.lastBackup["settings/plugs.json"]), slots: loads(this.lastBackup[SLOTS]) } : null;
@@ -295,6 +300,29 @@ export class LoaderController {
       files: [SLOTS],
       effects: [`the slot map of ${r.from} comes back; plugs installed since stay installed (out of their slots)`,
         ...(r.missing.length ? [`plug${r.missing.length > 1 ? "s" : ""} ${r.missing.join(", ")} from that backup ${r.missing.length > 1 ? "are" : "is"} no longer installed: those slots stay as they are`] : [])],
+      restart: false, lines: [...(this.opLines ?? [])],
+    });
+  }
+
+  /** The sheet for "take OP-FREE off": the core's own plan on the backup it just made, with the first backup's layout. */
+  private async removeConfirm(question: string): Promise<boolean> {
+    if (!this.lastBackup) return false;
+    const now = { plugs: loads(this.lastBackup["settings/plugs.json"]), slots: loads(this.lastBackup[SLOTS]) };
+    const first = this.pendingRemove;
+    const plan = planRemoveOurs(now.plugs, now.slots, first ? backupSlots(first) : null);
+    const r = spaceReport(now.plugs, now.slots);
+    return this.hooks.confirm({
+      op: "remove", question, backupId: this.lastBackupId, device: now,
+      changes: slotMapChanges(now.slots, plan.slot_map).map((line) => parseChange(line)), skipped: [], installs: [],
+      files: ["settings/plugs_patch.json (empty)", ...(plan.cleared.length ? [SLOTS] : []), `the removal of plug${plan.ids.length === 1 ? "" : "s"} ${plan.ids.join(", ")}`],
+      effects: [
+        `every OP-FREE sound leaves your OP-Z: ${plan.ids.length} plug${plan.ids.length === 1 ? "" : "s"}, which frees as many of its ${r.limit} sound definitions (${r.plugs} in use now)`,
+        first ? `the slots they leave get back the sound they had in your first backup (${first.id}) where it's still installed; the others are left empty`
+          : "the slots they leave are left empty (no backup from before OP-FREE in this browser)",
+        "your samples, teenage engineering's sounds, your projects and your presets are not touched",
+        "the engine files stay on the OP-Z's storage, out of any slot, where they do nothing (a few KB each; content mode never shows them); installing again reuses them",
+        ...plan.kept.map(([pid, why]) => `plug ${pid} stays: ${why}`),
+      ],
       restart: false, lines: [...(this.opLines ?? [])],
     });
   }
@@ -340,12 +368,13 @@ export class LoaderController {
     this.opLines = null;
     this.busy = null;
     this.pendingRestore = null;
+    this.pendingRemove = null;
     this.hooks.changed();
     return {
       op, ok, error, lines,
       cancelled: lines.includes("cancelled."),
       restart: ok && lines.some((l) => l.startsWith("RESTART THE OP-Z")),
-      highlights: lines.filter((l) => /^(error|warning|verify|restoring|slot map restore|slot map written|nothing to change|installed|nothing written|nothing was left|RESTART|presets pushed|batch:)/.test(l))
+      highlights: lines.filter((l) => /^(error|warning|verify|restoring|slot map restore|slot map written|nothing to change|removed|no plugs of ours|installed|nothing written|nothing was left|RESTART|presets pushed|batch:)/.test(l))
         .map((l) => l.split("\n")[0]),
     };
   }
@@ -414,8 +443,11 @@ export class LoaderController {
         "a plug taken out of its slot stays installed, so the original sound can go back at any time",
         "pushed presets live in the OP-Z's memory until it restarts; step 4 (content mode) keeps them for good",
       ];
+      const added = work.filter((i) => i.action === "install").length;
+      const room = installRoom(spaceReport(b.plugs, b.slots).free, added);
+      if (room) this.log("warning: " + room);
       const yes = await this.hooks.confirm({
-        op: "install",
+        op: "install", room: room ?? undefined,
         question: [
           work.length ? `Install ${work.length} engine${work.length === 1 ? "" : "s"}` : "",
           plan.changes.length ? `write ${plan.changes.length} slot${plan.changes.length === 1 ? "" : "s"}` : "",
@@ -453,6 +485,19 @@ export class LoaderController {
   }
 
   /**
+   * Take every OP-FREE plug off the OP-Z (the core's removeOurs: one confirm, then an empty boot file, the slot map
+   * and the removals, each read back). The slots go back to the first backup's sounds where those are still
+   * installed. For a content-mode restore of an old OP-Z backup, or to go back to stock (docs/roadmap/restore-space.md).
+   */
+  removeAll(): Promise<OpResult> {
+    return this.run("remove", async (opz) => {
+      const first = await this.firstBackup();
+      this.pendingRemove = first;
+      return opz.removeOurs({ putBack: first?.id ?? null });
+    });
+  }
+
+  /**
    * Put a backup's slot map back, through the core's writeSlotMap (backup, checks, confirm, push, read back,
    * rollback). Cells holding the visitor's samples now, and plugs no longer installed, stay as they are.
    */
@@ -470,6 +515,20 @@ export class LoaderController {
       return opz.writeSlotMap(target, device.slots, "restore", { manifests });
     });
   }
+}
+
+/**
+ * What an install leaves for a later content-mode restore of the visitor's own backup: every sample it brings back
+ * needs one of the OS's 200 plug definitions, and a full table drops the sample silently (docs/roadmap/restore-space.md).
+ * Null when there is room.
+ */
+export function installRoom(freeNow: number, added: number): string | null {
+  const after = freeNow - added;
+  const level = roomLevel(after);
+  if (level === "ok") return null;
+  return `after this install ${Math.max(after, 0)} of the OP-Z's 200 sound definitions are free`
+    + (level === "full" ? ": too few to restore a typical backup of your samples in content mode. Pick fewer engines, or take OP-FREE off (step 5) before such a restore"
+      : `; a content-mode restore needs one per sample it brings back (fewer than ${ROOM_LOW} left). Before such a restore, take OP-FREE off (step 5)`);
 }
 
 /** "lead slot 3: 10 -> 61010" (the core's slotMapChanges) as a cell. */

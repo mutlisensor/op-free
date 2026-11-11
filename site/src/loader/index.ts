@@ -15,7 +15,8 @@ import { clearDiag, copyReport, diagLines, note, reportPart } from "../shared/di
 import type { AuditionEvent, Mounted, PickEvent } from "../shared/mount.ts";
 import { type LoaderConfirm, LoaderController, type OpResult, type OpenWait } from "./controller.ts";
 import { DemoDisk, demoFiles } from "./demo.ts";
-import { type BakeEngine, FakeOpz, isUserSample } from "./core.ts";
+import { type BakeEngine, FakeOpz, isOurPlug, isUserSample, roomLevel, spaceReport } from "./core.ts";
+import { REPO } from "../content.ts";
 import { type BakeRequest, type DiskDir, backupMeta, diskPicker, runBake } from "./disk.ts";
 import { type Child, clear, download, formatTime, h } from "./dom.ts";
 import {
@@ -373,6 +374,33 @@ class LoaderPanel {
     this.render();
   }
 
+  /** Take every OP-FREE plug off (the core's removeOurs; the sheet first). */
+  private async removeAll(): Promise<void> {
+    const r = await this.controller.removeAll();
+    this.saveDemo();
+    await this.reloadBackups();
+    if (r.ok && !r.cancelled) {
+      this.notice = { text: r.lines.some((l) => l.startsWith("no plugs of ours")) ? "Nothing to remove: no OP-FREE sound is on this OP-Z."
+        : "OP-FREE is off your OP-Z, verified by reading back. Your samples and projects were not touched.", kind: "ok" };
+    } else if (!r.cancelled) await failureSheet(r, "Taking OP-FREE off");
+    this.render();
+  }
+
+  /** The room line: sound definitions in use (the OS keeps 200; a content-mode restore needs one per sample). */
+  private roomLine(added = 0): Child {
+    const d = this.controller?.device;
+    if (!d) return null;
+    const r = spaceReport(d.plugs, d.slots);
+    const after = r.free - added;
+    const level = roomLevel(after);
+    return h("p", { class: `ld-small ${level === "ok" ? "dim" : "ld-warn"}`, "data-testid": "room" },
+      `Room: ${r.free} of ${r.limit} sound definitions free`
+      + (added ? `, ${Math.max(after, 0)} after this install` : "")
+      + ` (${r.ours.length} OP-FREE, ${r.user_samples} your samples, ${r.te} teenage engineering). `
+      + (level === "ok" ? "Plenty for restoring a backup of your samples later."
+        : "A content-mode restore of your own backup needs one per sample: take OP-FREE off first (step 5)."));
+  }
+
   private async refresh(): Promise<void> {
     const r = await this.controller.refresh();
     if (r.ok && this.controller.device && this.controller.kind === "midi") this.sampleLast = sampleCheck(this.controller.device);
@@ -468,7 +496,7 @@ class LoaderPanel {
     const out: Child[] = [head];
     if (busy) {
       out.push(h("p", { class: "ld-busy", role: "status", "data-testid": "busy" }, h("i", { class: "ld-spin", "aria-hidden": "true" }),
-        busy === "install" ? "Installing… keep this tab in front and the OP-Z connected." : busy === "restore" ? "Restoring…" : "Reading the OP-Z…",
+        busy === "install" ? "Installing… keep this tab in front and the OP-Z connected." : busy === "restore" ? "Restoring…" : busy === "remove" ? "Taking OP-FREE off… keep this tab in front and the OP-Z connected." : "Reading the OP-Z…",
         h("span", { class: "ld-wait", "data-testid": "wait" }, waitText(c.waiting))));
     }
     if (c?.interrupted) {
@@ -770,6 +798,7 @@ class LoaderPanel {
         h("li", null, `${plan.changes.length} slot${plan.changes.length === 1 ? "" : "s"} change`),
         plan.skipped.length ? h("li", null, `${plan.skipped.length} slot${plan.skipped.length === 1 ? "" : "s"} skipped: your samples`) : null,
         plan.installs.some((i) => i.restart) ? h("li", { class: "ld-warn" }, "restart needed afterwards (an engine is upgraded)") : null));
+      out.push(this.roomLine(work.filter((i) => i.action === "install").length));
       for (const e of plan.errors) out.push(h("p", { class: "ld-callout ld-callout--error" }, e));
       for (const w of plan.warnings.slice(0, 4)) out.push(h("p", { class: "ld-small ld-warn" }, w));
     }
@@ -890,6 +919,15 @@ class LoaderPanel {
             h("button", { type: "button", class: "ld-link", onclick: () => download(presetBackupFile(b.id), b.files["userPresets.dat"]) }, "Download"),
             h("button", { type: "button", class: "ld-link", disabled: !!c?.busy, onclick: () => void this.disk({ kind: "restore", data: b.files["userPresets.dat"], source: b.id }) }, "Put back on the disk…")))))] : null,
       h("p", { class: "ld-small dim" }, "A restore writes only the slot map: plugs installed since stay installed. Slots holding your samples stay as they are."),
+      h("p", { class: "label" }, "Take OP-FREE off"),
+      h("p", { class: "ld-small" }, "Every OP-FREE sound leaves your OP-Z in one step, and its slots get back the sound your first backup had there. "
+        + "Do this before you copy an old backup of your OP-Z disk back in content mode: no factory reset needed. Your samples, projects and presets are not touched. ",
+        h("a", { href: `${REPO}/blob/main/guides/restore-a-backup.md`, target: "_blank", rel: "noopener" }, "Restoring a backup")),
+      connected ? this.roomLine() : null,
+      connected && (c.device?.plugs.plugs ?? []).some(isOurPlug)
+        ? h("button", { type: "button", class: "btn btn--small btn--danger", "data-testid": "remove-all", disabled: !!c.busy, onclick: () => void this.removeAll() },
+          "Take OP-FREE off…")
+        : h("p", { class: "ld-small dim", "data-testid": "remove-all-none" }, connected ? "No OP-FREE sound is on this OP-Z." : "Connect (step 2) to take OP-FREE off."),
     ];
   }
 }
