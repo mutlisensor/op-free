@@ -332,3 +332,75 @@ test("a new OP-Z's disk: cancel writes nothing; a bad read-back deletes the new 
     assert.match(x.error!, /no preset was ever stored/);
   }
 });
+
+test("the bake takes the OP-Z disk's config folder (Chrome won't open the top of a disk)", async () => {
+  const disk = new DemoDisk();
+  const config = await disk.getDirectoryHandle("config");
+  assert.equal(config.name, "config");
+  const asked: BakeConfirm[] = [];
+  const r = await runBake(config, { kind: "bake", engines: bakeEngines(), overwriteUser: true }, {
+    log: () => {}, backup: async () => "b", confirm: async (c) => (asked.push(c), true),
+  });
+  assert.ok(r.ok && r.written, r.lines.join("\n"));
+  assert.equal(asked[0].disk, "OP-Z");
+  assert.ok(r.lines.some((l) => l.includes("OP-Z/config/userPresets.dat")), "named as on the disk, not config/config/…");
+  assert.ok(parseUserPresets(disk.files.get("config/userPresets.dat")!).some((rec) => recordPlugId(rec) !== 0));
+
+  const fresh = await DemoDisk.fresh().getDirectoryHandle("config");
+  const made = await runBake(fresh, { kind: "bake", engines: bakeEngines(), overwriteUser: true }, { log: () => {}, backup: async () => "b", confirm: async () => true });
+  assert.ok(made.ok && made.created, "a new OP-Z's config folder: the file is made in it");
+
+  const elsewhere = new DemoDisk(new Map([["Documents/x.txt", new Uint8Array(1)]]), "Downloads", "", new Set());
+  const wrong = await runBake(elsewhere, { kind: "bake", engines: bakeEngines(), overwriteUser: true }, { log: () => {}, backup: async () => "b", confirm: async () => true });
+  assert.ok(!wrong.ok);
+  assert.match(wrong.error!, /not the OP-Z's config folder/);
+});
+
+test("take OP-FREE off: one sheet, every slot back to the first backup, samples kept, nothing back after a restart", async () => {
+  const { fake, store, c, asked } = setup();
+  const before = docs(fake);
+  assert.ok((await c.backup()).ok);
+  assert.ok((await install(c, featuredChoice(engines))).ok);
+  const n = asked.length;
+  const r = await c.removeAll();
+  assert.ok(r.ok, r.lines.join("\n"));
+  assert.equal(asked.length, n + 1, "asked once");
+  const sheet = asked.at(-1)!;
+  assert.equal(sheet.op, "remove");
+  assert.ok(sheet.backupId);
+  assert.equal(sheet.changes.length, 4 * 8 + 4 * 3 + 4 + 3, "every cell the install changed goes back");
+  assert.ok(sheet.files[0].startsWith("settings/plugs_patch.json"));
+  assert.ok(sheet.effects.some((e) => e.includes("your samples, teenage engineering's sounds, your projects and your presets are not touched")));
+  const after = docs(fake);
+  assert.ok(slotCells(after.slots).size === slotCells(before.slots).size);
+  for (const [k, v] of slotCells(before.slots)) assert.equal(slotCells(after.slots).get(k), v, `cell ${k} back`);
+  assert.deepEqual(after.plugs.plugs.map((p: Doc) => p.id).sort(), before.plugs.plugs.map((p: Doc) => p.id).sort());
+  fake.restart();
+  assert.deepEqual(docs(fake).plugs.plugs.map((p: Doc) => p.id).sort(), before.plugs.plugs.map((p: Doc) => p.id).sort());
+  assert.ok(firstBackup(await store.list(), "demo"));
+});
+
+test("take OP-FREE off: cancel writes nothing; with nothing of ours there is nothing to ask", async () => {
+  const { fake, c, asked, say } = setup();
+  await c.backup();
+  assert.ok((await install(c, featuredChoice(engines))).ok);
+  say(false);
+  const files = new Map(fake.files);
+  const r = await c.removeAll();
+  assert.ok(r.cancelled);
+  assert.deepEqual(new Map(fake.files), files);
+  say(true);
+  assert.ok((await c.removeAll()).ok);
+  const n = asked.length;
+  const again = await c.removeAll();
+  assert.ok(again.ok);
+  assert.equal(asked.length, n, "no sheet");
+  assert.ok(again.lines.includes("no plugs of ours on the OP-Z: nothing to remove."));
+});
+
+test("room before an install: warns when a content-mode restore would run short", async () => {
+  const { installRoom } = await import("../controller.ts");
+  assert.equal(installRoom(150, 15), null);
+  assert.match(installRoom(70, 15)!, /^after this install 55 of the OP-Z's 200 sound definitions are free; a content-mode restore needs one per sample/);
+  assert.match(installRoom(40, 15)!, /too few to restore a typical backup/);
+});

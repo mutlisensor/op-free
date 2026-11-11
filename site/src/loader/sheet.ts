@@ -100,21 +100,31 @@ export function confirmBody(r: LoaderConfirm, engines: readonly CatalogueEngine[
       "An engine here was already registered on the OP-Z, which keeps the code it loaded at start-up. Switch the OP-Z off "
       + "and on after the install, before you play it."));
   }
+  if (r.room) {
+    body.push(h("p", { class: "ld-callout ld-callout--warn", "data-testid": "confirm-room" }, h("b", null, "Room for a restore. "),
+      r.room.replace(/^./, (x) => x.toUpperCase()) + "."));
+  }
+  if (r.op === "remove") {
+    body.push(h("p", { class: "ld-tested" }, "Not yet tested on hardware as one step: an empty boot file, the slot map and the "
+      + "removals. Each is a flow the command-line tools use on the OP-Z (opz.py remove --all-ours does the same)."));
+  }
   if (r.op === "install") {
     body.push(h("p", { class: "ld-tested" }, "Not yet tested on hardware as one batch: installing without a slot, then one "
       + "slot-map write. Each step is the core's flow that the command-line tools use on the OP-Z."));
   }
   body.push(safety(r.backupId, midi, r.op === "install"
     ? "Each engine is installed, read back and checked on its own; the batch stops at the first problem. The slot map is read back and rolled back to the backup if it differs."
-    : "Read back afterwards; rolled back to the backup if it differs."));
+    : r.op === "remove" ? "Each write is read back; the slot map is rolled back to the backup if it differs, and then nothing is removed."
+      : "Read back afterwards; rolled back to the backup if it differs."));
   body.push(details(r.lines));
   return body;
 }
 
 export async function confirmSheet(r: LoaderConfirm, engines: readonly CatalogueEngine[], midi: boolean): Promise<boolean> {
-  const title = r.op === "install" ? "Install on your OP-Z" : "Restore a backup";
-  const verb = r.op === "install" ? "Install" : "Restore";
-  return (await openSheet(title, confirmBody(r, engines, midi), [{ value: "cancel", label: "Cancel" }, { value: "yes", label: verb, kind: "primary" }], "confirm")) === "yes";
+  const title = r.op === "install" ? "Install on your OP-Z" : r.op === "remove" ? "Take OP-FREE off your OP-Z" : "Restore a backup";
+  const verb = r.op === "install" ? "Install" : r.op === "remove" ? "Remove OP-FREE" : "Restore";
+  return (await openSheet(title, confirmBody(r, engines, midi), [{ value: "cancel", label: "Cancel" },
+    { value: "yes", label: verb, kind: r.op === "remove" ? "danger" : "primary" }], "confirm")) === "yes";
 }
 
 /** The bake's confirm: per engine what goes in, which hand-stored presets stay or are replaced. */
