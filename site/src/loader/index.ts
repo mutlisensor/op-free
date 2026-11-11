@@ -15,7 +15,10 @@ import { clearDiag, copyReport, diagLines, note, reportPart } from "../shared/di
 import type { AuditionEvent, Mounted, PickEvent } from "../shared/mount.ts";
 import { type LoaderConfirm, LoaderController, type OpResult, type OpenWait } from "./controller.ts";
 import { DemoDisk, demoFiles } from "./demo.ts";
-import { type BakeEngine, FakeOpz, isOurPlug, isUserSample, roomLevel, spaceReport } from "./core.ts";
+import {
+  type BakeEngine, FakeOpz, type RestoreCheck, checkContentRestore, isOurPlug, isUserSample, loads, roomLevel, spaceReport,
+} from "./core.ts";
+import { type ListDir, listFolder } from "./restorecheck.ts";
 import { REPO } from "../content.ts";
 import { type BakeRequest, type DiskDir, backupMeta, diskPicker, runBake } from "./disk.ts";
 import { type Child, clear, download, formatTime, h } from "./dom.ts";
@@ -92,6 +95,8 @@ class LoaderPanel {
   private midi: { access: MidiAccessLike; transport: WebMidiTransport; listener: () => void } | null = null;
   private connectError: string | null = null;
   private notice: { text: string; kind: "ok" | "warn" | "error" } | null = null;
+  /** Step 5's check of a backup of the OP-Z disk before a content-mode restore (docs/roadmap/restore-space.md). */
+  private restoreCheck: { folder: string; result: RestoreCheck; from: string } | { error: string } | null = null;
   private lastInstall: OpResult | null = null;
   private lastBake: { ok: boolean; text: string } | null = null;
   private sampleLast: SampleCheck | null = null;
@@ -384,6 +389,51 @@ class LoaderPanel {
         : "OP-FREE is off your OP-Z, verified by reading back. Your samples and projects were not touched.", kind: "ok" };
     } else if (!r.cancelled) await failureSheet(r, "Taking OP-FREE off");
     this.render();
+  }
+
+  /** Read a backup folder of the OP-Z disk (names and sizes only) and predict what content mode does with it. */
+  private async checkBackup(): Promise<void> {
+    const pick = diskPicker() as unknown as ((o: { id?: string; mode: "read" }) => Promise<ListDir>) | null;
+    if (!pick) return;
+    try {
+      const dir = await pick({ id: "opz-restore-backup", mode: "read" });
+      const entries = await listFolder(dir);
+      const d = this.controller?.device;
+      const newest = this.backups.find(isSettingsBackup);
+      const device = d ? { plugs: d.plugs, slots: d.slots }
+        : newest ? { plugs: loads(newest.files["settings/plugs.json"]), slots: loads(newest.files["settings/slotConfiguration.json"]) } : null;
+      const from = d ? "your OP-Z (connected)" : newest ? `your backup of ${formatTime(newest.created)}` : "";
+      this.restoreCheck = { folder: dir.name, result: checkContentRestore(entries, device, null), from };
+      for (const p of this.restoreCheck.result.problems) note("loader", "restore check: problem: " + p);
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") this.restoreCheck = { error: (e as Error).message };
+    }
+    this.render();
+  }
+
+  private restoreCheckView(): Child[] {
+    const rc = this.restoreCheck;
+    const out: Child[] = [
+      h("p", { class: "label" }, "Restoring a backup of your OP-Z disk?"),
+      h("p", { class: "ld-small" }, "Check it first: the OP-Z keeps 24 MB of your samples and 200 sound definitions, and its disk holds 33 MB. "
+        + "Only file names and sizes are read."),
+      diskPicker() ? h("button", { type: "button", class: "btn btn--small", "data-testid": "restore-check", onclick: () => void this.checkBackup() },
+        "Check a backup folder…") : h("p", { class: "ld-small dim" }, "Chrome or Edge on a computer can check a backup folder here."),
+    ];
+    if (rc && "error" in rc) out.push(h("p", { class: "ld-callout ld-callout--error" }, rc.error));
+    if (rc && "result" in rc) {
+      const r = rc.result;
+      out.push(h("p", { class: `ld-callout ${r.problems.length ? "ld-callout--error" : r.warnings.length ? "ld-callout--warn" : ""}`, "data-testid": "restore-verdict" },
+        h("b", null, r.problems.length ? "Not like this. " : "It should go through. "),
+        `${rc.folder}: ${r.imports.length} sample${r.imports.length === 1 ? "" : "s"} brought back, ${r.projects} project${r.projects === 1 ? "" : "s"}`
+        + (r.freeDefinitions !== null ? `, ${r.freeDefinitions} sound definitions free for them` : "")
+        + (rc.from ? ` (from ${rc.from})` : "") + "."));
+      if (r.problems.length || r.warnings.length) {
+        out.push(h("ul", { class: "ld-effects", "data-testid": "restore-issues" }, [...r.problems, ...r.warnings].map((x) => h("li", null, x))));
+      }
+      if (r.removeOursHelps && r.ours) out.push(h("p", { class: "ld-small ld-warn" }, "Take OP-FREE off (above) first, then copy the backup."));
+    }
+    return out;
   }
 
   /** The room line: sound definitions in use (the OS keeps 200; a content-mode restore needs one per sample). */
@@ -928,6 +978,7 @@ class LoaderPanel {
         ? h("button", { type: "button", class: "btn btn--small btn--danger", "data-testid": "remove-all", disabled: !!c.busy, onclick: () => void this.removeAll() },
           "Take OP-FREE off…")
         : h("p", { class: "ld-small dim", "data-testid": "remove-all-none" }, connected ? "No OP-FREE sound is on this OP-Z." : "Connect (step 2) to take OP-FREE off."),
+      ...this.restoreCheckView(),
     ];
   }
 }
