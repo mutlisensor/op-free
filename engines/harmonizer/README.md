@@ -10,13 +10,14 @@ centre of P1, harmonised intervals towards its ends, and keys on the FX track th
 | Plug id | 61104 |
 | P1 **shift** | bipolar around 128. **96–159: detune**, the two voices ± up to 25 cents (a wide doubler towards the zone's edges, nothing at 128). Outside it, **intervals** in steps of 16: up 160 +3 (minor third), 176 +4, 192 +5, 208 +7, 224 +9, 240–255 +12; down the same mirrored (80–95 −3 … 0–15 −12). Symmetric; both voices on the interval, 6 cents apart for thickness |
 | P2 **space** | 0 = the voices alone; up: a stereo delay network (20 → 110 ms left, 1.37× right, slowly moving) mixes in and feeds back through the shifter (up to 0.85), so the harmony repeats and climbs (or falls) by the interval and smears into a swirl |
-| pan | dry/wet, TE's balance law normalised to unity (centre = half and half). The preset is wet only, as a send |
-| level | output level, times the FX track's mixer level and mute |
+| pan | not reachable on the OP-Z: an FX track has no pan dial, app control or mixer column [proven, H-FX1], and presets can't set it, so it stays where the OS leaves it (127 on the unit checked), which this effect treats as **the harmony only** (the dry about 44 dB down). The law below the centre, for anything that does set pan: the dry blends in at equal power: 64 = dry and the harmony at −3 dB each, 0 = dry only. |
+| dry level (hold the FX track's key + **red dial**) | the OS's own dry level (byte 12; TE's app shows it as "dry level" on the FX page): how much of each sending track's own sound stays in the mix. 255 = send/return (the source plays on and the effect adds to it), 0 = insert (a track sent at 100 % is heard only through the effect). This is the dry/wet control on the OP-Z [proven, H-FX1 2026-11-11] |
+| level | output level, times the FX track's mixer level and mute (nothing on the OP-Z reaches an FX track's level, neither a dial nor the mixer page [proven, H-FX1], so the preset's value holds) |
 | Filter / resonance | the OP-Z's own track filter, also on FX tracks |
 | **Notes on the FX track** | a held key sets the interval for as long as it is held: its distance from **C4 = unison** (G4 +7, C5 +12, F3 −7; clamped to ±24). Voice 1 takes the newest key, voice 2 the key held before it — **two keys = two-voice harmony** — or 6 cents below voice 1. Release returns to P1 (momentary; no latch). The OS's velocity-0 re-send of a held note keeps it held |
 | Memory request | 64 KB (an 8,192-sample shifter ring and an 8,192-frame 16-bit stereo delay pair), cleared over the first 4 blocks (dry meanwhile) |
 | State | 52 of 200 bytes (device) |
-| CPU | Blackfin simulator (`tools/opz_cycles.py engines/harmonizer`): **396 cycles/frame** at every setting, notes and knobs moving included; worst block 461 (a clearing block), against the ≤ 600 effect target |
+| CPU | **v2 (2026-11-11): 375 cycles per stereo frame in its worst case, worst block 436** (fx-usability.md §4a). Earlier figures: Blackfin simulator (`tools/opz_cycles.py engines/harmonizer`): **396 cycles/frame** at every setting, notes and knobs moving included; worst block 461 (a clearing block), against the ≤ 600 effect target |
 
 Not for master: the OS passes `out = NULL` there ([engine-abi.md](../../sdk/docs/engine-abi.md) §3).
 
@@ -62,6 +63,21 @@ pan 255 (wet only), level 255, byte 12 (FX dry level) 255 so the sending track k
 swept to full feedback, clicks), `notes` (G4, then G4 + E4 for two voices, E4 alone, C3, back to P1), `extremes`.
 A full-scale saw at P2 255 stays bounded (peak 0 dBFS through the saturating adds, nothing wraps); an impulse at
 P2 255 dies away within ~1.5 s.
+
+## Version 2 (2026-11-11): what changed, what to listen for
+
+Testers found our effects hard to use: the mix knob seemed not to work, some effects seemed not to pass the sound, and
+loud material clipped. Measured in the simulator (fx-usability.md). harmonizer
+used TE's balance law normalised to unity, so pan's centre returned half dry and half harmony: with the preset's dry
+level 255 the source came through 1.5× (+3.5 dB) and the harmony at half level, 9.5 dB under it, and the FX dry level
+could not take the dry out. Inside, the two voices, their make-up gain and the delay network were summed at full scale
+(up to 2.4× the input) and saturated on loud material. Now:
+
+- **Pan**: the SDK's law (centre and up = the harmony only; below the centre the dry blends in at equal power).
+- **Gain staging**: the wet sum runs at a quarter scale, the output passes the SDK's limiter: no hard clip.
+
+On the device: send a chord at 100 % with FX2's dry level 255 and pan centred; P1 at 208 (+7): the fifth above the
+chord at the same loudness as the chord; FX2's dry level to 0: the fifth alone.
 
 ## Credits
 

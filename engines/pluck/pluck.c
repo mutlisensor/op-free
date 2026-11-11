@@ -42,6 +42,7 @@
 #include "opz_adsr.h"
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_mix.h"
 
 #define ALWAYS_INLINE static inline __attribute__((always_inline))
 
@@ -112,6 +113,7 @@ typedef struct State {
     uint32_t p_inc;                             /* the increment tD was last computed for */
     uint32_t c_age;                             /* blocks since the coefficients were computed */
     int32_t amp15;                              /* output gain: velocity x calibration, Q15 */
+    OpzMix mix;                                 /* the track's level and pan (opz_mix.h) */
     uint16_t w;                                 /* write index */
     uint8_t slot;                               /* pool entry, NO_SLOT for none */
     uint8_t m;                                  /* the string runs at fs / 2^m */
@@ -494,7 +496,7 @@ void init(void *state, uint32_t track, uint32_t arg2, void *mem, void *scratch)
 
 void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
 {
-    (void)note; (void)params;                                            /* the pitch comes with render */
+    (void)note;                                                          /* the pitch comes with render */
     State *s = state;
     int slot = claim_slot(s);
     s->slot = (uint8_t)slot;
@@ -515,6 +517,7 @@ void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
     s->vel = (uint8_t)(velocity < 1 ? 1 : (velocity > 127 ? 127 : velocity));
     s->amp15 = (int32_t)(((uint32_t)s->vel * 258u * OUT_GAIN) >> 15);   /* velocity 127 -> OUT_GAIN */
     s->fresh = 1;
+    if (params) opz_mix_start(&s->mix, params);                          /* NULL: ramps in at render */
 }
 
 void onNoteOff(int note, void *state)
@@ -678,12 +681,13 @@ ALWAYS_INLINE void string_chunk(State *s, int16_t *line, int n, int off, int32_t
     pass_write(s, line, n, off, ex);
 }
 
-/* Output: s_str x velocity x the envelope, added into out. m > 0: the string ran at fs / 2^m, linearly
+/* Output: s_str x velocity x the envelope, into the mono block buffer x (all 64 frames; opz_mix_mono then adds it
+ * into out with the track's level and pan). m > 0: the string ran at fs / 2^m, linearly
  * interpolated between its steps. em (compile-time): 0 the envelope's step is 0 (decay, release: one multiply),
  * 1 sustain (coef 1: the step's (1 - level^3) s is taken once per block and added per sample; the host
  * recomputes s = (S - level) / 256 every block, so this only rounds the approach to S differently), 2 the exact
  * per-sample step (fade), 3 the same with coef 1 (attack: r = level, within an LSB of the host's coef x level). Returns the envelope level. */
-ALWAYS_INLINE int32_t pass_out(fract32 *out, State *s, int m, int32_t level, int32_t coef, int32_t step, int em)
+ALWAYS_INLINE int32_t pass_out(fract32 *x, State *s, int m, int32_t level, int32_t coef, int32_t step, int em)
 {
     int32_t amp15 = s->amp15, inc = 0;
     if (em == 1)
@@ -691,9 +695,7 @@ ALWAYS_INLINE int32_t pass_out(fract32 *out, State *s, int m, int32_t level, int
     if (m == 0) {
         const int32_t *str = s_str;
         for (int i = 0; i < OPZ_BLOCK_FRAMES; i++) {
-            fract32 v = opz_mul_q31_q15(opz_mul_q31_q15(level, amp15), str[i]);
-            out[2 * i] = opz_add_q31(out[2 * i], v);
-            out[2 * i + 1] = opz_add_q31(out[2 * i + 1], v);
+            x[i] = opz_mul_q31_q15(opz_mul_q31_q15(level, amp15), str[i]);
             level = em == 0 ? opz_env_tick0(level, coef) : em == 1 ? opz_add_q31(level, inc)
                     : em == 3 ? opz_add_q31(level, opz_mul_q31_rnd(opz_sub_q31(0x7fffffff,
                                 opz_mul_q31_rnd(opz_mul_q31_rnd(level, level), level)), step))
@@ -707,11 +709,8 @@ ALWAYS_INLINE int32_t pass_out(fract32 *out, State *s, int m, int32_t level, int
     for (int q = 0; q < ns; q++) {
         int32_t cur = s_str[q], d = cur - prev;
         for (int j = 1; j <= n; j++) {
-            int32_t x = prev + ((d * j) >> m);
-            fract32 v = opz_mul_q31_q15(opz_mul_q31_q15(level, amp15), x);
-            out[0] = opz_add_q31(out[0], v);
-            out[1] = opz_add_q31(out[1], v);
-            out += 2;
+            int32_t y = prev + ((d * j) >> m);
+            *x++ = opz_mul_q31_q15(opz_mul_q31_q15(level, amp15), y);
             level = em == 0 ? opz_env_tick0(level, coef) : em == 1 ? opz_add_q31(level, inc)
                     : em == 3 ? opz_add_q31(level, opz_mul_q31_rnd(opz_sub_q31(0x7fffffff,
                                 opz_mul_q31_rnd(opz_mul_q31_rnd(level, level), level)), step))
@@ -839,11 +838,13 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
     run_string(s, line, ns, dD, s->mode, burst || bowing);
     s->D = s->tD;
 
+    fract32 mono[OPZ_BLOCK_FRAMES];                                      /* the voice, before level and pan */
     int em = env_step == 0 ? 0 : env_coef != 0x7fffffff ? 2 : stage == 3 ? 1 : 3;
-    if (em == 0) OPZ_ADSR_LEVEL(env) = pass_out(out, s, m, level, env_coef, 0, 0);
-    else if (em == 1) OPZ_ADSR_LEVEL(env) = pass_out(out, s, m, level, env_coef, env_step, 1);
-    else if (em == 3) OPZ_ADSR_LEVEL(env) = pass_out(out, s, m, level, env_coef, env_step, 3);
-    else OPZ_ADSR_LEVEL(env) = pass_out(out, s, m, level, env_coef, env_step, 2);
+    if (em == 0) OPZ_ADSR_LEVEL(env) = pass_out(mono, s, m, level, env_coef, 0, 0);
+    else if (em == 1) OPZ_ADSR_LEVEL(env) = pass_out(mono, s, m, level, env_coef, env_step, 1);
+    else if (em == 3) OPZ_ADSR_LEVEL(env) = pass_out(mono, s, m, level, env_coef, env_step, 3);
+    else OPZ_ADSR_LEVEL(env) = pass_out(mono, s, m, level, env_coef, env_step, 2);
+    opz_mix_mono(out, mono, &s->mix, params);                            /* level and pan, added into out */
 }
 
 OPZ_EXPORTS_INSTRUMENT();

@@ -11,7 +11,8 @@
  * buffer is mapped at exactly the engine's size (FX1: memRequest; FX2: the 128 KB it says it uses there) between two
  * inaccessible pages, so any read or write outside it crashes; the state has a guard after its 204 bytes. Runs include
  * knobs jumping every block, notes and chords, held notes re-sent with velocity 0 and params NULL, plug-select note
- * 255, bends, freeze / thaw at random times, full-scale and silent inputs, gain 0 and 1.
+ * 255, bends, freeze / thaw at random times, full-scale and silent inputs, gain 0 and 1, and a sequencer clock for
+ * the time lock (tempo changes, odd tempo answers, play / stop, position jumps).
  * MIT licence, see CONTRIBUTING.md.
  */
 #include <stdio.h>
@@ -77,10 +78,34 @@ static int rndn(int n) { return (int)(rnd32() % (uint32_t)n); }
 
 typedef struct { uint8_t state[OPZ_FX_STATE_BYTES]; uint8_t guard[64]; } StateBox;
 
+/* A sequencer for the time lock: tempo, play/stop, step and tick, moved by the run below (jumps included) */
+static int g_bpm = 120, g_play = 1, g_step = 0, g_tick = 0, g_tick_acc = 0;
+static int fake_seq(int key)
+{
+    if (key == OPZ_SEQ_KEY(OPZ_SEQ_GET_TEMPO, 0)) return g_bpm;
+    if (key == OPZ_SEQ_KEY(OPZ_SEQ_GET_PLAYING, 0)) return g_play;
+    if (key == OPZ_SEQ_KEY(OPZ_SEQ_GET_STEP, 0)) return g_step;
+    if (key == OPZ_SEQ_KEY(OPZ_SEQ_GET_TICK, 0)) return g_tick;
+    return -1;
+}
+static void seq_block(void)
+{
+    if (rndn(3000) == 0) g_bpm = rndn(4) ? 40 + rndn(161) : (rndn(2) ? 0 : 5000);   /* odd answers: clamped */
+    if (rndn(2000) == 0) g_play = !g_play;
+    if (rndn(3000) == 0) { g_step = rndn(256); g_tick = rndn(24); }                  /* a jump */
+    int bpm = g_bpm < 40 || g_bpm > 255 ? 120 : g_bpm;
+    g_tick_acc += 64 * bpm * 96;                                                     /* ticks x 60 x 44100 */
+    while (g_tick_acc >= 60 * 44100) {
+        g_tick_acc -= 60 * 44100;
+        if (++g_tick == 24) { g_tick = 0; if (++g_step == 256) g_step = 0; }
+    }
+}
+
 static int run(int track, long blocks, uint32_t seed)
 {
     uint32_t req = 0;
-    static const ModuleCallbackInterface cb;
+    static ModuleCallbackInterface cb;
+    cb.sequencerGetValue = fake_seq;
     initModule(0, &cb, &req);
     int bits = track == OPZ_TRACK_FX1 ? BITS_FX1 : BITS_OTHER;
     uint32_t size = track == OPZ_TRACK_FX1 ? req : MEM_BYTES(BITS_OTHER);
@@ -156,6 +181,7 @@ static int run(int track, long blocks, uint32_t seed)
             in[2 * i] = v;
             in[2 * i + 1] = kind == 4 ? -v : v;
         }
+        seq_block();
         renderFX(params, bend, box.state, in, out, gain);
         for (int i = 0; i < 2 * BLK; i++) {
             int64_t a = out[i] < 0 ? -(int64_t)out[i] : out[i];

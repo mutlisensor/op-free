@@ -13,6 +13,7 @@ resonance knobs) shapes the tone after it.
 | velocity | each operator's own **velocity sensitivity** (0–7, as on the DX7): attenuation = sensitivity × 12 dB × (1 − ∛(velocity ÷ 127)), i.e. at sensitivity 7 −6.4 dB at velocity 100, −17 dB at 64, −39 dB at 20; nothing at 127. On carriers it sets loudness, on modulators brightness: most bank patches bark at high velocity and stay round at low velocity |
 | attack, decay, sustain, release | the **OP-Z envelope is an overall amplifier on top of the patch** (the operators' own envelopes shape the timbre and the patch's own amplitude contour). Presets set attack 0 and sustain 255, so the OP-Z envelope is transparent while a note is held and the patch plays exactly as written. **Attack** fades the whole voice in. **Sustain** below 255 lets the whole voice fall to that level after the attack, at the **decay** rate (with sustain 255 decay does nothing). **Release**: a note-off starts the operators' own release (their R4 → L4) and the OP-Z release at the same time; the shorter one ends the sound. The voice is freed when the OP-Z envelope ends **or earlier, as soon as every carrier is silent and finished** (in sustain at level 0, or released) — so a decayed piano note frees its voice even while the key is held. Voice steals (stage 5/6) fade through the OP-Z envelope as on every engine |
 | filter, resonance | not used: they are the OS's own track filter, which runs after the engine. Presets leave it neutral (128, 0) |
+| pan, level | the track's pan and level (yellow and red dial, orange page), applied by the engine as TE's engines do (`opz_mix.h`): level is linear (128 = −6 dB, 0 = silent), pan a balance (centre: both sides full; hard left: right silent). The FX1/FX2 sends are taken after them. They follow the LFO (targets pan and volume) without zipping |
 | portamento, pitch bend, OS LFO on pitch | the operators follow the OP-Z's pitch per sample (fixed-frequency operators ignore it) |
 
 The patch's own LFO (vibrato, tremolo; 6 waves, delay as a fade-in, per voice) and pitch envelope run in addition to
@@ -94,18 +95,18 @@ decides how a note ends.
 | chord | clav | 28 (CLAV) | 60 | 0 | 160 |
 
 Chord presets sit lower because four voices sum (the simulator's tine ep chords at velocity 127 peak at −1.5 dBFS in
-the track buffer). `python3 tools/opz.py presets check engines/dx` passes with no warnings. Not tuned by ear yet.
+the track buffer at level 255). `python3 tools/opz.py presets check engines/dx` passes with no warnings. Not tuned by ear yet.
 
 ## Facts
 
 | | |
 |---|---|
-| Plug | 61013, `trackmask` 0xF0 (bass, lead, arp, chord), version 1 |
-| Memory slot | 7 (50 KB class): 23.7 KB used on Blackfin — 7.4 KB code, 8 KB sine table, 4 KB patch bank, 2.9 KB other tables, 0.8 KB of block buffers (`.bss`); `memRequest` 0 |
-| State | 256 B of 280 per voice |
-| CPU | Blackfin simulator ([cycle-model.md](../../research/cycle-model.md)), `python3 tools/opz_cycles.py engines/dx`: **166–173 cycles/sample/voice with all six operators running, 179 in the worst block** (11,470 cycles per block). Patches with fewer or decaying operators cost less: across the bank 106 (SUB BASS) to 173 (BRASS) on average. Operators that are silent for a whole block are skipped; the rare algorithms 4 and 6 (a feedback loop over 3 or 2 operators) cost the same. Note-on 2,600–2,900 cycles (twice when a P1 step lock restarts the note on another patch) |
+| Plug | 61013, `trackmask` 0xF0 (bass, lead, arp, chord), version 2 (v2: applies the track's level and pan) |
+| Memory slot | 7 (50 KB class): 24.4 KB used on Blackfin — 8.1 KB code, 8 KB sine table, 4 KB patch bank, 2.9 KB other tables, 0.8 KB of block buffers (`.bss`); `memRequest` 0 |
+| State | 260 B of 280 per voice |
+| CPU | Blackfin simulator ([cycle-model.md](../../research/cycle-model.md)), `python3 tools/opz_cycles.py engines/dx`: **171–178 cycles/sample/voice with all six operators running, 184 in the worst block** (11,780 cycles per block). Patches with fewer or decaying operators cost less: in the benchmark SUB BASS 111, ORGAN 136, BRASS 178 on average. Operators that are silent for a whole block are skipped; the rare algorithms 4 and 6 (a feedback loop over 3 or 2 operators) cost the same. **The track's level and pan (`opz_mix.h`) are ~5 of these cycles per sample** with the hand-scheduled `opz_mix.h` loops (~13 with the C loops; v1, without them: 166–173, worst block 179). 19 voices of BRASS: ~215,200 cycles per block (worst 221,500), more than the ~203,500 the OS leaves after its own share of its 265,000 limit, so a full layout of six-operator dx patches needs fewer voices. Note-on 2,640–2,950 cycles (twice when a P1 step lock restarts the note on another patch) |
 | Voices that fit | Per voice 11,470 cycles per block at worst, against the OS's 265,000 for all voices (~13,900 per voice with 19). **All 11 synth-track voices on `dx` at once** (bass 2, lead 3, arp 2, chord 4): 126,000 cycles per block; with 8 `kit` hats on the drum tracks 209,000 (79 %), with 8 `kit` snares 256,000 (97 %, on the line). 19 voices of `dx` would take 218,000. All before the OS's own per-track work, and within the simulator's ×0.7–1.3 margin, so the 11 + 8-snare case can tip over on the device: runbook step 11 decides. No polyphony limit is built in |
-| Level | −12 dBFS per voice: every patch's carriers are normalised together (from their output levels) so that at full envelope and velocity 127 they peak at `OPZ_VOICE_PEAK`. Measured single notes at velocity 110: −12.1 to −16 dBFS (several detuned carriers rarely line up; tremolo and slow attacks peak lower). A quiet single carrier is raised by at most 12 dB |
+| Level | at track level 255 (the level dial scales it linearly, 128 = −6 dB): −12 dBFS per voice: every patch's carriers are normalised together (from their output levels) so that at full envelope and velocity 127 they peak at `OPZ_VOICE_PEAK`. Measured single notes at velocity 110: −12.1 to −16 dBFS (several detuned carriers rarely line up; tremolo and slow attacks peak lower). A quiet single carrier is raised by at most 12 dB |
 | Sound | Sine from a 4,096-entry table without interpolation (the DX7's own resolution): a pure sine has −67 dB of non-harmonic energy, a modulated note −55 to −62 dB up to C6. Operators above 16 kHz fade out (−45 dB at 20 kHz), above 20 kHz they are muted. High modulation indices on high notes alias, as on the DX7: a ratio-1 modulator at output level 99 (12.6 rad) is clean to C6 and folds back at C7; ratio 3 at level 90 folds from C6. Feedback 7 gives a clean saw (−59 dB at C4, aliasing rising to −34 dB at C7); P2 above 128 can push it into noise. Feedback FM carries a DC offset, which the OS's DC blocker removes |
 
 ### How a block is made
@@ -118,7 +119,7 @@ pass each over the block, from operator 6 down to 1: an operator reads its phase
 its own last two outputs (feedback, averaged), or from nothing, and writes into a bus (replacing or adding) or into
 the carrier sum. Every algorithm is a fixed program of those passes (`k_alg` in [dx_tables.h](dx_tables.h));
 [gen_dx.py](gen_dx.py) checks each program against the DX7's algorithm chart by running it symbolically. The carrier
-sum then goes through the OP-Z envelope into the track buffer. Each operator pass is ~14 instructions per sample;
+sum then goes through the OP-Z envelope and the track's level and pan into the track buffer. Each operator pass is ~14 instructions per sample;
 the OP-Z envelope's per-sample step is ~28 of the rest.
 
 ### DX7 behaviour, and where dx differs

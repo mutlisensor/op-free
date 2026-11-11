@@ -1,8 +1,8 @@
 {
   "engine": "resonator",
   "memoryslot": 53,
-  "engine_version": 2,
-  "plug": { "id": 61003, "version": 2, "name": "resonator", "trackmask": 768, "flags": 1,
+  "engine_version": 3,
+  "plug": { "id": 61003, "version": 3, "name": "resonator", "trackmask": 768, "flags": 1,
             "parameter_names": ["decay", "structure"] },
   "presets": "presets.json"
 }

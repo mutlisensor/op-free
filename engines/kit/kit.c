@@ -11,6 +11,9 @@
  *   P1        tune        +-1 octave on every pitch and filter of the model (128 = nominal)
  *   P2        decay       x0.25 .. x2 on every decay (128 = nominal)
  *   velocity              level
+ *   attack .. release     the OP-Z drum envelope over the hit, as on TE's sample kits: start, attack, hold, decay
+ *                         (opz_drumenv in opz_adsr.h). The presets' 0 / 0 / 255 / 0 leaves every hit as designed.
+ *   note style gate       a key release fades the hit (~20 ms); the other styles play one-shots
  *
  * The filter and resonance knobs are the OS's own track filter, which runs after the engine; kit never reads them.
  *
@@ -21,8 +24,10 @@
  * Models follow the classic analog drum circuits (TR-808/909 style), as also explored by Mutable Instruments
  * Plaits' and Peaks' drum models; written from scratch on sdk/include/opz_dsp.h. MIT licence, see CONTRIBUTING.md.
  */
+#include "opz_adsr.h"
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_mix.h"
 
 enum { W_SINE = 0, W_TRI = 1, W_SQUARE = 2 };
 enum { N_LP = 0, N_BP = 1, N_HP = 2 };
@@ -84,6 +89,8 @@ typedef struct State {
     OpzSvf nf;
     OpzSvfCoef ncoef;
     int32_t clap_left, clap_timer, dscale;
+    OpzMix mix;                               /* the track's level and pan (opz_mix.h) */
+    OpzDrumEnv denv;                          /* the envelope page over the hit */
     uint8_t model, track, choke, wave, nmode, active, fading;
 } State;
 
@@ -159,6 +166,12 @@ void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
     s->clap_timer = CLAP_GAP;
     s->dscale = dscale;
 
+    /* The hit's length for the envelope page: it ends when its amplitude and noise decays are below -60 dB, 6.9
+     * time constants (7 here: a little margin), after the clap's three bursts. */
+    uint32_t tmax = m->ta > m->tn ? m->ta : m->tn;                                /* ms, at most 1500 */
+    uint32_t ms16 = (tmax * (uint32_t)dscale) >> 12;                            /* 1/16 ms; dscale <= 2^17 */
+    opz_drumenv_start(&s->denv, ((ms16 * 312) >> 4) + (uint32_t)s->clap_left * CLAP_GAP, params);   /* 44.1 x 7.07 */
+
     s->ga = opz_mul_q31(amp, m->ga << 23);
     s->gb = opz_mul_q31(amp, m->gb << 23);
     s->gn = opz_mul_q31(amp, m->gn << 23);
@@ -182,11 +195,13 @@ void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
     s->choke = s_choke[s->track];
     s->active = 1;
     s->fading = 0;
+    opz_mix_start(&s->mix, params);
 }
 
 void onNoteOff(int note, void *state)
 {
-    (void)note; (void)state;                                   /* one-shots: the hit decays on its own */
+    (void)note;
+    opz_drumenv_off(&((State *)state)->denv);                 /* gate style only; one-shots decay on their own */
 }
 
 /* ---- render passes ------------------------------------------------------------------------------------------
@@ -268,8 +283,21 @@ NOINLINE void sweep_two(State *s) { sweep_pass(s, 1); }
         }                                                                                                      \
     }
 OSC_COPY(osc_sine, W_SINE)
-OSC_COPY(osc_tri, W_TRI)
-OSC_COPY(osc_square, W_SQUARE)
+/* The triangle and square copies leave out the loops no model uses, to keep kit inside its 10 KB slot: the only
+ * swept triangle (hard kick) has one tone, and no square model (cowbell, blip) sweeps. A model that needs another
+ * combination would play without its sweep or its second tone: give the copy that loop back first. */
+NOINLINE void osc_tri(uint32_t *ph, const uint32_t *incs, uint32_t inc, int32_t g, int sweep, int add)
+{
+    if (sweep) osc_pass(ph, incs, inc, g, W_TRI, 1, 0);
+    else if (add) osc_pass(ph, incs, inc, g, W_TRI, 0, 1);
+    else osc_pass(ph, incs, inc, g, W_TRI, 0, 0);
+}
+NOINLINE void osc_square(uint32_t *ph, const uint32_t *incs, uint32_t inc, int32_t g, int sweep, int add)
+{
+    (void)incs; (void)sweep;
+    if (add) osc_pass(ph, 0, inc, g, W_SQUARE, 0, 1);
+    else osc_pass(ph, 0, inc, g, W_SQUARE, 0, 0);
+}
 
 /* The amplitude envelope over s_tone. Returns it at the end of the block. */
 NOINLINE int32_t tone_env(State *s)
@@ -370,8 +398,9 @@ ALWAYS_INLINE void noise_pass(State *s, const Model *m, int metal, int noise, in
 }
 
 /* Filter the noise and metal (filt: 0 none, 1 + N_LP / N_BP / N_HP), add tone and click, trim, soft clip, peak
- * level, into out. */
-ALWAYS_INLINE void out_pass(fract32 *out, State *s, int32_t trim, int filt)
+ * level, into the mono buffer opz_mix_mono adds into out. The trim carries the envelope page's ramp: Q15 in the top
+ * half of ta (Q15.16), dt per frame. */
+ALWAYS_INLINE void out_pass(fract32 *out, State *s, int32_t ta, int32_t dt, int filt)
 {
     OpzSvf nf = s->nf;
     OpzSvfCoef c = s->ncoef;
@@ -383,10 +412,10 @@ ALWAYS_INLINE void out_pass(fract32 *out, State *s, int32_t trim, int filt)
             v = filt == 1 + N_HP ? hp : filt == 1 + N_BP ? opz_shl_q31(bp, 1) : lp;
         }
         fract32 x = opz_add_q31(opz_add_q31(s_tone[i], v), s_click[i]);
-        x = opz_clip(opz_shl_q31(opz_mul_q31_q15(x, trim), 2));                   /* soft clip loud hits */
+        x = opz_clip(opz_shl_q31(opz_mul_q31_q15(x, ta >> 16), 2));               /* soft clip loud hits */
+        ta += dt;
         x >>= 2;                                                                 /* x OPZ_VOICE_PEAK (2^-2) */
-        out[2 * i] = opz_add_q31(out[2 * i], x);                                 /* interleaved stereo */
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], x);
+        out[i] = x;
     }
     s->nf = nf;
 }
@@ -399,20 +428,23 @@ NOINLINE void noise_any(State *s, const Model *m, int metal, int noise, int clic
 {
     noise_pass(s, m, metal, noise, click, clap);
 }
-NOINLINE void out_hp(fract32 *out, State *s, int32_t trim) { out_pass(out, s, trim, 1 + N_HP); }
-NOINLINE void out_bp(fract32 *out, State *s, int32_t trim) { out_pass(out, s, trim, 1 + N_BP); }
-NOINLINE void out_lp(fract32 *out, State *s, int32_t trim) { out_pass(out, s, trim, 1 + N_LP); }
-NOINLINE void out_plain(fract32 *out, State *s, int32_t trim) { out_pass(out, s, trim, 0); }
+NOINLINE void out_hp(fract32 *out, State *s, int32_t ta, int32_t dt) { out_pass(out, s, ta, dt, 1 + N_HP); }
+NOINLINE void out_bp(fract32 *out, State *s, int32_t ta, int32_t dt) { out_pass(out, s, ta, dt, 1 + N_BP); }
+NOINLINE void out_lp(fract32 *out, State *s, int32_t ta, int32_t dt) { out_pass(out, s, ta, dt, 1 + N_LP); }
+NOINLINE void out_plain(fract32 *out, State *s, int32_t ta, int32_t dt) { out_pass(out, s, ta, dt, 0); }
 
 void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const uint32_t *params, ADSR *env)
 {
-    (void)pitch; (void)pitchSlope; (void)params;               /* pitch comes from the key's model */
+    (void)pitch; (void)pitchSlope;                             /* pitch comes from the key's model */
     State *s = state;
     if (OPZ_ADSR_STAGE(env) == 0) return;
     if (!s->active) { OPZ_ADSR_STAGE(env) = 0; return; }
 
     const Model *m = &k_models[s->model];
-    if (OPZ_ADSR_STAGE(env) >= 5 && !s->fading) {
+    /* Q15 trim / 256 in Q15.16, times the envelope page's ramp (exact while it holds) -> denv.g0 .. g1 */
+    if (!opz_drumenv_block(&s->denv, s_cb, env, m->trim << 23)) return;     /* the envelope ended the hit */
+
+    if (OPZ_DRUMENV_STOLEN(&s->denv, env) && !s->fading) {
         /* The host wants this voice for a new note (voice steal, stage 5/6) and starts it when we reach stage 0:
          * fade out in a few milliseconds instead of ringing on (hardware: long hits blocked new ones). */
         s->fading = 1;
@@ -452,11 +484,13 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
     if (!has_tone && !has_metal) s->env_a = env_block(env_a, s->coef_a);
 
     int filt = (has_metal || has_noise) && s->ncoef.a1 ? s->nmode + 1 : 0;
-    int32_t trim = m->trim << 7;                                   /* Q15 trim / 256 */
-    if (filt == 1 + N_HP) out_hp(out, s, trim);
-    else if (filt == 1 + N_BP) out_bp(out, s, trim);
-    else if (filt == 1 + N_LP) out_lp(out, s, trim);
-    else out_plain(out, s, trim);
+    int32_t ta = s->denv.g0, dt = (s->denv.g1 - ta) >> 6;
+    fract32 mono[OPZ_BLOCK_FRAMES];
+    if (filt == 1 + N_HP) out_hp(mono, s, ta, dt);
+    else if (filt == 1 + N_BP) out_bp(mono, s, ta, dt);
+    else if (filt == 1 + N_LP) out_lp(mono, s, ta, dt);
+    else out_plain(mono, s, ta, dt);
+    opz_mix_mono(out, mono, &s->mix, params);                      /* level and pan, into interleaved out */
 
     if (s->env_a < THRESHOLD && s->env_n < THRESHOLD && s->env_c == 0 && s->clap_left == 0) {
         s->active = 0;

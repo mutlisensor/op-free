@@ -1,8 +1,8 @@
 {
   "engine": "8bit",
   "memoryslot": 75,
-  "engine_version": 2,
-  "plug": { "id": 61024, "version": 2, "name": "8bit", "trackmask": 15, "flags": 8,
+  "engine_version": 3,
+  "plug": { "id": 61024, "version": 3, "name": "8bit", "trackmask": 15, "flags": 8,
             "parameter_names": ["tune", "crunch"] },
   "presets": "presets.json"
 }

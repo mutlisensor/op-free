@@ -9,7 +9,7 @@ copies one to `engines/NAME/`, fills in the name, a free test plug id and a free
 |---|---|---|
 | [synth](synth/) | bass, lead, arp, chord | `render`, the host ADSR, velocity, pitch glide, band-limited saw |
 | [drum](drum/) | kick, snare, perc, sample | pitch from the note, the host drum envelope (`updateParametersAHD`) |
-| [fx](fx/) | FX1, FX2 | `renderFX`, per-block coefficients, dry/wet and level as TE's effects do |
+| [fx](fx/) | FX1, FX2 | `renderFX`, per-block coefficients, the SDK's dry/wet law, level and output limiter |
 
 In the templates `my_engine` is the placeholder name, `"memoryslot": 0` and `"id": 0` are filled in by the
 scaffold (both are invalid on purpose), and `@SLOT@`, `@SLOT_CLASS@`, `@PLUG_ID@` in the README are replaced.

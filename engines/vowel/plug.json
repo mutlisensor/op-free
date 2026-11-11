@@ -1,8 +1,8 @@
 {
   "engine": "vowel",
   "memoryslot": 46,
-  "engine_version": 1,
-  "plug": { "id": 61018, "version": 1, "name": "vowel", "trackmask": 240, "flags": 0,
+  "engine_version": 2,
+  "plug": { "id": 61018, "version": 2, "name": "vowel", "trackmask": 240, "flags": 0,
             "parameter_names": ["vowel", "voice"] },
   "presets": "presets.json"
 }

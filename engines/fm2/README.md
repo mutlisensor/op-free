@@ -12,6 +12,7 @@ shapes the tone after it.
 | velocity | level (as on `macro`), and brightness two ways: the index is 50 % of P2's value at velocity 0 and 100 % at 127, and a **strike** adds up to another 100 % at the start of each note (velocity 127; 50 % at velocity 64) that dies away with a time constant of 150 ms at C4, half that two octaves up, twice that two octaves down (40–400 ms). Hard notes bark, soft notes stay round. Notes start with the modulator and carrier in phase, the same way every time |
 | attack … release | the OP-Z envelope sets the level, **and the index follows the envelope's level** (a block, 1.5 ms, behind): a slow attack swells from a pure tone into brightness, decay and sustain set how far the sound mellows, the release darkens as it fades. Sustain 255 keeps the brightness steady |
 | filter, resonance | not used: they are the OS's own track filter, which runs after the engine. Presets leave it neutral (128, 0) |
+| pan, level | the track's pan and level (yellow and red dial, orange page), applied by the engine as TE's engines do (`opz_mix.h`): level is linear (128 = −6 dB, 0 = silent), pan a balance (centre: both sides full; hard left: right silent). The FX1/FX2 sends are taken after them. They follow the LFO (targets pan and volume) without zipping |
 
 Anti-aliasing: for each block the index is limited so that the highest strong sideband, carrier + (index + 1) ×
 modulator frequency, stays below 16 kHz, and the feedback fades out as that room shrinks from 20 to 4 modulator
@@ -73,18 +74,18 @@ others are on the preset keys. Ratio in brackets; A/D/S/R are the OP-Z envelope 
 | chord | bell pad | 216 (√2) | 110 | 90 | 200 | 150 | 160 | 0 | 150 | soft inharmonic pad |
 
 Every preset: filter 128, resonance 0, pan 128, LFO off. Chord presets sit at a lower level because four voices sum
-(sustained four-note chords reach 0 dBFS in the track buffer before the level knob). `python3 tools/opz.py presets
+(sustained four-note chords reach 0 dBFS in the track buffer at level 255). `python3 tools/opz.py presets
 check engines/fm2` passes with no warnings. Not tuned by ear on the device yet.
 
 ## Facts
 
 | | |
 |---|---|
-| Plug | 61011, `trackmask` 0xF0 (bass, lead, arp, chord), version 1 |
-| Memory slot | 51 (10 KB class), 4.0 KB used on Blackfin (4,026-byte image: 2 KB of it the sine table) |
+| Plug | 61011, `trackmask` 0xF0 (bass, lead, arp, chord), version 2 (v2: applies the track's level and pan) |
+| Memory slot | 51 (10 KB class), 4.4 KB used on Blackfin (4,556 bytes: 2 KB of it the sine table) |
 | State | 172 B of 280 per voice (128 of them render's block buffer) |
-| CPU | Blackfin simulator ([cycle-model.md](../../research/cycle-model.md)), `python3 tools/opz_cycles.py engines/fm2`: **7,000–7,050 cycles/block/voice in sustain, 7,470 worst** (110 / **117 per sample**), the same at every ratio and index, a little less in decay and release. 140 per note-on. 19 voices at the worst settings: 122,000 cycles per block on average, 141,000 worst, of the OS's 265,000 (under the 218/sample 19-voice budget, before the OS's own share) |
-| Level | −12 dBFS per voice at velocity 127 (`OPZ_VOICE_PEAK`); FM keeps the peak of a sine at every index, so the level does not change with P2. Four voices of a chord started together can reach 0 dBFS in the track buffer (the simulator's e-piano chords peak at −0.4 dBFS) |
+| CPU | Blackfin simulator ([cycle-model.md](../../research/cycle-model.md)), `python3 tools/opz_cycles.py engines/fm2`: **~6,540 cycles/block/voice in sustain, 7,800 worst** (102 / **122 per sample**; level and pan cost ~5 of them with the hand-scheduled `opz_mix.h` loops, ~14 with the C loops), the same at every ratio and index, a little less in decay and release. 160 per note-on. 19 voices at the worst settings: 111,300 cycles per block on average, 130,300 worst, of the OS's 265,000 (under the 218/sample 19-voice budget, before the OS's own share) |
+| Level | −12 dBFS per voice at velocity 127 and level 255 (`OPZ_VOICE_PEAK`), × the level dial; FM keeps the peak of a sine at every index, so the level does not change with P2. Four voices of a chord started together can reach 0 dBFS in the track buffer (the simulator's e-piano chords peak at −0.4 dBFS) |
 
 Each sample: the modulator (a 1,024-point sine table, linearly interpolated, Q15) with feedback from the average
 of its last two outputs, as on the classic chips; then the carrier, phase-modulated by it; then level and envelope.

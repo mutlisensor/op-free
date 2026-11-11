@@ -9,8 +9,9 @@ in a rising cascade that thins out into the highs. P1 takes it from a small room
 |---|---|
 | P1 **size** | one macro over **size, decay and pre-delay**, as on `plate` (table below). 0 = a small, short room (T60 ~0.5 s, pre-delay 3 ms). Turning it up makes the room bigger (the long delays ×5 from 0 to 255) and the decay longer (×2 every ~37 steps), up to a huge hall at 240 (T60 ~20 s without shimmer, pre-delay 40 ms). **240–255: the decay runs on towards endless**. Without shimmer (P2 0) the tail at 255 never dies. With shimmer the cascade drains it into the highs, so even 255 fades (P2 64: −50 dB over 40 s; P2 255: gone in ~8 s). A limiter stops any build-up from clipping. Size changes **glide** (at most 1/8 sample per sample, ~1.5 s from end to end), so turning P1 bends the tail like tape instead of clicking |
 | P2 **shimmer** | **how much of the loop passes through the pitch shifter each lap** (table below). **0 = a plain reverb**, no shifting. Rising: the interval fades in above the tail as a faint halo (64), a clear octave (128), as loud as the tail itself and climbing on (192), and **at the top (224–255) nearly all of it moves up every lap: a rising cascade** of octaves that gets brighter, then thins out and is gone in a few seconds. The shifted path also darkens a little as P2 rises (low-pass 8 → 5.7 kHz) so the top of the cascade stays smooth, not fizzy. Continuous at every value, so an LFO on P2 works |
-| pan | dry/wet, as on `plate`, `filter` and `glue`: 0 dry, rising linearly to fully wet at the centre (128); 128–255 stay fully wet |
-| level | output level (255 = unity) |
+| pan | not reachable on the OP-Z: an FX track has no pan dial, app control or mixer column [proven, H-FX1], and presets can't set it, so it stays where the OS leaves it (127 on the unit checked), which this effect treats as **the reverb only** (the dry about 44 dB down). The law below the centre, for anything that does set pan: the dry blends in at equal power: 64 = dry and the reverb at −3 dB each, 0 = dry only. |
+| dry level (hold the FX track's key + **red dial**) | the OS's own dry level (byte 12; TE's app shows it as "dry level" on the FX page): how much of each sending track's own sound stays in the mix. 255 = send/return (the source plays on and the effect adds to it), 0 = insert (a track sent at 100 % is heard only through the effect). This is the dry/wet control on the OP-Z [proven, H-FX1 2026-11-11] |
+| level | output level (255 = unity) (nothing on the OP-Z reaches an FX track's level, neither a dial nor the mixer page [proven, H-FX1], so the preset's value holds) |
 | filter, resonance | not used: they are the OS's own track filter, also on FX tracks. Presets leave it neutral (128, 0). A little high-pass on the track filter keeps a long shimmer from muddying the low end |
 | **notes on its track** | **the shift interval**, as the key's distance from **C3** (table below): **C4 = an octave up (the default)**, G3 = a fifth, F3 = a fourth, C5 = two octaves, C3 = unison (shimmer off), keys below C3 shift down (C2 = an octave down). The newest note wins and **the interval stays after you let go** (it's a setting, not a gate), so sequence one note per bar to change the interval with the song. Velocity doesn't matter. Selecting the plug starts at an octave |
 | pitch bend | not used |
@@ -83,7 +84,7 @@ track's dry level lets it*: FX parameter byte 12 (portamento on instrument track
 earlier preset had) a full send leaves only the effect; the preset now ships **255**, so the sending track keeps its
 dry sound at any send, the classic send/return setup [code, app; to confirm on the device,
 [host-tables-flags.md](../../research/host-tables-flags.md#the-bits)]. Pan still sets the dry/wet balance inside
-the effect (64 = half dry, half wet; 128 = all reverb).
+the effect (64 = dry and reverb at −3 dB each; 128 = all reverb).
 
 ## Preset
 
@@ -113,11 +114,11 @@ All at pan 128, level 255, filter 128 / resonance 0. *Note* is a key to play onc
 
 | | |
 |---|---|
-| Plug | 61008, version 1, `trackmask` 0x300 (FX1, FX2); preset byte 12 (the FX **dry level**) 255: the sending track keeps its dry signal, classic send/return ([host-tables-flags.md](../../research/host-tables-flags.md#the-bits)) |
+| Plug | 61008, version 2, `trackmask` 0x300 (FX1, FX2); preset byte 12 (the FX **dry level**) 255: the sending track keeps its dry signal, classic send/return ([host-tables-flags.md](../../research/host-tables-flags.md#the-bits)) |
 | Memory slot | 44 (10 KB class), **9,168 of 10,240 bytes** used (Blackfin build, `-O2`) |
 | Memory request | **249,052 bytes (243 KB)** on every track: fits FX2's 256 KB pool as well as FX1's 2 MB. The 32-bit ring of tank lines is 206 KB (52,795 samples), the shifter ring 32 KB (8,192 samples), the rest work buffers. One size for both tracks: the OS doesn't enforce the trackmask and the FX pools sit back to back, so a buffer that fits FX2 is safe wherever the plug lands. On the master track (16 KB pool, and not a user slot) `init` refuses the buffer and the plug passes the dry signal only |
 | State | 108 B of 200 |
-| CPU (Blackfin simulator, `tools/opz_cycles.py`) | **~473 cycles per stereo frame** (30,300 per block, worst block 490/frame) at every P1/P2 and interval, 5.2 % of the 580,499-cycle block. **~535 (worst block 552) with P1 and P2 both moving every block** (`knob_cases`). **~567 per frame (worst block 642) while P1 glides end to end**: the tank's delays then read between samples, and in the blocks where the output taps also crossfade to a new size it peaks. Note-on 43–53 cycles (also the velocity-0 re-send). The shifter is ~110 of the 473; `plate` is 420 |
+| CPU (Blackfin simulator, `tools/opz_cycles.py`) | **v2 (2026-11-11): 568 cycles per stereo frame in its worst case, worst block 642** (fx-usability.md §4a). Earlier figures: **~473 cycles per stereo frame** (30,300 per block, worst block 490/frame) at every P1/P2 and interval, 5.2 % of the 580,499-cycle block. **~535 (worst block 552) with P1 and P2 both moving every block** (`knob_cases`). **~567 per frame (worst block 642) while P1 glides end to end**: the tank's delays then read between samples, and in the blocks where the output taps also crossfade to a new size it peaks. Note-on 43–53 cycles (also the velocity-0 re-send). The shifter is ~110 of the 473; `plate` is 420 |
 | Start-up | the first 15 blocks (22 ms) after selecting the plug pass the dry sound only, while the 243 KB buffer is cleared (`init` runs with interrupts masked, so it can't clear it at once) |
 | Latency | none on the dry path; the reverb starts after its pre-delay (3–45 ms), the shifted part ~70 ms later (half the window) |
 
@@ -212,6 +213,21 @@ loop, so it can't build up); everything in the loop uses the full 32 × 16 multi
 7. **Pan** below 128 mixes the dry sound back in.
 8. Compare with `plate` on the other FX track: at P2 0 shimmer should sound like a close cousin (a little longer
    and darker, fewer diffusers); with P2 up it's the shimmer pedal sound.
+
+## Version 2 (2026-11-11): what changed, what to listen for
+
+Tester feedback: "the chromatic mapping is fun but it'd be useful to have it mapped to something". Every lap of the
+loop shifts the tail again, so an interval stacks on itself: an octave or a fifth builds a chord, but a second, a
+third or a tritone piles up into a cluster. Now **every key snaps to the nearest of −12, −7, −5, 0, +5, +7, +12, +17,
++19, +24** (a tie goes to the fifth or the twelfth). The keys on those intervals play what they always did (C4 an
+octave, G3 a fifth, F3 a fourth, F4 +17, G4 +19, C5 two octaves, C3 off, C2 an octave down), so sequenced patterns
+keep their sound. On the default octave the keys from F3 to E5 give +5, +7 (F#3–A3), +12 (A#3–D4), +17 (D#4–F4), +19
+(F#4–A4), +24 (A#4–E5). Also: the dry/wet law's lower half is equal power (the SDK's law; the centre was and is the
+reverb only), and the output passes the SDK's limiter.
+
+On the device (FX2, a pad sending at 100 %, FX2's dry level 255): tap keys across the keyboard while the shimmer
+rings: every key gives a consonant interval (fourth, fifth, octave, twelfth, two octaves); the black keys sound like
+their white neighbours' intervals, never a semitone cluster.
 
 ## Credits
 

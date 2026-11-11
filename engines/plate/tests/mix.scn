@@ -1,4 +1,4 @@
-# Pan is dry/wet: swept from 0 (dry) to 128 (fully wet) and on to 255 (still wet) on FX1, with the level at 200 and a
+# Pan is dry/wet (the SDK's law, equal power): swept from 0 (dry) to 128 (fully wet) and on to 255 (still wet) on FX1, with the level at 200 and a
 # track gain of 0.8.
 tempo 120
 steps 32

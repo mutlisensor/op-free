@@ -11,6 +11,7 @@ import {
   orphanErrors, presetProblems, removalBlock, sameSlots, setCommand, slotEntries, slotMapChanges, slotMapProblems, unassign, verifyInstall,
 } from "./plan.ts";
 import { dumps, loads, pyEqual, pyInt, pyRepr } from "./pyjson.ts";
+import { describeSpace, installRoom, planRemoveOurs, removeOursLines, spaceReport } from "./space.ts";
 import { type Clock, FileSession, type PushResult, StateSession, type Transport, monotonic } from "./session.ts";
 
 /** Where backups go (the CLI writes backups/<time>-<label>/; a web app might use IndexedDB or downloads). */
@@ -147,6 +148,8 @@ export class Opz {
     if (plan.slotMap !== null) files.push([SLOTS, compact(plan.slotMap)]);
     this.log(`plan: ${engine.devicePath} (${engine.data.length} bytes) as plug ${pyInt(engine.manifest.plug.id)} -> `
       + (where(plan.assign) || "no track"));
+    const room = installRoom(b.plugs, pyInt(engine.manifest.plug.id));
+    if (room) this.log("warning: " + room);
     if (options.dryRun) {
       this.log("dry run: nothing written. patch.json:\n" + fromUtf8(files[1][1]));
       return true;
@@ -313,6 +316,64 @@ export class Opz {
     }
     const orphans = orphanEngines(plugs2);
     this.log(`removed plug ${plugId}. orphan engine files (no known delete): ${orphans.length ? pyRepr(orphans) : "none"}`);
+    return true;
+  }
+
+  /**
+   * Take every plug of ours off the OP-Z in three verified writes, one confirm: an empty boot file first (a stale one
+   * would bring removed plugs back at the next start, research/presets.md), the slot map without them (with
+   * `putBack`, a backup id: the plugs that backup had in those cells go back where they are still installed), then one
+   * sync job of remove operations. The user's samples are never touched. Engine files stay (no normal-mode delete is
+   * known); they are a few KB each and content mode never shows them. Port of `Opz.remove_ours` in tools/opz.py.
+   */
+  async removeOurs(options: WriteOptions & { putBack?: string | null } = {}): Promise<boolean> {
+    const b = await this.backup("remove-ours");
+    let putBack: Doc | null = null;
+    if (options.putBack) {
+      const raw = (await this.backups.load(options.putBack)).get(SLOTS);
+      if (raw === undefined) throw new Error(`backup ${options.putBack} has no ${SLOTS}`);
+      putBack = loads(raw);
+    }
+    const plan = planRemoveOurs(b.plugs, b.slots, putBack);
+    for (const [pid, why] of plan.kept) this.log(`warning: plug ${pid} stays: ${why}`);
+    for (const e of plan.errors) this.log("error:   " + e);
+    if (plan.errors.length) {
+      this.log("nothing written.");
+      return false;
+    }
+    if (!plan.ids.length) {
+      this.log("no plugs of ours on the OP-Z: nothing to remove.");
+      return true;
+    }
+    for (const line of removeOursLines(plan, BOOT_PATCH)) this.log(line);
+    if (options.dryRun) {
+      this.log("dry run: nothing written.");
+      return true;
+    }
+    if (!options.yes && !(await this.confirm(`Remove ${plan.ids.length > 1 ? `all ${plan.ids.length} plugs` : "the 1 plug"} of ours?`))) {
+      this.log("cancelled.");
+      return false;
+    }
+    await this.push([[BOOT_PATCH, buildBootPatch([])]]);
+    if (!pyEqual(plan.slot_map, b.slots)) {
+      await this.push([[SLOTS, compact(plan.slot_map)]]);
+      if (!pyEqual(loads((await this.readSettings())[1]), plan.slot_map)) {
+        this.log(`verify:  slot map differs; restoring the slot map from ${b.id}; no plug removed`);
+        await this.restore(b.id, { yes: true });
+        return false;
+      }
+    }
+    await this.push([], plan.ids);
+    const [rawPlugs, rawSlots] = await this.readSettings();
+    const plugs2 = loads(rawPlugs);
+    const gone = new Set(plan.ids);
+    const left = (plugs2.plugs ?? []).filter((p: Doc) => gone.has(p.id)).map((p: Doc) => p.id);
+    if (left.length) {
+      this.log(`verify:  still present: ${left.join(", ")} (run it again)`);
+      return false;
+    }
+    this.log(`removed ${plan.ids.length} plug${plan.ids.length > 1 ? "s" : ""} of ours and verified. The user's samples and TE's plugs are untouched.\n`
+      + describeSpace(spaceReport(plugs2, loads(rawSlots))));
     return true;
   }
 

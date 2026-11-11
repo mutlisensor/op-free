@@ -1,11 +1,11 @@
-# P1 swept over the whole carrier range in ring mode, then up-shift, on noise at 50/50.
+# P1 swept over the whole carrier range in ring mode, then up-shift, on noise, dry and wet at -3 dB each (pan 64).
 tempo 120
 steps 32
 tail 0.2
 track fx2
 input noise 0.4
 param p2 128
-param pan 128
+param pan 64
 param level 255
 gain 1
 sweep p1 0 255 0 16

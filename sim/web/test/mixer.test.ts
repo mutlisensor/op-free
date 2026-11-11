@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Ramp, gains, scaleBlock } from "../src/mixer.ts";
+import { Ramp, addBlock, gains, scaleBlock } from "../src/mixer.ts";
 
 const one = (send: number, dry: number) => gains([{ sendByte: send, dryLevelByte: dry }]);
 
@@ -43,4 +43,18 @@ test("Ramp settles on its target", () => {
   const r = new Ramp(0);
   for (let i = 0; i < 200; i++) r.step(1);
   assert.equal(r.value, 1);
+});
+
+test("addBlock sums tracks into one bus, ramped and saturating", () => {
+  const acc = new Int32Array([10, 10, 10, 10]);
+  addBlock(new Int32Array([100, -100, 100, -100]), 1, 1, acc);
+  assert.deepEqual([...acc], [110, -90, 110, -90]);
+  addBlock(new Int32Array([400, 400, 400, 400]), 0, 1, acc);
+  assert.deepEqual([...acc], [110, -90, 310, 110]);
+  const full = new Int32Array([2147483000, -2147483000]);
+  addBlock(new Int32Array([1000, -1000]), 1, 1, full);
+  assert.deepEqual([...full], [2147483647, -2147483648]);
+  const before = [...acc];
+  addBlock(new Int32Array([5, 5, 5, 5]), 0, 0, acc);
+  assert.deepEqual([...acc], before);
 });

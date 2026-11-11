@@ -56,6 +56,7 @@
 #include "opz_adsr.h"
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_mix.h"
 
 #define N OPZ_BLOCK_FRAMES
 #define COPIES 4                /* the dry phase and three ensemble taps */
@@ -79,6 +80,7 @@ typedef struct State {
     fract32 m1, m2, s1, s2; /* tone low-pass states, two poles on mid and on side */
     int32_t amp;            /* velocity gain, Q15 */
     int32_t key;            /* tone offset from key tracking and velocity, Q16 octaves */
+    OpzMix mix;             /* the track's level and pan (opz_mix.h) */
     uint8_t track;
     uint8_t fresh;          /* first block after note-on: place the taps */
 } State;
@@ -236,8 +238,8 @@ static int32_t env_block(int32_t level, int32_t c, int32_t s)
 }
 
 /* Integrate mid and side from slope + events, two-pole tone on both, L = M + S and R = M - S with the envelope as
- * a ramp from l0 to l1, added into out. */
-static void pass_out(fract32 *out, State *s, uint32_t m, uint32_t dm, uint32_t sd, uint32_t ds, int32_t g,
+ * a ramp from l0 to l1, into the interleaved block buffer st that opz_mix_stereo adds into out. */
+static void pass_out(fract32 *st, State *s, uint32_t m, uint32_t dm, uint32_t sd, uint32_t ds, int32_t g,
                      int32_t l0, int32_t l1)
 {
     fract32 m1 = s->m1, m2 = s->m2, s1 = s->s1, s2 = s->s2;
@@ -252,8 +254,8 @@ static void pass_out(fract32 *out, State *s, uint32_t m, uint32_t dm, uint32_t s
         s1 = opz_add_q31(s1, opz_mul_q31_q15(opz_sub_q31((fract32)sd, s1), g));
         s2 = opz_add_q31(s2, opz_mul_q31_q15(opz_sub_q31(s1, s2), g));
         int32_t lq = lv >> 16;
-        out[2 * i] = opz_add_q31(out[2 * i], opz_mul_q31_q15(opz_add_q31(m2, s2), lq));
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], opz_mul_q31_q15(opz_sub_q31(m2, s2), lq));
+        st[2 * i] = opz_mul_q31_q15(opz_add_q31(m2, s2), lq);
+        st[2 * i + 1] = opz_mul_q31_q15(opz_sub_q31(m2, s2), lq);
         lv += dl;
     }
     s->m1 = m1; s->m2 = m2; s->s1 = s1; s->s2 = s2;
@@ -281,7 +283,6 @@ void init(void *state, uint32_t track, uint32_t arg2, void *mem, void *scratch)
 
 void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
 {
-    (void)params;                                            /* may be NULL (engine-abi.md §3); not needed */
     State *s = state;
     s->ph[0] = rnd();                                        /* free-running: any phase at note-on */
     s->m1 = s->m2 = s->s1 = s->s2 = 0;
@@ -291,6 +292,7 @@ void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
     if (note > 127) note = 127;
     s->key = (note - 60) * 2731 + (vel - 100) * 310;          /* half key tracking, +-0.6 octave of velocity */
     s->fresh = 1;
+    if (params) opz_mix_start(&s->mix, params);              /* NULL (engine-abi.md §3): ramps in at render */
 }
 
 void onNoteOff(int note, void *state)
@@ -399,7 +401,9 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
     /* The integration adds slope + event before each sample, sample 0 included: start one slope early. */
     int32_t l0 = OPZ_ADSR_LEVEL(env);
     int32_t l1 = env_block(l0, OPZ_ADSR_COEF(env), OPZ_ADSR_STEP(env));
-    pass_out(out, s, acc[0] - acc[1], acc[1], acc[2] - acc[3], acc[3], g, l0, l1);
+    fract32 st[2 * N];                                       /* the voice, interleaved L R, before level and pan */
+    pass_out(st, s, acc[0] - acc[1], acc[1], acc[2] - acc[3], acc[3], g, l0, l1);
+    opz_mix_stereo(out, st, &s->mix, params);               /* level and pan, added into interleaved out */
     OPZ_ADSR_LEVEL(env) = l1;
 }
 

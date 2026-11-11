@@ -39,6 +39,7 @@
 #include "opz_adsr.h"
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_mix.h"
 #include "pd_tables.h"
 
 #define N OPZ_BLOCK_FRAMES
@@ -54,6 +55,7 @@ typedef struct State {
     int32_t a_prev;          /* the distortion amount at the end of the last block, Q16 (0 .. 65536) */
     int32_t x_prev;          /* the P2 position at the end of the last block, Q16 (0 .. 7 waves) */
     int32_t fresh;           /* first block after note-on: no ramps from the last block */
+    OpzMix mix;              /* the track's level and pan (opz_mix.h) */
 } State;
 
 /* The OS keeps its own fields after the first 280 bytes of the voice record (docs/STATUS.md) */
@@ -358,7 +360,8 @@ static int32_t env_block(int32_t level, int32_t c, int32_t s)
 }
 
 /* Up to three buffers times their gains (each wave's gain x weight x envelope x velocity x 2, Q31, ramped; used as
- * Q15), minus the DC (Q31, ramped), added into both channels of out. n buffers, a compile-time constant. */
+ * Q15), minus the DC (Q31, ramped), into the mono buffer opz_mix_mono adds into out. n buffers, a compile-time
+ * constant. */
 typedef struct Mix {
     int32_t g[3], dg[3];
     int32_t dc, ddc;
@@ -372,8 +375,7 @@ ALWAYS_INLINE void body_out(fract32 *out, const Mix *m, int n)
         int32_t v = mul_s16(y0[i], g0 >> 16) - dc;
         if (n > 1) v += mul_s16(y1[i], g1 >> 16);
         if (n > 2) v += mul_s16(y2[i], g2 >> 16);
-        out[2 * i] = opz_add_q31(out[2 * i], v);
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], v);
+        out[i] = v;
         g0 += m->dg[0];
         if (n > 1) g1 += m->dg[1];
         if (n > 2) g2 += m->dg[2];
@@ -404,9 +406,11 @@ void init(void *state, uint32_t track, uint32_t arg2, void *mem, void *scratch)
 
 void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
 {
-    (void)note; (void)params;                                /* params may be NULL (engine-abi.md §3); not needed */
+    (void)note;
     State *s = state;
     uint32_t v = velocity > 127 ? 127 : velocity;
+    if (params) opz_mix_start(&s->mix, params);              /* params may be NULL (engine-abi.md §3) */
+    else s->mix.l = s->mix.r = OPZ_MIX_UNITY;
     s->ph = 0xc0000000u;                                     /* three quarters: a sine starts at its zero crossing */
     s->dcw = OPZ_Q31_ONE;
     s->depth = (int32_t)(v * 258u);                          /* 127 -> 32766 */
@@ -517,9 +521,11 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
     }
     mx.dc = dc0;
     mx.ddc = (dc1 - dc0) >> 6;
-    if (n == 1) pass_out1(out, &mx);
-    else if (n == 2) pass_out2(out, &mx);
-    else pass_out3(out, &mx);
+    fract32 mono[N];
+    if (n == 1) pass_out1(mono, &mx);
+    else if (n == 2) pass_out2(mono, &mx);
+    else pass_out3(mono, &mx);
+    opz_mix_mono(out, mono, &s->mix, params);                /* level and pan, into interleaved out */
 
     /* phase at the end of the block: 64 inc + 2016 slope */
     s->ph += pitch * N + (uint32_t)pitchSlope * (N * (N - 1) / 2);

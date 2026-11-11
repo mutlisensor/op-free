@@ -15,6 +15,7 @@ on the chord track every voice is **two** singers, so chords sound like a small 
 | notes | each note is one singer. The first glottal pulse comes within 2 ms of the note-on. Pitch bend and portamento move the pitch; glides retune the formant limits (below) block by block |
 | attack … release | the OP-Z envelope |
 | filter, resonance | not used: they are the OS's own track filter, which runs after the engine. Presets leave it neutral (128, 0) |
+| pan, level | the track's pan and level (yellow and red dial, orange page), applied by the engine as TE's engines do (`opz_mix.h`): level is linear (128 = −6 dB, 0 = silent), pan a balance on the stereo voice (centre: both channels full, the whole width; hard left: only the left channel, the right silent). The FX1/FX2 sends are taken after them. They follow the LFO (targets pan and volume) without zipping |
 
 **The voice.** A pulse train (the derivative of a PolyBLEP sawtooth: three samples per period, a flat line spectrum
 up to the top, no aliasing to speak of) excites four parallel band-pass formants (Chamberlin state-variable
@@ -84,11 +85,11 @@ device.
 
 | | |
 |---|---|
-| Plug | 61018, `trackmask` 0xF0 (bass, lead, arp, chord), version 1 |
-| Memory slot | 46 (10 KB class): 6,056 of 10,240 bytes on Blackfin (5,372 B of code and tables, 684 B of `.bss`: the shared block buffers) |
-| State | 204 B of 280 per voice; `memRequest` 0 |
-| CPU | Blackfin simulator ([cycle-model.md](../../research/cycle-model.md), `tools/opz_cycles.py`), 4-note chord C3 G3 C4 E4 at velocity 127, mean / worst block per voice in cycles per sample: **lead (one singer) 103 / 149** for every vowel and size; **chord (two singers) 109 / 155**; breath zone and whisper 126 / 149 (130 / 155 on chord); **P1 and P2 moving every block 126–127 / 149 (132 / 154 on chord)**; release 131 / 153; low notes C0–E1 105 / 151; the most expensive case, high notes C7–C8 on chord, 156 / 196. **19 voices** of chord (two singers, breath zone): 131 per voice, ~159,000 cycles per block in all (worst block per voice 9,924), against the OS's 265,000 before its own share. A note's first block (coefficients, the breathy onset) is the worst block; note-on 208–233 cycles |
-| Level | per voice, velocity 127, one note held: above C4 −18.6 … −24.5 dBFS RMS (most vowels −19 … −22), peaks −8 … −15 dBFS; C3 ~−21.5, C0 ~−29 RMS with peaks −9 … −14 (see above). Over P2 0 … 255 at A3: −18.7 … −20.9 RMS. Chord track (two singers): about 1 dB lower RMS, peaks up to ~−6 dBFS when the two singers' pulses line up. Full scenarios: a 5-note "aah choir" peaks −4.2 dBFS in the track buffer, no clipping |
+| Plug | 61018, `trackmask` 0xF0 (bass, lead, arp, chord), version 2 (v2: applies the track's level and pan) |
+| Memory slot | 46 (10 KB class): 6,700 of 10,240 bytes on Blackfin (6,016 B of code and tables, 684 B of `.bss`: the shared block buffers) |
+| State | 208 B of 280 per voice; `memRequest` 0 |
+| CPU | Blackfin simulator ([cycle-model.md](../../research/cycle-model.md), `tools/opz_cycles.py`), 4-note chord C3 G3 C4 E4 at velocity 127, mean / worst block per voice in cycles per sample: **lead (one singer) 108 / 153** for every vowel and size; **chord (two singers) 115 / 160**; breath zone and whisper 131 / 154 (135 / 160 on chord); **P1 and P2 moving every block 131–132 / 153 (138 / 159 on chord)**; release 136 / 158; low notes C0–E1 110 / 157; the most expensive case, high notes C7–C8 on chord, 161 / 201. **The track's level and pan (`opz_mix.h`) are ~5 of these per sample** with the hand-scheduled `opz_mix.h` loops (~14 with the C loops; v1: lead 103 / 148). **19 voices** of chord (two singers, breath zone): 136 per voice, ~165,300 cycles per block in all (worst block 193,100; per voice 10,265), against the OS's 265,000 before its own share. A note's first block (coefficients, the breathy onset) is the worst block; note-on 236–259 cycles |
+| Level | at track level 255 (the level dial scales it linearly, 128 = −6 dB): per voice, velocity 127, one note held: above C4 −18.6 … −24.5 dBFS RMS (most vowels −19 … −22), peaks −8 … −15 dBFS; C3 ~−21.5, C0 ~−29 RMS with peaks −9 … −14 (see above). Over P2 0 … 255 at A3: −18.7 … −20.9 RMS. Chord track (two singers): about 1 dB lower RMS, peaks up to ~−6 dBFS when the two singers' pulses line up. Full scenarios: a 5-note "aah choir" peaks −4.2 dBFS in the track buffer, no clipping |
 
 Simulator checks: six golden scenarios (vowel sweep, voice sweep, choir with steals, vocal bass, extremes, knobs
 moving every block while chords start, steal and release), all voices freed. [tests/fuzz.c](tests/fuzz.c) (build

@@ -163,6 +163,8 @@ device store `0x800FBD4A`]. `getPlugFlags` is device `0x800FC198`; the device ha
 signal is scaled by `(1 − (1 − dry₁)·s₁)(1 − (1 − dry₂)·s₂)` with `s` the track's send (squared with 0x20) [code,
 app; device stores the same `1 − dry` form]. Dry 255 = classic send/return, dry 0 = the insert-like crossfade we
 heard on hardware. **All our FX presets ship `values[12] = 0`**, so every one of our effects crossfades today.
+(Since 2026-10-20 the send-style presets ship 255, see below. Since 2026-11-11 our effects add no dry of their own
+at pan 128–255, so this byte alone sets the dry: fx-usability.md.)
 
 ### Voicing: what the flags do not do
 

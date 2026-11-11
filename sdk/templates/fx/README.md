@@ -12,7 +12,8 @@ A drive effect for FX1 and FX2: gain into a soft clipper, then a tone control.
 | Plug id | @PLUG_ID@ |
 | P1 **drive** | 1× (0) → 16× (255) into a soft clipper (1.5x − 0.5x³) |
 | P2 **tone** | one-pole low-pass after the clipper: dark (0) → open (255) |
-| pan | dry/wet, TE's balance law: wet = min(2p, 1), dry = min(2(1 − p), 1) |
+| pan | the SDK's FX law (`opz_fx_wet_linear`): 0 dry only, 64 half and half, 128 … 255 the effect only. No control on the OP-Z reaches an FX track's pan (it stays at 127, the effect only), so players hear the effect alone |
+| dry level (hold the FX track's key + red dial) | the OS's dry level: how much of the sending tracks' own sound stays in the mix (255 send/return, 0 insert). The player's dry/wet control on the OP-Z |
 | level | output level, times the FX track's mixer level and mute |
 | Filter / resonance | the OP-Z's own track filter, also on FX tracks |
 | Notes on the FX track | ignored |
@@ -26,7 +27,7 @@ trackmask leaves master out.
 Preset ([presets.json](presets.json)): `warm drive`. FX tracks apply only slot 0 index 0, when the plug is chosen;
 its byte 12 (0) is the FX dry level of an insert effect.
 
-Tests ([tests/](tests/)): `basic` (drive and tone swept on a sawtooth, wet only then 50/50), `extremes` (every knob
+Tests ([tests/](tests/)): `basic` (drive and tone swept on a sawtooth, wet only then 50/50 at pan 64), `extremes` (every knob
 at 0 and 255 on a full-scale sweep, then dry only).
 
 ## How the code works

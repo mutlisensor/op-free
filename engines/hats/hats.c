@@ -7,6 +7,9 @@
  *                         (ratios ^0.5 .. ^1.5), the band's centre (-1 .. +1 octave) and resonance (-0.2 .. +0.2)
  *   P2        decay       x1/4 .. x4 on the first decay stage (and a swell's rise), x1/2 .. x2 on the second
  *   velocity              level, and brightness: the band moves down by up to 3/4 octave on soft hits
+ *   attack .. release     the OP-Z drum envelope over the hit, as on TE's sample kits: start, attack, hold, decay
+ *                         (opz_drumenv in opz_adsr.h); the presets' 0 / 0 / 255 / 0 leave every hit as designed
+ *   note style gate       a key release fades the hit (~20 ms); the other styles play one-shots
  *   octave                each octave press moves the squares and the band by 1/3 octave (+-2 presses)
  *
  * Choke: a closed, pedal, tick or half-open hit cuts the open and half-open hats ringing on the same track (in
@@ -24,8 +27,10 @@
  * noise blend, a decay that changes rate part-way) follows the TR-808 circuit as also described by Plaits' hi-hat
  * model (Emilie Gillet, MIT licence); no code is copied. MIT licence, see CONTRIBUTING.md.
  */
+#include "opz_adsr.h"
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_mix.h"
 
 enum { F_CLOSE = 1, F_OPEN = 2, F_SWELL = 4 };      /* F_CLOSE cuts F_OPEN on the same track */
 enum { S_RING = 0x80 };                               /* ratio set | S_RING: squares multiplied in pairs */
@@ -101,6 +106,8 @@ typedef struct State {
     int32_t hpa, hpl;                         /* one-pole high-pass an octave below the band: Q15, state */
     uint32_t age;                             /* blocks rendered since the hit */
     int32_t env, c64, c64b, knee, rise, rstep;
+    OpzMix mix;                               /* the track's level and pan (opz_mix.h) */
+    OpzDrumEnv denv;                          /* the envelope page over the hit */
     uint8_t model, track, choke, stage, signs, ring, active, fading;
 } State;
 
@@ -110,9 +117,9 @@ static const ModuleCallbackInterface *s_cb;
 static uint8_t s_choke[16];                   /* per track: bumped by closing hats, watched by open ones */
 static uint32_t s_d[OPZ_BLOCK_FRAMES + 2];    /* difference buffer: render runs one voice at a time */
 
-/* The last four filter settings and their coefficients (two 64-bit divisions each): a pattern at steady knobs
- * hits the same few. lfc is at least 8 octaves, so the zeroed .bss reads as empty. */
-static struct { int32_t lfc, res; OpzSvfCoef c; } s_cache[4];
+/* The last two filter settings and their coefficients (two 64-bit divisions each): a closed/open pattern at
+ * steady knobs hits the same two (four until v3; two leave room for the envelope page in the 5 KB slot). lfc is at least 8 octaves, so the zeroed .bss reads as empty. */
+static struct { int32_t lfc, res; OpzSvfCoef c; } s_cache[2];
 static uint8_t s_cache_next;
 
 uint32_t initModule(uint32_t version, const ModuleCallbackInterface *cb, uint32_t *memRequest)
@@ -210,9 +217,9 @@ void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
     if (res > 0x3b333333) res = 0x3b333333;                              /* 0.925 */
     res <<= 1;                                                           /* Q31 */
     int c = 0;                                                           /* the coefficient cache (below) */
-    while (c < 4 && (s_cache[c].lfc != lfc || s_cache[c].res != res)) c++;
-    if (c == 4) {
-        c = s_cache_next++ & 3;
+    while (c < 2 && (s_cache[c].lfc != lfc || s_cache[c].res != res)) c++;
+    if (c == 2) {
+        c = s_cache_next++ & 1;
         s_cache[c].lfc = lfc;
         s_cache[c].res = res;
         s_cache[c].c = opz_svf_coef(opz_exp2_q16(lfc), OPZ_Q31_ONE - res);
@@ -247,13 +254,22 @@ void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
     if (m->flags & F_CLOSE) s_choke[s->track]++;
     s->choke = s_choke[s->track];
     s->age = 0;
+    if (params) opz_mix_start(&s->mix, params);
+    else s->mix.l = s->mix.r = OPZ_MIX_UNITY;
     s->active = v != 0;
     s->fading = 0;
+
+    /* The hit's length for the envelope page: the rise, stage 1 down to the knee, stage 2 from the knee to -60 dB
+     * (t1, t2 are ms to -60 dB at their rates), in ms x 60, then x 44.1 / 60 (13 / 16: 10 % margin). */
+    uint32_t a = opz_mul_u32_shr16((uint32_t)m->t1 * m->knee + m->tr * 240u, m1);
+    uint32_t b = opz_mul_u32_shr16((uint32_t)m->t2 * (60u - m->knee), m2);
+    opz_drumenv_start(&s->denv, ((a + b) * 13) >> 4, params);
 }
 
 void onNoteOff(int note, void *state)
 {
-    (void)note; (void)state;                                   /* one-shots: the hit decays on its own */
+    (void)note;
+    opz_drumenv_off(&((State *)state)->denv);                 /* gate style only; one-shots decay on their own */
 }
 
 /* One edge at time t (Q16 samples from the block start, below END) whose new value has sign mask m (0: +AMP,
@@ -317,12 +333,13 @@ static __attribute__((noinline)) void squares(State *s)
 
 void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const uint32_t *params, ADSR *env)
 {
-    (void)pitch; (void)pitchSlope; (void)params;               /* pitch comes from the key; knobs from the hit */
+    (void)pitch; (void)pitchSlope;                             /* pitch comes from the key; knobs from the hit */
     State *s = state;
     if (OPZ_ADSR_STAGE(env) == 0) return;
     if (!s->active) { OPZ_ADSR_STAGE(env) = 0; return; }
+    if (!opz_drumenv_block(&s->denv, s_cb, env, OPZ_Q31_ONE)) return;    /* the envelope page ended the hit */
 
-    if (OPZ_ADSR_STAGE(env) >= 5 && !s->fading) {
+    if (OPZ_DRUMENV_STOLEN(&s->denv, env) && !s->fading) {
         /* The host wants this voice for a new hit (voice steal, stage 5/6) and starts it at stage 0: fade out
          * in a few milliseconds. */
         s->fading = 1;
@@ -357,11 +374,14 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
     squares(s);
 
     const uint32_t *d = s_d;
-    int32_t y = s->y, eg = e0, de = (e1 - e0) >> 6;
+    /* times the envelope page's ramp (exactly the hit's own envelope while the page holds) */
+    int32_t g0 = opz__drumenv_mul(e0, s->denv.g0), g1 = opz__drumenv_mul(e1, s->denv.g1);
+    int32_t y = s->y, eg = g0, de = (g1 - g0) >> 6;
     uint32_t seed = s->seed;
     int32_t gb = s->gb, gh = s->gh, gn = s->gn;
     int32_t ic1 = s->f.ic1, ic2 = s->f.ic2, hpl = s->hpl, hpa = s->hpa;
     const int32_t a1 = s->fc.a1, a2 = s->fc.a2, a3 = s->fc.a3, k = s->fc.k >> 16;     /* k / 2 in Q15 */
+    fract32 mono[OPZ_BLOCK_FRAMES];                            /* the voice; opz_mix_mono adds it into out */
     for (int i = 0; i < OPZ_BLOCK_FRAMES; i++) {
         y = opz_add_q31(y, (int32_t)d[i]);                     /* the squares' sum, within +-6 AMP */
         fract32 x = opz_add_q31(y, opz_mul_q31_q15(opz_noise(&seed), gn));
@@ -377,9 +397,9 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
         o = opz_shl_q31(o, 4);
         o = opz_mul_q31_q15(o, eg >> 16) >> 2;                           /* x OPZ_VOICE_PEAK (2^-2): at most -12 dBFS */
         eg += de;
-        out[2 * i] = opz_add_q31(out[2 * i], o);               /* interleaved stereo */
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], o);
+        mono[i] = o;
     }
+    opz_mix_mono(out, mono, &s->mix, params);                  /* level and pan, into interleaved out */
     s->y = y;
     s->seed = seed;
     s->f.ic1 = ic1;

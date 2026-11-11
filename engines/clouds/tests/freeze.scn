@@ -9,6 +9,7 @@ track fx1
 input sweep 200 1600 0.3
 preset 120 60 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
 gain 1
+transport 0 stop                 # sequencer stopped: the free cloud (sync.scn has the time lock)
 note 8 C4 32 100
 note 24 G4 6 100
 expect sound 4 64

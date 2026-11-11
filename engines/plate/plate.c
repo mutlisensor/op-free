@@ -11,7 +11,8 @@
  *   P2        tone        dark and warm -> bright and shimmering: the input band limit opens from 2 to 18 kHz, the
  *                         damping in the tank from 1.4 to 14 kHz, and the chorus in the tail deepens (all-pass
  *                         excursion 4 -> 32 samples, LFO 0.5 -> 1 Hz)
- *   pan       dry / wet   0 dry .. 128 fully wet; 128 .. 255 stay fully wet (as filter and glue)
+ *   pan       dry / wet   the SDK's FX law: 128 .. 255 the reverb only (the OS's dry level keeps the source);
+ *                         below 128 the dry blends in at equal power, 0 = dry only. Output through opz_limit_half
  *   level     output level (x gain)
  *   notes     held on the FX track: freeze. While any note is held the input is shut out of the tank (~12 ms fade)
  *             and the loop's decay and damping open up, so what was ringing hangs as a pad (it fades only 0.2-0.5 dB
@@ -339,11 +340,11 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
     State *s = state;
     Mem *m = s->mem;
 
-    /* dry / wet (0 dry .. 128 wet, then wet) and level */
-    int32_t pan = opz_pq31(params[OPZ_P_PAN]);
-    int32_t wet = pan >= 0x40000000 ? OPZ_Q31_ONE : pan * 2;
+    /* dry / wet and level */
+    int32_t dry, wet;                                           /* the SDK's FX law; dry at half scale */
+    opz_fx_drywet(params[OPZ_P_PAN], &dry, &wet);
     int32_t og = opz_mul_q31(opz_pq31(params[OPZ_P_LEVEL]), gain);
-    int32_t dog = opz_mul_q31(OPZ_Q31_ONE - wet, og);
+    int32_t dog = opz_mul_q31(dry, og) >> 1;
     int32_t wog = opz_mul_q31(opz_mul_q31(wet, og), WET_K);
 
     if (!m || s->cleared < RING) {                              /* no buffer, or still clearing it: dry only */
@@ -353,7 +354,7 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
             for (int i = 0; i < n; i++) z[i] = 0;
             s->cleared += n;
         }
-        for (int j = 0; j < 2 * BLK; j++) out[j] = opz_mul_q31(in[j], dog);
+        for (int j = 0; j < 2 * BLK; j++) out[j] = opz_limit_half(opz_mul_q31(in[j], dog));
         s->dog = dog;
         return;
     }
@@ -517,7 +518,7 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
         s->ts = sz;
         s->xf = XF;
     }
-    int32_t wg_inc = (wog - s->wog) >> 6, dg_inc = (dog - s->dog) >> 6;
+    int32_t wg_inc = (wog - s->wog) >> 6;
     int32_t pk = 0;                                             /* peak of the tap sums, for the limiter */
     for (int c = 0; c < 2; c++) {
         int32_t *y = m->u;
@@ -534,18 +535,17 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
                 y[i] = MQ(y[i], gn >> 16) + MQ(yo[i], go >> 16);
             }
         }
-        const fract32 *x = in + c;
         fract32 *o = out + c;
-        int32_t wg = s->wog, dg = s->dog;
+        int32_t wg = s->wog;
         for (int i = 0; i < BLK; i++) {
             wg += wg_inc;
-            dg += dg_inc;
             int32_t v = y[i];
-            o[2 * i] = opz_add_q31(MQ(x[2 * i], dg >> 16), opz_shl_q31(MQ(v, wg >> 16), WET_SHIFT));
+            o[2 * i] = opz_shl_q31(MQ(v, wg >> 16), WET_SHIFT - 1);   /* the wet at half scale */
             v = opz_abs32(v);
             pk = v > pk ? v : pk;
         }
     }
+    opz_fx_finish(out, in, s->dog, dog);                        /* + the dry, through the SDK's limiter */
     if (s->xf) s->xf--;
     s->wog = wog;
     s->dog = dog;

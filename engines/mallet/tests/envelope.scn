@@ -1,0 +1,27 @@
+# The envelope page (opz_drumenv, engine-abi.md §3): kick a full hit (0 / 0 / 255 / 0, as the presets); snare held
+# to an eighth (sustain 32) and cut; perc cut at once (sustain 0) with a fade (release 100); sample a swell (decay 80)
+# started late (attack 96), in gate style (note style 160): released after one step, it fades out within ~20 ms.
+tempo 120
+steps 16
+tail 6
+track kick
+note 0 F3 1 100
+note 8 A3 1 100
+track snare
+param sustain 32
+note 0 F3 1 100
+note 8 A3 1 100
+track perc
+param sustain 0
+param release 100
+note 0 F3 1 100
+note 8 A3 1 100
+track sample
+param attack 96
+param decay 80
+param note_style 160
+note 0 F3 1 100
+note 8 A3 4 100
+expect sound 0 2
+expect peak_below 0
+expect idle 160

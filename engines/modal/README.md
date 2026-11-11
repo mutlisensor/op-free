@@ -14,6 +14,7 @@ shapes the tone after it.
 | note-off | the OP-Z envelope releases the level as on every engine, and the bow lifts. Struck partials keep ringing under the release, as a mallet instrument does without its damper: short steps and a short release sound damped, a long release lets bells ring |
 | attack, decay, sustain, release | the OP-Z envelope, applied to the level. The partials make their own decay, so the presets use attack 0, sustain 255; a slow attack fades a struck note in (pads), a lower sustain shortens the ring |
 | filter, resonance | not used: they are the OS's own track filter, which runs after the engine. Presets leave it neutral (128, 0) |
+| pan, level | the track's pan and level (yellow and red dial, orange page), applied by the engine as TE's engines do (`opz_mix.h`): level is linear (128 = −6 dB, 0 = silent), pan a balance (centre: both sides full; hard left: right silent). The FX1/FX2 sends are taken after them. They follow the LFO (targets pan and volume) without zipping |
 
 How it works: each partial is a sine (a 256-entry table, linearly interpolated, peak error −80 dBFS) with its own
 phase increment (the note's pitch word × its ratio, Q16) and amplitude. The amplitude decays exactly per block (a
@@ -70,16 +71,16 @@ the device.
 
 | | |
 |---|---|
-| Plug | 61017, `trackmask` 0xF0 (bass, lead, arp, chord), engine and plug version 1 |
-| Memory slot | 52 (10 KB class), 6,948 of 10,240 bytes on Blackfin: 6,684 of code, tables and data, 264 of `.bss` (the shared 65-word partial buffer and the callback pointer). Tables: 1 KB sine, 692 B structure anchors, 260 B decay table |
-| State | 268 B of 280 per voice: ten partials × (phase, amplitude, level, decay, ratio, bow roughness) and the strike's click and rise. **No voice pool**: everything a voice needs fits its state. `memRequest` 0 |
+| Plug | 61017, `trackmask` 0xF0 (bass, lead, arp, chord), engine and plug version 2 (v2: applies the track's level and pan) |
+| Memory slot | 52 (10 KB class), 7,476 of 10,240 bytes on Blackfin: 7,212 of code, tables and data, 264 of `.bss` (the shared 65-word partial buffer and the callback pointer). Tables: 1 KB sine, 692 B structure anchors, 260 B decay table |
+| State | 272 B of 280 per voice: ten partials × (phase, amplitude, level, decay, ratio, bow roughness) and the strike's click and rise. **No voice pool**: everything a voice needs fits its state. `memRequest` 0 |
 | Partials | 10 per voice at every pitch: those above 0.45 fs (high notes on bars, marimba) or below 15 Hz are silent and skipped |
 | Tuning | exact by construction: mode 0 runs at the pitch word itself; the other ratios are exact Q16 values at the anchors (P1 0, 51, 102, 153, 204, 255) and within 0.01 % (0.17 cent) between them |
 | Decay | the fundamental's T60 as P2 sets it, less the frequency damping: A3 string measured 0.27 / 1.20 / 6.0 / 20.0 s at P2 48 / 96 / 150 / 191 (set 0.32 / 1.28 / 6.1 / 19.9 s before the damping, which shortens them 1.17 / 1.07 / 1.02 / 1.01 × at 220 Hz) |
-| Level | −10.4 to −15.9 dBFS peak per voice at velocity 127 (median −12.3, OPZ_VOICE_PEAK −12) over the six structures and C1–C7; the string sits ~1.5 dB under the others (its energy is spread over ten partials). Velocity 60: −19.6 dBFS. Bowed sustain (P2 255): −20 to −24 dBFS RMS, steady; at P2 230 ~4 dB lower; the glass beats ±5 dB |
-| CPU | Blackfin simulator ([cycle-model.md](../../research/cycle-model.md), `python3 tools/opz_cycles.py engines/modal`), cycles per sample per voice, mean of 100 blocks: **all ten partials ringing 135, bowed 149**; short decays (P2 40) 58–101 as partials die and are skipped; high notes 108. 19 voices bowed 151 (9,645 cycles/block/voice); with P1 and P2 moving every block 140–150 (19 voices 150); 19 voices with P1 gliding over the whole range 173. The most a voice costs is its note's first block (the strike): 12,900–13,500 cycles (201–210 per sample); 13 notes (every synth voice) starting in the same block ~173,000, 19 ~253,000. Note-on 87 cycles. Every case is under the 218 budget in its worst block |
+| Level | at track level 255 (the level dial scales it linearly, 128 = −6 dB): −10.4 to −15.9 dBFS peak per voice at velocity 127 (median −12.3, OPZ_VOICE_PEAK −12) over the six structures and C1–C7; the string sits ~1.5 dB under the others (its energy is spread over ten partials). Velocity 60: −19.6 dBFS. Bowed sustain (P2 255): −20 to −24 dBFS RMS, steady; at P2 230 ~4 dB lower; the glass beats ±5 dB |
+| CPU | Blackfin simulator ([cycle-model.md](../../research/cycle-model.md), `python3 tools/opz_cycles.py engines/modal`), cycles per sample per voice, mean of 100 blocks: **all ten partials ringing 140, bowed 155**; short decays (P2 40) 64–106 as partials die and are skipped; high notes 113. 19 voices bowed 157 (10,040 cycles/block/voice); with P1 and P2 moving every block 145–155 (19 voices 146–156); 19 voices with P1 gliding over the whole range 179. **The track's level and pan (`opz_mix.h`) are ~5–6 of these per sample** with the hand-scheduled `opz_mix.h` loops (~14 with the C loops; v1: ringing 135, bowed 149). The most a voice costs is its note's first block (the strike): 13,240–13,910 cycles (207–217 per sample); 13 notes starting in the same block ~179,200, 19 notes 251,000–264,000 (19 voices with P1 gliding: 262,700, just under the OS's 265,000 line; 273,900 with the C loops; v1 ~253,000). Note-on 121 cycles |
 
-The partial loop (10 cycles per partial per sample) and the output loop (4 per frame) are hand-scheduled Blackfin
+The partial loop (10 cycles per partial per sample) and the output loop (2 instructions per frame) are hand-scheduled Blackfin
 assembly: the table and accumulator loads and the stores issue in parallel with the arithmetic. The C versions next
 to them are the same arithmetic; building the device engine with `MODAL_C_LOOP` defined (a `#define` at the top of
 `modal.c`) gives bit-identical output in every benchmark case (`opz_cycles.py --dump` / `--compare`), and the host

@@ -113,6 +113,8 @@ static int check_grid(void)
     static Mem m;
     Env e;
     uint32_t params[OPZ_NUM_PARAMS] = { 0 };
+    params[OPZ_P_PAN] = opz_param_from_byte(128);           /* the track's level and pan: full, centre */
+    params[OPZ_P_LEVEL] = opz_param_from_byte(255);
     int32_t out[2 * N];
     long n = 0;
     double peak = 0;

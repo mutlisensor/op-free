@@ -106,6 +106,8 @@ int main(int argc, char **argv)
         init(&s_states[v].s, (uint32_t)(v >> 1), 0, NULL, NULL);
     }
     for (int i = 0; i < OPZ_NUM_PARAMS; i++) s_params[i] = opz_param_from_byte(128);
+    s_params[OPZ_P_PAN] = 0x40000000u;       /* the track's level and pan (opz_mix.h): full, exact centre, so L == R */
+    s_params[OPZ_P_LEVEL] = 0x7fffffffu;
     long live[VOICES] = { 0 };
 
     for (long b = 0; b < blocks; b++) {

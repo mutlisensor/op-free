@@ -12,6 +12,7 @@ OP-Z's own track filter (the filter and resonance knobs) shapes it afterwards.
 | velocity | Level (linear), and the ratio: **+1/48 octave per step above 100, −1/48 below** (127: +0.56 octave, brighter and more "sync"; 76: −0.5 octave; 52 and below: −1 octave or more). The ratio never goes below 1, so soft notes with P1 near 0 are a plain saw |
 | attack … release | the OP-Z envelope |
 | filter, resonance | not used: they are the OS's own track filter, which runs after the engine. Presets leave it neutral (128, 0) |
+| pan, level | the track's pan and level (yellow and red dial, orange page), applied by the engine as TE's engines do (`opz_mix.h`): level is linear (128 = −6 dB, 0 = silent), pan a balance (centre: both sides full; hard left: right silent). The FX1/FX2 sends are taken after them. They follow the LFO (targets pan and volume) without zipping |
 
 **Notes.** Any note; the master is the note's pitch (with the OS's portamento, bend and vibrato) and runs free, like an
 analog oscillator: its phase carries on from note to note, so retriggered and stolen voices don't click. The LFO can
@@ -119,14 +120,16 @@ track's index-0 preset. Then:
 
 | | |
 |---|---|
-| Plug | 61019, `trackmask` 0xF0 (bass, lead, arp, chord), version 1, engine version 1 |
-| Memory slot | 43 (10 KB class): **4,400 of 10,240 bytes** on Blackfin (4,116 payload: code, constants, exports; 284 B `.bss`: the shared event buffer) |
-| State | 40 B of 280 per voice; `memRequest` 0; no libgcc, no division, no 64-bit maths, no tables |
+| Plug | 61019, `trackmask` 0xF0 (bass, lead, arp, chord), version 2, engine version 2 (v2: applies the track's level and pan) |
+| Memory slot | 43 (10 KB class): **5,012 of 10,240 bytes** on Blackfin (4,728 payload: code, constants, exports; 284 B `.bss`: the shared event buffer) |
+| State | 44 B of 280 per voice; `memRequest` 0; no libgcc, no division, no 64-bit maths, no tables |
 | Latency | one sample (the BLEP's look-ahead) |
 
 **CPU** (GNU Blackfin simulator, `tools/opz_cycles.py engines/sync`, [cycle-model.md](../../research/cycle-model.md);
 4-note chord C3 G3 C4 E4 on the lead track, velocity 127, cycles per sample per voice, mean (worst block)). The cost
-follows the number of discontinuities per block (slave wraps + resets) plus 13 per sample for the noise:
+follows the number of discontinuities per block (slave wraps + resets) plus 13 per sample for the noise; the track's
+level and pan (v2) add nothing measurable: the hand-scheduled `opz_mix.h` loops cost what v1's own output loop did
+(with the C loops v2 was 8 higher throughout):
 
 | Case | mean | worst |
 |---|---:|---:|
@@ -144,7 +147,7 @@ follows the number of discontinuities per block (slave wraps + resets) plus 13 p
 | 19 voices C5–F♯6, P1 255, P2 255 | 105 (~128,000 cycles/block) | 113 |
 | 19 voices C5–F♯6, knobs moving every block | 82 | 113 |
 
-Note-on 50 cycles, `initModule` 23. Every case is under the ABI's 150 target except the top four MIDI notes (only
+Note-on 70 cycles, `initModule` 23. Every case is under the ABI's 150 target except the top four MIDI notes (only
 reachable with octave and transpose at their limits), and under the ~218 budget for 19 voices everywhere.
 
 **Checks.** `make -C sim test` (6 golden scenarios: lead, bass, chords, knobs, extremes, noise);

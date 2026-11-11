@@ -15,6 +15,7 @@ A drum voice for the kick, snare, perc and sample tracks: a sine with a falling 
 | P2 **snap** | sine with a pitch drop (0) → noise (255), crossfaded |
 | Envelope | the host's drum envelope over a 0.5 s sound: start, attack, hold, decay knobs, as on TE's drum tracks |
 | Filter / resonance | the OP-Z's own track filter |
+| Pan / level | the track's pan and level dials, applied by the engine at the end of each block (`opz_mix.h`; the OS does not apply them, and the FX sends are taken after them) |
 | Level | −12 dBFS per hit at velocity 127 |
 | State | 48 of 280 bytes per voice |
 | CPU | fill in from `python3 tools/opz_cycles.py engines/my_engine` |

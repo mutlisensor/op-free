@@ -1,0 +1,24 @@
+# The keys between the intervals snap to the nearest octave, fifth or fourth: on the default octave, from left to
+# right, F#3 and A3 give a fifth (+7), A#3 and D4 an octave (+12), D#4 and E4 +17, F#4 and A4 +19, A#4 and E5 two
+# octaves (+24); D3 (+2) is unison (shimmer off). A sine at 330 Hz into a long, bright shimmer, as intervals.scn.
+# The black keys are MIDI numbers (54 F#3, 58 A#3, 63 D#4, 66 F#4, 70 A#4): a sharp sign would start a comment.
+tempo 120
+steps 48
+tail 3
+track fx2
+input sine 330 0.4
+preset 190 190 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
+note 4 54 2 100
+note 8 58 2 100
+note 12 63 2 100
+note 16 66 2 100
+note 20 70 2 100
+note 24 E5 2 100
+note 28 D3 2 100
+note 32 A3 2 100
+note 36 D4 2 100
+note 40 E4 2 100
+note 44 A4 2 100
+gain 1
+expect sound 0 48
+expect peak_below -3

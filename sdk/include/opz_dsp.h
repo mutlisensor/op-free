@@ -242,6 +242,80 @@ static inline fract32 opz_noise(uint32_t *seed)
     return (fract32)*seed;
 }
 
+/* ---- effect output: dry / wet and the output limiter ------------------------------------------------------ */
+
+/* Dry and wet gains (Q31) from an FX track's pan word (params[OPZ_P_PAN]): the mix law every effect here follows.
+ * 128 .. 255 = the effect only, no dry, so the OS's own dry level (FX byte 12, the manual's "dry mix") alone
+ * decides how much dry is heard, and a track sent at 100 % passes fully through the effect. 0 .. 127 blends the
+ * engine's own dry in, equal power (cos / sin of a quarter turn): 0 = dry only, 64 = -3 dB each, for a wet signal
+ * that is unrelated to the dry (reverb, delay, grains, pitch or frequency shift, stutter); opz_fx_wet_linear below is
+ * the same law for a wet signal that is the input reshaped. Presets cannot set
+ * pan (the OS skips it when it applies one), so the centre is what most users have: it must be the full effect.
+ * sdk/docs/engine-abi.md, renderFX. */
+static inline void opz_fx_drywet(uint32_t pan_word, fract32 *dry, fract32 *wet)
+{
+    uint32_t p = pan_word & OPZ_Q31_ONE;                  /* 0x40000000 = pan byte 127.5 */
+    if (p >= 0x40000000u) { *dry = 0; *wet = OPZ_Q31_ONE; return; }
+    *wet = opz_sine(p);                                    /* sin(pi/2 x), x = p / 2^30 */
+    *dry = opz_sine(0x40000000u - p);                      /* cos(pi/2 x) */
+}
+
+/* The same law for effects whose wet is the input itself reshaped (filter, compressor, saturation, phaser): a
+ * linear crossfade with the same end points (0 = dry only, 128 .. 255 = the effect only), since an equal-power sum
+ * of two near-identical signals rises by 3 dB in the middle. Returns the wet share; dry = 1 - wet. */
+static inline fract32 opz_fx_wet_linear(uint32_t pan_word)
+{
+    uint32_t p = pan_word & OPZ_Q31_ONE;
+    return p >= 0x40000000u ? OPZ_Q31_ONE : (fract32)(p * 2);
+}
+
+/* Output limiter for a signal held at half scale (h = x / 2, so a mix of dry and wet can reach 2 without
+ * saturating): unity below -3 dBFS, then a quadratic knee that reaches 0 dBFS with zero slope at +2.2 dBFS and
+ * stays there. Full scale in gives -0.7 dB; nothing above 0 dBFS ever comes out, and there is no hard corner below
+ * +2.2 dBFS. A quiet sample costs an abs, a compare and an add (the knee is kept off the straight path). */
+#define OPZ_LIMIT_T     0x5a9df7ac                        /* t = -3 dBFS = 0.70795 (Q31) */
+#define OPZ_LIMIT_K     28050                             /* 2 / (1 - t) x 2^12: the knee in Q31 from a Q15 square */
+static inline fract32 opz_limit_half(fract32 h)
+{
+    int32_t a = opz_abs32(h);
+    if (__builtin_expect(a > (OPZ_LIMIT_T >> 1), 0)) {     /* the knee: rare, so off the straight path */
+        int32_t v = (OPZ_Q31_ONE - OPZ_LIMIT_T) - (a - (OPZ_LIMIT_T >> 1));   /* (2 - t - |x|) / 2, <= 1 - t */
+        int32_t vh = v > 0 ? v >> 16 : 0;                  /* Q15; 0 from |x| >= 2 - t: the ceiling */
+        int32_t y = OPZ_Q31_ONE - ((vh * vh) >> 12) * OPZ_LIMIT_K;   /* 1 - (2 - t - |x|)^2 / (4 (1 - t)) */
+        return h < 0 ? -y : y;                              /* 16-bit square: within 1e-4 of the exact knee */
+    }
+    return h + h;                                           /* |x| <= t: exact (|h| < 0.5, no overflow) */
+}
+
+/* opz_limit_half over a whole block in place (2 * OPZ_BLOCK_FRAMES values): for an engine whose sample loop is
+ * already short of registers, write the half-scale sums to out and limit them here in a tight loop afterwards. */
+static inline void opz_limit_half_block(fract32 *buf)
+{
+    for (int i = 0; i < 2 * OPZ_BLOCK_FRAMES; i++) buf[i] = opz_limit_half(buf[i]);
+}
+
+/* The end of an effect's block: out holds the wet signal at half scale (written in the sample loop); this adds the
+ * dry input with its gain / 2 ramping from dg0 to dg1 over the block (Q31, at most 0.5) and limits the sum in place
+ * with opz_limit_half. Kept out of the sample loop, it costs a few cycles a sample, and at pan 128 .. 255 (dry gain 0)
+ * the dry costs nothing. */
+static inline void opz_fx_finish(fract32 *out, const fract32 *in, fract32 dg0, fract32 dg1)
+{
+    if (!dg0 && !dg1) { opz_limit_half_block(out); return; }
+    int32_t g = dg0, inc = (dg1 - dg0) >> 6;
+    for (int i = 0; i < OPZ_BLOCK_FRAMES; i++) {
+        g += inc;
+        out[2 * i] = opz_limit_half(opz_add_q31(out[2 * i], opz_mul_q31(g, in[2 * i])));
+        out[2 * i + 1] = opz_limit_half(opz_add_q31(out[2 * i + 1], opz_mul_q31(g, in[2 * i + 1])));
+    }
+}
+
+/* One output sample: dry x and wet y with gains given at half scale (dg2 = dry x level / 2, wg2 = wet x level / 2,
+ * as Q31), summed and limited. Each product stays within +-0.5, so the sum cannot saturate. */
+static inline fract32 opz_fx_out(fract32 x, fract32 y, fract32 dg2, fract32 wg2)
+{
+    return opz_limit_half(opz_mul_q31(dg2, x) + opz_mul_q31(wg2, y));
+}
+
 #ifdef __cplusplus
 }
 #endif

@@ -10,13 +10,14 @@ sequencer — from a knob or from keys held on its own track.
 | Plug id | 61100 |
 | P1 **division** | 0–31 **off** (the input passes through); then 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/64 (32 per zone). Leaving "off" starts a repeat; moving P1 while repeating changes the slice length at the next repeat over the same capture, so a sweep is a roll |
 | P2 **decay** | each repeat against the one before: 0 = all at full level, 128 = −3 dB, 255 = −12 dB (−12·u² dB) |
-| pan | dry/wet, TE's balance law normalised to unity (centre = half and half). The preset is wet only: the stutter replaces the sound |
-| level | output level, times the FX track's mixer level and mute |
+| pan | not reachable on the OP-Z: an FX track has no pan dial, app control or mixer column [proven, H-FX1], and presets can't set it, so it stays where the OS leaves it (127 on the unit checked), which this effect treats as **the stutter only** (the dry about 48 dB down). The law below the centre, for anything that does set pan: the dry blends in, linearly (between repeats the stutter *is* the input, so the level never moves): 64 = half and half, 0 = dry only. |
+| dry level (hold the FX track's key + **red dial**) | the OS's own dry level (byte 12; TE's app shows it as "dry level" on the FX page): how much of each sending track's own sound stays in the mix. 255 = send/return (the source plays on and the effect adds to it), 0 = insert (a track sent at 100 % is heard only through the effect). This is the dry/wet control on the OP-Z [proven, H-FX1 2026-11-11] |
+| level | output level, times the FX track's mixer level and mute (nothing on the OP-Z reaches an FX track's level, neither a dial nor the mixer page [proven, H-FX1], so the preset's value holds) |
 | Filter / resonance | the OP-Z's own track filter, also on FX tracks |
 | **Notes on the FX track** | a held key repeats while held, whatever P1 says; every new note starts a new capture. The 24 keys from F3 pick the division, long (left) to short (right): 1/4, 1/4T, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T, 1/64, 1/64T, 1/128, 1/128T. **The upper row (F4–E5) plays the same divisions reversed.** Other octaves repeat the pattern. The OS's velocity-0 re-send of a held note keeps the capture |
 | Memory request | 240 KB (61,440 stereo 16-bit frames, 1.39 s): fits FX2's 256 KB pool. Never cleared: nothing reads a frame the current capture has not written |
 | State | 64 of 200 bytes (device) |
-| CPU | Blackfin simulator (`tools/opz_cycles.py engines/repeat`): 59 cycles/frame off, 138 at 1/4, 176 at 1/64, **worst block 209** (1/128T reversed with knobs moving every block), against the ≤ 600 effect target. Note-on 286 |
+| CPU | **v2 (2026-11-11): 193 cycles per stereo frame in its worst case, worst block 210** (fx-usability.md §4a). Earlier figures: Blackfin simulator (`tools/opz_cycles.py engines/repeat`): 59 cycles/frame off, 138 at 1/4, 176 at 1/64, **worst block 209** (1/128T reversed with knobs moving every block), against the ≤ 600 effect target. Note-on 286 |
 
 Not for master: the OS passes `out = NULL` there ([engine-abi.md](../../sdk/docs/engine-abi.md) §3).
 
@@ -43,11 +44,11 @@ pan 255 (wet only), level 255, byte 12 (FX dry level) 0 for an insert. Settings 
 
 | Name | P1 | P2 | pan | Sound |
 |---|---|---|---|---|
-| roll (preset) | 0 | 64 | 255 | nothing until a key or P1; then near-constant repeats |
-| quarter loop | 40 | 0 | 255 | a beat-long loop that holds |
-| sixteenth roll | 140 | 30 | 255 | drum-roll stutter |
-| buzz | 230 | 0 | 255 | 1/64: a pitched machine-gun buzz |
-| echo out | 70 | 200 | 128 | eighth repeats that fade like a dub echo, under the dry sound |
+| roll (preset) | 0 | 64 | 128 | nothing until a key or P1; then near-constant repeats |
+| quarter loop | 40 | 0 | 128 | a beat-long loop that holds |
+| sixteenth roll | 140 | 30 | 128 | drum-roll stutter |
+| buzz | 230 | 0 | 128 | 1/64: a pitched machine-gun buzz |
+| echo out | 70 | 200 | 64 | eighth repeats that fade like a dub echo, under the dry sound |
 
 ## What to listen for
 
@@ -69,6 +70,15 @@ pan 255 (wet only), level 255, byte 12 (FX dry level) 0 for an insert. Settings 
 [tests/](tests/): `notes` (held keys F3, A3, C#4, F4, C#5 on a rising sweep: forward repeats match to −95 dB and
 the reversed one is the exact reverse), `knob` (P1 swept through every zone while repeating, on clicks), `decay`
 (1/8 repeats at P2 255: −12.0 dB per pass, measured; then P2 0, 50/50, a key takes over), `extremes`.
+
+## Version 2 (2026-11-11): what changed, what to listen for
+
+Testers found our effects hard to use: the mix knob seemed not to work, some effects seemed not to pass the sound, and
+loud material clipped. Measured in the simulator (fx-usability.md). repeat used
+TE's balance law normalised to unity, so pan's centre (where FX tracks start: presets can't set pan) played the
+stutter at half level over half the live sound, and the repeats seemed not to take over. Now the centre is the stutter
+only (the SDK's law, linear below the centre). On the device: a drum pattern sent to FX2 at 100 %, FX2's dry level 0,
+pan centred; hold a key: the beat is replaced by the repeat, with no live drums under it.
 
 ## Credits
 

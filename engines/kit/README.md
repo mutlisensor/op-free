@@ -21,8 +21,11 @@ OP-Z sends for its drum keys.
 | P2 **decay** | ×¼ … ×2 on every decay (128 = nominal) |
 | velocity | level |
 | filter, resonance | not used: they are the OS's own track filter, which runs after the engine. Presets leave it neutral (128, 0) |
+| pan, level | the track's pan and level (yellow and red dial, orange page), applied by the engine as TE's engines do (`opz_mix.h`): level is linear (128 = −6 dB, 0 = silent), pan a balance (centre: both sides full; hard left: right silent). The FX1/FX2 sends are taken after them. They follow the LFO (targets pan and volume) without zipping |
+| attack, decay, sustain, release (the green page) | the OP-Z's drum envelope over each hit, as on TE's sample kits ([engine-abi.md](../../sdk/docs/engine-abi.md#the-drum-envelope-updateparametersahd), `opz_drumenv` in `opz_adsr.h`), read at the hit. **attack** moves the envelope's start into the hit: the hit gets shorter in proportion (on a sample it skips the start; a synthesized strike stays). **decay** fades the hit in, up to half its length (a swell: the peak drops as the natural decay runs underneath). **sustain** is how long it holds at full level: 255 the whole hit, 128 about half, 32 an eighth, 0 a click (12 ms). **release** fades it after the hold: below 128 the fade's length (0 a cut), from 128 the full length with the curve bending from a straight line to "hold, then drop". The presets' 0 / 0 / 255 / 0 leave every hit exactly as designed |
+| note style | **gate**: releasing the key fades the hit out in ~20 ms (the step length on a sequenced note); retrig, mono and loop play one-shots |
 
-Knobs are read when a hit starts. Each hit ends itself at −60 dB and frees its voice; the OP-Z envelope is not used.
+Knobs are read when a hit starts. Each hit ends itself at −60 dB and frees its voice, or when the envelope page ends it first.
 
 ## Building blocks
 
@@ -40,10 +43,10 @@ drum tracks read; **analog** (index 0, both knobs at 128) is the sound a drum tr
 
 | | |
 |---|---|
-| Plug | 61020, version 5, `trackmask` 0x0F (kick, snare, perc, sample). The device does not enforce the mask. flags 24: P1 and P2 bipolar, a centre-detent cue at 128 ([host-tables-flags.md](../../research/host-tables-flags.md#recommended-flags-for-our-engines)) |
-| Memory slot | 54 (10 KB class), 9.7 KB used with 1.2 KB of `.bss` (`onNoteOn` at `-Os`) |
-| State | 164 B of 280 per voice |
-| CPU | Blackfin (simulator, [cycle-model.md](../../research/cycle-model.md)), v4: **5,600–17,000 cycles/block/voice** by key (88–265 per sample; v3: 18,000–87,000). Hats/cymbal 10,300 (161), toms/conga/hi-q 12,400 (194), kicks 9,000–13,200, snares 16,300–17,000 (254–265, the only models over the 218/sample 19-voice budget); a kick's, tom's or snare's first block is up to 19,200 (the click). P2 changes the length, not the cost. Note-on ~1,800 (~4,200 for the first hit of a filtered key at a new tune). 25 hat voices fit in 265,000. Image 9.7 of 10 KB (1.2 KB of it `.bss`: block buffers and the filter cache) |
+| Plug | 61020, version 6 (v6: applies the track's level and pan, `opz_mix.h`, and gains the envelope page and gate style, `opz_drumenv`), `trackmask` 0x0F (kick, snare, perc, sample). The device does not enforce the mask. flags 24: P1 and P2 bipolar, a centre-detent cue at 128 ([host-tables-flags.md](../../research/host-tables-flags.md#recommended-flags-for-our-engines)) |
+| Memory slot | **3 (50 KB class)** since v6: 10,712 of 51,200 bytes with 1.2 KB of `.bss`. Level and pan (`opz_mix.h`) and the envelope page (`opz_drumenv`) together took kit 472 B past its old 10 KB slot 54; trimming the specialised noise loops instead would cost hats and cymbals 48 cycles/sample, so it moved. A size trim could bring it back to a 10 KB slot later |
+| State | 208 B of 280 per voice (40 of them the envelope page, 4 the level and pan ramp) |
+| CPU | Blackfin (simulator, [cycle-model.md](../../research/cycle-model.md), `opz_cycles.py engines/kit`), v6: **means 96–272 cycles/sample** by key, worst block 311 (the first block of a snare, with the click); the host's `updateParametersAHD` is counted inside render as on the device. Snares are over the 218/sample 19-voice budget, as they were in v4; hats, toms, kicks within it. Note-on up to ~4,700. P2 and the envelope page change the length, not the cost. Before v6 (v4): 88–265 per sample; v3: 18,000–87,000 per block |
 
 Simulator checks: all 24 keys sound and end; RMS over each key's first quarter second −38…−17 dBFS; the choke
 drops an open hat by ~16 dB; a three-track groove peaks at −6.7 dBFS. With the tone filter and drive removed, the

@@ -11,8 +11,9 @@ moment you caught, at the pitch of the keys you press, until you let go.
 |---|---|
 | P1 **size** | one macro from **sparse long grains** to **dense short clouds**. Grain length 600 ms → 15 ms and mean overlap 0.7 → 8 grains, both exponential: **0** = a 600 ms swell about every 0.86 s, with gaps (0.7 overlapping); **32** = 378 ms, ~3 grains a second; **64** = 238 ms, 1.3 overlapping, ~5/s; **96** = 150 ms, 1.75, ~12/s; **128** = 94 ms, 2.4, ~25/s: a smooth cloud; **160** = 59 ms, 3.2, ~54/s; **192** = 37 ms, 4.4, ~117/s; **224** = 24 ms, 6, ~250/s; **255** = 15 ms, 8 overlapping, ~530 grains a second: a buzzing haze. The level per grain follows the overlap (√2 × min(1, 1.6 / √overlap)), so from ~100 up the cloud sits within ~1 dB of the input; below that the gaps make it quieter (−3 dB at 64, −7 dB at 0). New grains take the new setting, the ones playing finish as they were: P1 is smooth to turn and an LFO on it works |
 | P2 **texture** | **0** = tight: every grain starts within the last 10 ms (plus what its pitch needs), all in the centre: a grainy, slightly smeared copy of the input. **Reach** (how far back a grain may start) grows exponentially to **5.1 s at 192** and stays (28 ms at 32, 81 ms at 64, 230 ms at 96, 650 ms at 128, 1.8 s at 160): the cloud mixes more and more of the past into the present. **Stereo spread** grows from mono at 0 to full width at 128 (25 % at 32, 50 % at 64, 75 % at 96; equal-power pan per grain). From **128 to 255** the cloud **feeds back** into the buffer (0 → 0.8: 0.2 at 160, 0.4 at 192, 0.6 at 224; the feedback is low-passed at 5 kHz and high-passed at 50 Hz) and every grain is **detuned** at random (0 → ±40 cents: ±10 at 160, ±20 at 192, ±30 at 224): repeats smear into a wash, and with a note above C4 they climb in pitch (shimmer). New grains take the setting; the feedback gain ramps per sample |
-| pan | dry/wet, as on `plate`, `filter` and `glue`: **0 = dry only**, rising linearly to **fully wet at 128**; 128–255 stay fully wet. 64 = half dry, half cloud |
-| level | output level × the track gain (255 = unity) |
+| pan | not reachable on the OP-Z: an FX track has no pan dial, app control or mixer column [proven, H-FX1], and presets can't set it, so it stays where the OS leaves it (127 on the unit checked), which this effect treats as **the cloud only** (the dry about 44 dB down). The law below the centre, for anything that does set pan: the dry blends in at equal power: 64 = dry and the cloud at −3 dB each, 0 = dry only. |
+| dry level (hold the FX track's key + **red dial**) | the OS's own dry level (byte 12; TE's app shows it as "dry level" on the FX page): how much of each sending track's own sound stays in the mix. 255 = send/return (the source plays on and the effect adds to it), 0 = insert (a track sent at 100 % is heard only through the effect). This is the dry/wet control on the OP-Z [proven, H-FX1 2026-11-11] |
+| level | output level × the track gain (255 = unity) (nothing on the OP-Z reaches an FX track's level, neither a dial nor the mixer page [proven, H-FX1], so the preset's value holds) |
 | filter, resonance | not used: they are the OS's own track filter, also on FX tracks. The preset leaves it neutral (128, 0) |
 | pitch bend | transposes new grains, ±2 semitones at full scale (the simulator's scale; the device's is not confirmed) |
 | **notes on the FX track** | **pitch**: a note sets the pitch of every new grain relative to **C4**: C3 = an octave down, G4 = a fifth up, C5 = an octave up; notes outside C3–C5 fold into that range by octaves (C2 = C3, C6 = C5). Tuned within 0.4 cent. Grains already playing keep their pitch, so a new note blends in over a grain's length. Releasing a key returns to the newest key still held; after the last key is up the pitch **stays** until the next note (play **C4** to go back to the input's pitch; selecting the plug also resets it). Velocity is not used. **Freeze**: when a key has been held for **0.4 s** (longer than 3 steps at 120 BPM), recording stops and the cloud keeps playing what the buffer holds (with P2's reach: at P2 0 the last ~10 ms plus the grains' length, at 192 and up the last 5 s), at the pitch of the newest key: press other keys over the held one to play the frozen cloud as a melody (each new key keeps it frozen). Releasing every key unfreezes it. Freezing and unfreezing take 12 ms and click-free: grains that could not go on in the new state fade out, the recording fades out (or back in), and new grains start only where they can live in both |
@@ -27,7 +28,19 @@ full scale, a ceiling at 0 dBFS) → buffer.
 
 **Window and grains.** Hann window (a 129-point table), evaluated at block boundaries and ramped linearly in between
 together with the grain's pan. 16 grains at most (the densest setting averages 8, peaks at 12), sample-accurate
-onsets with random intervals of 0.5–1.5× the mean.
+onsets with random intervals of 0.5–1.5× the mean, or on the tempo grid while the sequencer plays (below).
+
+**Time lock.** While the sequencer plays, the grains start on the beat: one on every point of a 1/64, 1/32, 1/16,
+1/8, 1/4, 1/2-note or one-bar grid, whichever is nearest P1's density, aligned to the pattern start. At 120 BPM: P1
+0–8 → 1/2 notes, 9–37 → 1/4, 38–66 → 1/8, 67–95 → 1/16, 96–124 → 1/32, 125–153 → 1/64; slower tempos move each
+range to shorter notes, faster ones reach a bar at P1 0. Grain length, reach, spread, feedback and pitch stay what
+P1, P2 and the notes make them, so the cloud pulses with the pattern (short grains: a rhythmic stutter of the past;
+long ones: overlapping swells on the beat). Above 153 (at 120 BPM) the grains are denser than 1/64: a haze, and free.
+When the sequencer stops, the onsets go back to random, and they lock again at the next play. Block-accurate
+(1.45 ms), from the sequencer's tick counter (`OpzClock`, [opz_tempo.h](../../sdk/include/opz_tempo.h)).
+
+**Output.** Dry and cloud are summed at half scale and pass the SDK's output limiter (`opz_limit_half`: unity below
+−3 dBFS, a soft knee up to 0 dBFS, never a hard clip).
 
 **Limiter.** The cloud is played one block (1.45 ms) late so that a limiter can look one block ahead: gain = knee /
 peak (knee −1 dBFS), ramped linearly between block ends and released over ~90 ms. Dense coherent clouds and runaway
@@ -59,15 +72,15 @@ device.
 
 | | |
 |---|---|
-| Plug | 61007, version 1, `trackmask` 0x100 (**FX1 only**); preset byte 12 (the FX **dry level**) 255: the sending track keeps its dry signal, classic send/return ([host-tables-flags.md](../../research/host-tables-flags.md#the-bits)) |
+| Plug | 61007, version 2, `trackmask` 0x100 (**FX1 only**); preset byte 12 (the FX **dry level**) 255: the sending track keeps its dry signal, classic send/return ([host-tables-flags.md](../../research/host-tables-flags.md#the-bits)) |
 | Memory slot | 45 (10 KB class), 5,842 of 10,240 bytes used (Blackfin build, `-O2`); no `.bss` |
 | Memory request | **1,050,752 B** (1.0 MB) of FX1's 2 MB pool: the 2^19-sample ring (+192 mirrored samples after its end so a block's reads never wrap), 16 grains, two grain-sum blocks and the feedback block (1,792 B). Like `echo`, half of FX1's pool: long enough for a 5 s reach plus 600 ms grains at 2.3× and a freeze that holds ~12 s of material |
 | FX2 / other tracks | the OS does not enforce `trackmask` (`opz.py` warns, it doesn't refuse), and the FX pools sit back to back (FX2's 256 KB right before tape's pool). On any track but FX1 (`init`'s `track` ≠ 8) clouds uses only **133,248 B**: a 2^16 ring (1.49 s), so P2's reach stops at ~1.4 s. On master (16 KB) it passes the dry signal only. Making FX2 official is a `trackmask` change to 0x300 after a hardware check |
 | Clearing | `init` runs with interrupts masked, so it only sets up the state; `renderFX` zeroes the grain table in its first block and the ring 32 KB a block after that (34 blocks, **49 ms** on FX1, 9 ms elsewhere), passing the dry signal meanwhile; then the recording fades in over 12 ms |
 | State | 80 B of 200 (Blackfin) |
-| CPU (Blackfin simulator, `tools/opz_cycles.py`) | below. **~100 cycles per stereo sample at the preset**, 337 at the densest setting with detune (P1 255, P2 255), 393 in its worst block, 405 in a freeze hand-over: 1.7–7 % of the 580,499-cycle block. Note-on 138 cycles |
+| CPU (Blackfin simulator, `tools/opz_cycles.py`) | **v2 (2026-11-11): 333 cycles per stereo frame in its worst case, worst block 398** (fx-usability.md §4a). Earlier figures: below. **~100 cycles per stereo sample at the preset**, 337 at the densest setting with detune (P1 255, P2 255), 393 in its worst block, 405 in a freeze hand-over: 1.7–7 % of the 580,499-cycle block. Note-on 138 cycles |
 | Latency | none for the dry signal; the cloud starts at least 4.4 ms (192 samples) plus one block behind the input |
-| Library code | none: no libgcc, no 64-bit maths, no division (reciprocals by table and Newton steps), no floating point |
+| Library code | one libgcc call, a 32-bit unsigned division (`__udivsi3`), twice when the tempo changes (time lock); no 64-bit maths, no other division (reciprocals by table and Newton steps), no floating point |
 
 CPU per stereo sample (mean / worst block), one FX track, the cycle driver's 345 Hz saw input:
 
@@ -128,6 +141,26 @@ Offline checks:
 7. Pan the FX1 track to 0: only the dry sound; 64: half and half; 128 and up: the cloud only.
 8. If FX2 is to be tried (it is outside the `trackmask`, see Facts): put clouds there and check that the longest reach
    is ~1.4 s and that the tape track's audio is untouched.
+
+## Version 2 (2026-11-11): what changed, what to listen for
+
+Testers found our effects hard to use: the mix knob seemed not to work, some effects seemed not to pass the sound, and
+loud material clipped. Measured in the simulator (fx-usability.md): at pan's
+centre clouds already gave the cloud only, but its lower half was a linear crossfade (a −3 dB dip at 64) and the dry +
+cloud sum could clip. Now:
+
+- **Pan**: the SDK's law, equal power below 128 (64 = −3 dB each, no dip); 128–255 unchanged (the cloud only).
+- **Output**: summed at half scale through the SDK's limiter (`opz_limit_half`), so dry + cloud never hard-clips.
+- **Time lock** (tester request): grain onsets follow the sequencer's tempo while it plays (above).
+
+On the device (project 9, FX1, a synth track sending to FX1 at 100 %, FX1's dry level 255):
+
+1. Sequencer stopped, P1 60, P2 40: grains at random times, as in v1.
+2. Press play: the grains now pulse on 1/8 notes with the pattern; change the tempo: they follow. P1 down to 30: 1/4;
+   P1 up to 100: 1/16; past ~155: the haze, free.
+3. Stop: back to random. Play again: locked from the first step.
+4. Pan at the centre: only the cloud on FX1's return, the source at its own level from the synth track (no level jump
+   when FX1 is muted). Turn FX1's dry level down: the source fades out of the mix, the cloud stays.
 
 ## Credits
 

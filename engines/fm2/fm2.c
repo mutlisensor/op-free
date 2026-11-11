@@ -21,6 +21,7 @@
 #include "opz_adsr.h"
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_mix.h"
 
 typedef struct State {
     uint32_t pc, pm;         /* carrier and modulator phase, Q32 turns */
@@ -32,6 +33,7 @@ typedef struct State {
     int32_t vel15;           /* velocity, Q15 */
     int32_t amp15;           /* velocity x OPZ_VOICE_PEAK, Q15 (a gain needs no more than 16 bits) */
     int32_t fresh;           /* first block after note-on: start at the target feedback, no ramp */
+    OpzMix mix;              /* the track's level and pan (opz_mix.h) */
     int16_t buf[OPZ_BLOCK_FRAMES];  /* render's scratch: modulator, then carrier, Q15 */
 } State;
 
@@ -187,7 +189,6 @@ void init(void *state, uint32_t track, uint32_t arg2, void *mem, void *scratch)
 
 void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
 {
-    (void)params;
     State *s = state;
     uint32_t v = velocity > 127 ? 127 : velocity;
     s->pc = 0;
@@ -197,6 +198,7 @@ void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
     s->amp15 = (int32_t)((v * 0x01020408u) >> 16) * (OPZ_VOICE_PEAK >> 16) >> 15;   /* 127 -> 8191 */
     s->strike = OPZ_Q31_ONE;
     s->fresh = 1;
+    opz_mix_start(&s->mix, params);
 
     /* strike time constant tau = 150 ms * 2^(-(note - 60) / 24), 40 .. 400 ms. Per block it multiplies by
      * exp(-64 / (tau fs)) = 2^(-x), x = 64 / (0.15 s * fs * ln 2) * 2^((note - 60) / 24) = 0.01396 * ... */
@@ -246,7 +248,7 @@ ALWAYS_INLINE void pass_car(State *s, uint32_t ic, int32_t sc, int32_t d, int32_
     s->pc = pc;
 }
 
-/* Pass 3: level and envelope, added into out. Returns the envelope level. step0 (decay/release: the envelope's
+/* Pass 3: level and envelope, into the mono buffer opz_mix_mono adds into out. Returns the envelope level. step0 (decay/release: the envelope's
  * step is 0) is a compile-time constant in each copy. */
 ALWAYS_INLINE int32_t pass_out(fract32 *out, const State *s, int32_t level, int32_t coef, int32_t step, int step0)
 {
@@ -254,8 +256,7 @@ ALWAYS_INLINE int32_t pass_out(fract32 *out, const State *s, int32_t level, int3
     int32_t amp15 = s->amp15;
     for (int i = 0; i < OPZ_BLOCK_FRAMES; i++) {
         fract32 v = opz_mul_q31_q15(opz_mul_q31_q15(level, amp15), buf[i]);
-        out[2 * i] = opz_add_q31(out[2 * i], v);                             /* interleaved stereo */
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], v);
+        out[i] = v;
         level = step0 ? opz_env_tick0(level, coef) : opz_env_tick(level, coef, step);
     }
     return level;
@@ -318,8 +319,10 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
 
     pass_mod(s, im0, sm, s->fb, (fb_end - s->fb) >> 6);
     pass_car(s, pitch, pitchSlope, s->d, (d_end - s->d) >> 6);
-    OPZ_ADSR_LEVEL(env) = env_step ? pass_out(out, s, level, env_coef, env_step, 0)
-                                   : pass_out(out, s, level, env_coef, 0, 1);
+    fract32 mono[OPZ_BLOCK_FRAMES];
+    OPZ_ADSR_LEVEL(env) = env_step ? pass_out(mono, s, level, env_coef, env_step, 0)
+                                   : pass_out(mono, s, level, env_coef, 0, 1);
+    opz_mix_mono(out, mono, &s->mix, params);                               /* level and pan, into interleaved out */
     s->d = d_end;
     s->fb = fb_end;
 }

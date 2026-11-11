@@ -187,3 +187,51 @@ input[type="range"] { accent-color: var(--accent); }
 .scenario-result h3 { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
 .scenario-result h3 span { font-size: 12px; font-weight: 500; }
 .expects, .warnings { padding-left: 18px; font-size: 12px; }
+
+/* ---- tracks: the strip of instrument tracks, MIDI controls, the virtual OP-Z ---- */
+.layout { grid-template-areas: "tracks tracks tracks" "synth fx1 fx2" "play play play" "checks checks scenarios"; }
+@media (max-width: 1280px) {
+  .layout { grid-template-areas: "tracks tracks" "synth synth" "fx1 fx2" "play play" "checks scenarios"; }
+}
+@media (max-width: 860px) {
+  .layout { grid-template-areas: "tracks" "synth" "fx1" "fx2" "play" "checks" "scenarios"; }
+}
+.tracks { grid-area: tracks; }
+.inst-slots { grid-area: synth; min-width: 0; }
+.slot.synth.drum { border-top-color: var(--drum); }
+.tracks-head { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 12px; }
+.tracks-head h2 { margin: 0 6px 0 0; }
+#midi-learn[aria-pressed="true"], #vopz-toggle[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+.track-strip { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
+@media (max-width: 860px) { .track-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.track-tab { display: grid; grid-template-columns: auto 1fr; grid-template-areas: "led name" "engine engine" "ch ch" "meter meter";
+  gap: 2px 6px; text-align: left; padding: 6px 8px; border-left: 4px solid var(--synth); min-width: 0; }
+.track-tab.drum { border-left-color: var(--drum); }
+.track-tab.empty { opacity: 0.6; }
+.track-tab[aria-selected="true"] { background: var(--panel); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); opacity: 1; }
+.track-tab.violated { border-color: var(--bad); }
+.t-name { grid-area: name; font-weight: 600; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.t-engine { grid-area: engine; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.t-ch { grid-area: ch; font: 11px ui-monospace, Menlo, monospace; color: var(--muted); }
+.t-meter { grid-area: meter; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.t-meter span { display: block; height: 100%; width: 0; background: var(--ok); transition: width 60ms linear; }
+.led { grid-area: led; align-self: center; width: 8px; height: 8px; border-radius: 50%; background: var(--line); display: inline-block; }
+.led.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.fx-led { margin-right: 6px; vertical-align: 1px; }
+.midi-line { margin: 10px 0 0; min-height: 1.45em; }
+.monitor { font: 12px ui-monospace, Menlo, monospace; color: var(--ink); }
+.small-label { font-size: 12px; }
+.small-label select { padding: 2px 4px; }
+.knob-cc { font: 10px ui-monospace, Menlo, monospace; color: var(--accent); }
+body.learning .knob-dial { cursor: copy; }
+body.learning .slot .knob { outline: 1px dashed var(--line); outline-offset: 2px; border-radius: 6px; }
+.knob.armed { outline: 2px solid var(--accent) !important; }
+.key.midi { box-shadow: inset 0 -10px 0 var(--accent); }
+.vopz { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin-top: 12px; padding: 12px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+.vopz .field { margin: 0; flex: 0 0 auto; }
+.vopz-pages { display: flex; flex-wrap: wrap; gap: 4px; }
+.vopz-pages button { font-size: 12px; padding: 3px 8px; }
+.vopz-pages button[aria-checked="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+.vopz-dials { display: flex; gap: 12px; margin: 0; }
+.vopz-note { flex: 1 1 100%; margin: 0; }

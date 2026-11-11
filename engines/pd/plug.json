@@ -1,8 +1,8 @@
 {
   "engine": "pd",
   "memoryslot": 42,
-  "engine_version": 1,
-  "plug": { "id": 61200, "version": 1, "name": "pd", "trackmask": 240, "flags": 0,
+  "engine_version": 2,
+  "plug": { "id": 61200, "version": 2, "name": "pd", "trackmask": 240, "flags": 0,
             "parameter_names": ["distortion", "wave"] },
   "presets": "presets.json"
 }

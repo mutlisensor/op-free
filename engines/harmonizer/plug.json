@@ -1,8 +1,8 @@
 {
   "engine": "harmonizer",
   "memoryslot": 35,
-  "engine_version": 1,
-  "plug": { "id": 61104, "version": 1, "name": "harmonizer", "trackmask": 768, "flags": 8,
+  "engine_version": 2,
+  "plug": { "id": 61104, "version": 2, "name": "harmonizer", "trackmask": 768, "flags": 8,
             "parameter_names": ["shift", "space"] },
   "presets": "presets.json"
 }

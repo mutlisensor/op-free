@@ -296,10 +296,11 @@ static void measure(void)
 
     printf("intervals (440 Hz sine, 0.5 s, P1 180, P2 140), 0.5-1.5 s: the level at 440 Hz x the interval and x the "
            "interval twice (the second lap)\n");
-    static const int notes[] = { 60, 67, 65, 72, 55, 53, 36, 48, 79, 20 };
-    for (int k = 0; k < 10; k++) {
+    static const int notes[] = { 60, 67, 65, 72, 55, 53, 36, 48, 79, 20, 62, 63, 50, 58, 70, 66 };
+    for (int k = 0; k < 16; k++) {
         double *y = wet_render(180, 140, notes[k], IN_SINE, 440, 0.5, 0.5, 2, &n);
-        int semi = notes[k] - NOTE_ZERO < -12 ? -12 : notes[k] - NOTE_ZERO > 24 ? 24 : notes[k] - NOTE_ZERO;
+        int d = notes[k] - NOTE_ZERO < -12 ? -12 : notes[k] - NOTE_ZERO > 24 ? 24 : notes[k] - NOTE_ZERO;
+        int semi = k_snap[d - SEMI_MIN];                       /* the keys between the intervals snap */
         double f1 = 440 * pow(2, semi / 12.0), f2 = 440 * pow(2, semi / 6.0);
         const double *w = y + FS / 2;
         printf("  note %3d (%+3d): 440 Hz %5.1f dB, %6.1f Hz %5.1f dB, %6.1f Hz %5.1f dB\n", notes[k], semi,

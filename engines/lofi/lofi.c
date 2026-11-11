@@ -9,8 +9,8 @@
  *   P2     noise      0..127: tape hiss (-66 -> -30 dBFS) and vinyl crackle (0 -> 40 pops/s) fade in;
  *                     128..255: they stay, and the signal is reduced to fewer bits (16 -> 4) at a lower sample
  *                     rate (44.1 -> 3 kHz, no anti-alias filter: the grit is the point)
- *   pan    dry / wet  TE's balance law normalised to unity (centre = half and half); the preset is wet only, an
- *                     insert
+ *   pan    dry / wet  the SDK's FX law: 128 .. 255 the worn tape only (the OS's dry level keeps the source),
+ *                     below 128 the dry blends in at equal power, 0 = dry only; output through the SDK's limiter
  *   level  output level (x gain)
  *   notes  on the FX track: **tape stop**. A held key slows the tape to a halt (pitch and level fall together);
  *          the key sets how fast: F3 (left) 1.2 s .. E5 (right) 0.16 s. Releasing it returns to the live sound
@@ -67,8 +67,6 @@ typedef struct State {
     int32_t hiss[2];                            /* hiss low-pass */
     int32_t pop;                                /* crackle */
     uint32_t seed;
-    int32_t wet, dry;                           /* normalised dry/wet gains, Q31 */
-    uint32_t pan;                               /* the pan word they were computed for (bit 31: none yet) */
     uint8_t stopping;                           /* 1 slowing down, 2 crossfading back to live */
     uint8_t started;
     /* written by onNoteOn/onNoteOff (word and byte stores: safe if render runs in the middle) */
@@ -97,7 +95,6 @@ void init(void *state, uint32_t track, uint32_t arg2, void *mem, void *scratch)
     volatile uint8_t *p = (volatile uint8_t *)s;               /* volatile: keep the compiler from calling memset */
     for (unsigned i = 0; i < sizeof(State); i++) p[i] = 0;
     s->buf = (track == OPZ_TRACK_FX1 || track == OPZ_TRACK_FX2) ? (uint32_t *)mem : (uint32_t *)0;
-    s->pan = 0x80000000u;
     s->seed = 0x9e3779b9u;
     s->v = V_ONE;
     s->dl = BASE_D;
@@ -150,7 +147,8 @@ typedef struct Block {
 /* Saturation and the band limit of one channel */
 static inline int32_t colour(State *s, const Block *b, int c, int32_t x)
 {
-    int32_t y = opz_shl_q31(opz_mul_q31(x, b->drive4), 2);
+    int32_t y = opz_limit_half(opz_shl_q31(opz_mul_q31(x, b->drive4), 1));   /* x drive: soft above -3 dBFS,
+                                                                                at most 1 (was a hard clip) */
     int32_t y3 = opz_mul_q31(opz_mul_q31(y, y), y);
     y = opz_mul_q31(opz_sub_q31(y, opz_mul_q31(y3 >> 2, b->bend)), b->inv_drive);   /* x - k x^3 / 4 */
     s->hp[c] = opz_add_q31(s->hp[c], opz_mul_q31_q15(opz_sub_q31(y, s->hp[c]), b->k_hp));
@@ -204,17 +202,11 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
         b.pop_th = opz_mul_u32_shr16(t2, POP_RATE_K);
     }
 
-    uint32_t pan = params[OPZ_P_PAN] & OPZ_Q31_ONE;
-    if (pan != s->pan) {                                       /* TE's law, then / (dry + wet): no division */
-        int32_t w = opz_shl_q31((int32_t)pan, 1), d = opz_shl_q31(OPZ_Q31_ONE - (int32_t)pan, 1);
-        uint32_t half = ((uint32_t)w + (uint32_t)d) >> 1;
-        fract32 h = opz_recip_q31(half > OPZ_Q31_ONE ? OPZ_Q31_ONE : (int32_t)half);
-        s->wet = opz_mul_q31(w, h);
-        s->dry = opz_mul_q31(d, h);
-        s->pan = pan;
-    }
+    int32_t dry, wet;                                          /* the SDK's FX law (equal power: the tape is 12 ms */
+    opz_fx_drywet(params[OPZ_P_PAN], &dry, &wet);              /* late, so the wet is not the dry) */
     int32_t out_gain = opz_mul_q31((int32_t)(params[OPZ_P_LEVEL] & OPZ_Q31_ONE), gain);
-    int32_t dg = opz_mul_q31(s->dry, out_gain), wg = opz_mul_q31(s->wet, out_gain);
+    int32_t dg = opz_mul_q31(dry, out_gain) >> 1, wg = opz_mul_q31(wet, out_gain);   /* dry at half scale; the wet
+                                                                                         sum is held at half */
 
     uint32_t *buf = s->buf;
     if (buf && s->cleared < RING) {
@@ -223,7 +215,7 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
         s->cleared += CLEAR_STEP;
     }
     if (!buf || s->cleared < RING) {                           /* clearing (8 blocks) or no buffer: dry only */
-        for (int i = 0; i < 2 * OPZ_BLOCK_FRAMES; i++) out[i] = opz_mul_q31(dg, in[i]);
+        for (int i = 0; i < 2 * OPZ_BLOCK_FRAMES; i++) out[i] = opz_limit_half(opz_mul_q31(dg, in[i]));
         return;
     }
 
@@ -302,6 +294,8 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
                 yr = crush(&b, yr);
             }
         }
+        yl >>= 1;                                              /* half scale from here: hiss and pops add on top */
+        yr >>= 1;
         if (b.hiss_amp) {
             s->hiss[0] = opz_add_q31(s->hiss[0], opz_mul_q31_q15(opz_sub_q31(opz_noise(&s->seed), s->hiss[0]), K_HISS));
             s->hiss[1] = opz_add_q31(s->hiss[1], opz_mul_q31_q15(opz_sub_q31(opz_noise(&s->seed), s->hiss[1]), K_HISS));
@@ -313,12 +307,13 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
             }
             s->pop = opz_mul_q31_q15(s->pop, POP_DECAY);
             int32_t n = s->pop;
-            yl = opz_add_q31(yl, opz_add_q31(opz_mul_q31(s->hiss[0], b.hiss_amp), n));
-            yr = opz_add_q31(yr, opz_add_q31(opz_mul_q31(s->hiss[1], b.hiss_amp), n));
+            yl = opz_add_q31(yl, (opz_mul_q31(s->hiss[0], b.hiss_amp) >> 1) + (n >> 1));
+            yr = opz_add_q31(yr, (opz_mul_q31(s->hiss[1], b.hiss_amp) >> 1) + (n >> 1));
         }
-        out[2 * i] = opz_add_q31(opz_mul_q31(dg, xl), opz_mul_q31(wg, yl));
-        out[2 * i + 1] = opz_add_q31(opz_mul_q31(dg, xr), opz_mul_q31(wg, yr));
+        out[2 * i] = opz_mul_q31(wg, yl);                     /* the wet at half scale */
+        out[2 * i + 1] = opz_mul_q31(wg, yr);
     }
+    opz_fx_finish(out, in, dg, dg);                            /* + the dry, through the SDK's limiter */
     s->w = w;
     s->dl = dl;
 }

@@ -6,7 +6,8 @@
  *                           0 .. 127    dark, muted string -> bright harmonic string (the loop low-pass opens)
  *                           128 .. 255  harmonic string -> inharmonic, bell- and metal-like (dispersion in the loop
  *                                       stretches the partials), with a little extra damping to tame the clang
- *   pan       dry / wet   TE's balance law (wet = min(2p, 1), dry = min(2(1-p), 1)), normalised by dry + wet
+ *   pan       dry / wet   the SDK's FX law: 128 .. 255 the strings only (the OS's dry level keeps the source), below
+ *                         128 the dry blends in at equal power, 0 = dry only; output through the SDK's limiter
  *   level     output level (x gain)
  *   pitch bend            bends every string, +-2 semitones at full scale
  *   notes on the FX track up to four strings, one per note. Notes held together form a chord; the chord stays
@@ -28,6 +29,7 @@
  * see CONTRIBUTING.md.
  */
 #include "opz_engine.h"
+#include "opz_dsp.h"
 
 #define SLOTS           4                       /* strings: one per note of a chord */
 #define LINE_LEN        2048                    /* samples per string, int32: C1 (1349 samples) fits */
@@ -98,15 +100,6 @@ static inline int32_t p16(uint32_t param) { return (int32_t)(param >> 15); }    
 /* Control maths (once per block per retuned string): 32-bit fractional multiplies and 32-bit divisions only;
  * 64-bit division is a slow libgcc call on the Blackfin. */
 
-/* x * 128, saturated. */
-static inline int32_t shl7_sat(int32_t x)
-{
-#if defined(__bfin__)
-    return __builtin_bfin_shl_fr1x32(x, 7);
-#else
-    return opz_sat32((int64_t)x << 7);
-#endif
-}
 
 /* a * b for Q30 values (|result| < 2). */
 static inline int32_t mul30(int32_t a, int32_t b) { return opz_mul_q31(a, b) * 2; }
@@ -401,12 +394,8 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
     Mem *m = s->mem;
 
     /* ---- per block ----------------------------------------------------------------------------------- */
-    int32_t pan = (int32_t)(params[OPZ_P_PAN] & Q31_ONE);
-    int32_t wet = opz_sat32((int64_t)pan * 2), dry = opz_sat32(((int64_t)Q31_ONE - pan) * 2);
-    uint32_t sum = ((uint32_t)wet >> 1) + ((uint32_t)dry >> 1);                /* 0.5..1 in Q31 */
-    wet = div30((uint32_t)wet >> 1, sum);                       /* normalised: wet + dry = 1 */
-    wet = wet >= Q30_ONE ? Q31_ONE : wet * 2;
-    dry = Q31_ONE - wet;
+    int32_t dry, wet;                                           /* the SDK's FX law (equal power) */
+    opz_fx_drywet(params[OPZ_P_PAN], &dry, &wet);
     int32_t out_gain = opz_mul_q31((int32_t)(params[OPZ_P_LEVEL] & Q31_ONE), gain);
 
     if (!m || s->cleared < LINE_WORDS) {                        /* no buffer, or still clearing it: dry only */
@@ -514,7 +503,7 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
     s->lim_need = need;
 
     /* out = dry x input + wet x (delayed strings), with every wet gain in one ramp */
-    int32_t wg = opz_mul_q31(wet, out_gain), dg = opz_mul_q31(dry, out_gain);
+    int32_t wg = opz_mul_q31(wet, out_gain), dg = opz_mul_q31(dry, out_gain) >> 1;   /* dry at half scale */
     int32_t G = opz_mul_q31(opz_mul_q31(s->og_late, lg0), wg);  /* the chord gain the delayed block was made with */
     int32_t G1 = opz_mul_q31(opz_mul_q31(og0, lg1), wg);
     s->og_late = og0;
@@ -523,11 +512,12 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
         G += G_inc;
         for (int c = 0; c < 2; c++) {
             int j = 2 * i + c;
-            int32_t w = shl7_sat(opz_mul_q31(m->wet[j], G));
+            int32_t w = opz_shl_q31(opz_mul_q31(m->wet[j], G), 6);  /* the strings at half scale */
             m->wet[j] = out[j];
-            out[j] = opz_add_q31(opz_mul_q31(dg, in[j]), w);
+            out[j] = w;
         }
     }
+    opz_fx_finish(out, in, dg, dg);                            /* + the dry, through the SDK's limiter */
 }
 
 OPZ_EXPORTS_FX();

@@ -5,7 +5,7 @@
  *   P2  sub     a triangle one octave below, off (0) -> as loud as the main oscillator (255)
  *
  * The template is the smallest complete instrument: one oscillator, the host's ADSR envelope, velocity, pitch
- * glide inside the block, and the "add into out" rule. Replace the sound, keep the skeleton. Every rule it follows
+ * glide inside the block, the track's level and pan, and the "add into out" rule. Replace the sound, keep the skeleton. Every rule it follows
  * is in sdk/docs/engine-abi.md (§3 entry points, §6 rules for engine authors).
  *
  * Ground rules for everything in this file (the OP-Z's Blackfin has no FPU and no libc):
@@ -21,6 +21,7 @@
 #include "opz_adsr.h"   /* the host envelope: OPZ_ADSR_* accessors and opz_env_tick */
 #include "opz_dsp.h"    /* shared fixed-point kernels: opz_sine, opz_saw_blep, opz_lerp, ... */
 #include "opz_engine.h" /* the ABI: types, callback table, parameter indices, export table */
+#include "opz_mix.h"    /* the track's level and pan dials: the OS leaves them to the engine */
 
 /* ---- per-voice state ------------------------------------------------------------------------------------------
  * The host gives every voice 280 bytes for this struct (bytes 280-307 of the area are the OS's own). It does NOT
@@ -29,6 +30,7 @@ typedef struct State {
     uint32_t phase;      /* main oscillator, Q32 turns */
     uint32_t sub_phase;  /* sub oscillator, one octave down */
     fract32 amp;         /* velocity x OPZ_VOICE_PEAK, Q31, set at note-on */
+    OpzMix mix;          /* level and pan gains of the last block, for opz_mix_mono's ramp */
 } State;
 
 _Static_assert(sizeof(State) <= OPZ_VOICE_STATE_BYTES, "voice state must fit in OPZ_VOICE_STATE_BYTES (engine-abi.md rule 13)");
@@ -61,12 +63,13 @@ void init(void *state, uint32_t track, uint32_t arg2, void *mem, void *scratch)
  * to render on its own. */
 void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
 {
-    (void)note; (void)params;
+    (void)note;
     State *s = state;
     fract32 vel = (fract32)((uint32_t)(velocity > 127 ? 127 : velocity) * 0x01020408u);  /* v / 127 in Q31 */
     s->amp = opz_mul_q31(vel, OPZ_VOICE_PEAK);  /* -12 dBFS at full velocity: the level TE's synths play at */
     s->phase = 0;
     s->sub_phase = 0;
+    opz_mix_start(&s->mix, params);             /* the note starts at the dials' level and pan */
 }
 
 /* The key was released. The host moves the envelope to its release stage by itself, and this may be called
@@ -79,7 +82,9 @@ void onNoteOff(int note, void *state)
 /* 64 frames for one voice. `out` is the track's buffer, interleaved stereo (L, R, L, R, ... 128 values) that every
  * voice of the track ADDS into: never overwrite it. `pitch` is the phase increment per sample (Q32) at the block's
  * start; add `pitchSlope` every sample to glide to the next block's pitch. `params` are the 18 smoothed parameters
- * (Q31, 0..0x7fffffff): this engine owns P1 and P2; filter and resonance are the OS's own track filter. */
+ * (Q31, 0..0x7fffffff): this engine owns P1 and P2; filter and resonance are the OS's own track filter. Level and
+ * pan are the engine's job (every TE engine applies them in render; the FX sends are taken after them):
+ * opz_mix_mono does it at the end of the block. */
 void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const uint32_t *params, ADSR *env)
 {
     State *s = state;
@@ -101,6 +106,7 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
      *    Locals, not s->...: the compiler must assume a write to out[] could change *s, and would reload it. */
     int32_t level = OPZ_ADSR_LEVEL(env), coef = OPZ_ADSR_COEF(env), step = OPZ_ADSR_STEP(env);
     uint32_t phase = s->phase, sub_phase = s->sub_phase, inc = pitch;
+    fract32 mono[OPZ_BLOCK_FRAMES];                         /* the voice, before level and pan */
 
     for (int i = 0; i < OPZ_BLOCK_FRAMES; i++) {
         /* the sound: main oscillator (sine -> saw), plus the sub. Both halved, so the sum never clips. */
@@ -109,9 +115,7 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
         fract32 y = (x >> 1) + (sub >> 1);
         /* level: velocity and the envelope */
         y = opz_mul_q31(opz_mul_q31(y, amp), level);
-        /* ADD into both channels of the interleaved buffer, saturating */
-        out[2 * i] = opz_add_q31(out[2 * i], y);
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], y);
+        mono[i] = y;
         /* advance: envelope, phases (wrapping is what we want), pitch glide */
         level = opz_env_tick(level, coef, step);
         phase += inc;
@@ -119,7 +123,10 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
         inc += (uint32_t)pitchSlope;
     }
 
-    /* 5. Store what the next block continues from. The host frees the voice once the envelope reaches stage 0. */
+    /* 5. The track's level and pan, ADDED into both channels of the interleaved buffer, saturating. */
+    opz_mix_mono(out, mono, &s->mix, params);
+
+    /* 6. Store what the next block continues from. The host frees the voice once the envelope reaches stage 0. */
     OPZ_ADSR_LEVEL(env) = level;
     s->phase = phase;
     s->sub_phase = sub_phase;

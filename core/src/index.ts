@@ -8,6 +8,8 @@ export * from "./pyjson.ts";
 export * from "./session.ts";
 export * from "./plan.ts";
 export * from "./opz.ts";
+export * from "./space.ts";
+export * from "./restorecheck.ts";
 export * from "./fake.ts";
 export * from "./virtual.ts";
 export * as project from "./project.ts"; // projects/projectNN.opz, pattern banks (research/patterns.md)

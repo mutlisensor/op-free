@@ -15,6 +15,7 @@ at all. Every note sweeps its distortion down from a brighter start, like the CZ
 | notes | each note restarts the phase at ¾ of a turn (a sine starts at its zero crossing). Pitch bend, portamento and the LFO's pitch move the pitch; the pitch limit follows them |
 | attack, sustain, release | the OP-Z envelope; the DCW keeps decaying through the release |
 | filter, resonance | not used: they are the OS's own track filter, which runs after the engine. Presets leave it neutral (128, 0) |
+| pan, level | the track's pan and level (yellow and red dial, orange page), applied by the engine as TE's engines do (`opz_mix.h`): level is linear (128 = −6 dB, 0 = silent), pan a balance (centre: both sides full; hard left: right silent). The FX1/FX2 sends are taken after them. They follow the LFO (targets pan and volume) without zipping |
 
 ## The waves
 
@@ -111,11 +112,11 @@ ear on the device.
 
 | | |
 |---|---|
-| Plug | 61200, `trackmask` 0xF0 (bass, lead, arp, chord), version 1 |
-| Memory slot | 42 (10 KB class): 8,738 of 10,240 bytes on Blackfin (6,128 B code, 2,166 B tables, 56 B exports, 388 B `.bss`: three 64-sample block buffers shared by all voices) |
-| State | 28 B of 280 per voice; `memRequest` 0; no libgcc |
-| CPU | Blackfin simulator ([cycle-model.md](../../research/cycle-model.md), `tools/opz_cycles.py`), 4-note chord C3 G3 C4 E4 at velocity 127, mean / worst block per voice in cycles per sample: **one wave 59–83** (pulse 59, square 64, res I 63, saw 73, saw-pulse 71, res II 73, res III 77, double sine 82 / 84); **two waves crossfading (P2 between plateaus) 114–132 / 137**; the dearest case, resonance II/III crossfading while the sine fades in (low P1, no DCW), **158 / 159**; **P1 and P2 moving every block 98–112 / 159**; release 130; low notes C0–C2 120; high notes C6–E7 130; a 5-octave glide 128 / 143. **19 voices**: 120–130 per voice crossfading, ~158,000 cycles per block in all (19 × 8,331), 97 / 141 with P1 and P2 moving every block. Note-on 53 cycles |
-| Level | per voice, velocity 127, steady: saw −12.0 dBFS peak, −15.3 RMS (a sine's level); every wave ≤ −8.8 dBFS peak; RMS −15.3 except pulse (down to −24.2 at full P1), resonance I (−20.7) and II (−17.5). A note's start at velocity 127 (the DCW at the full wave) peaks at most −8.7 dBFS. Four-voice chords at velocity 127 peak −1.2 dBFS in the track buffer (before the OS's level) |
+| Plug | 61200, `trackmask` 0xF0 (bass, lead, arp, chord), version 2 (v2: applies the track's level and pan) |
+| Memory slot | 42 (10 KB class): 9,488 of 10,240 bytes on Blackfin (6,878 B code, 2,166 B tables, 56 B exports, 388 B `.bss`: three 64-sample block buffers shared by all voices) |
+| State | 32 B of 280 per voice; `memRequest` 0; no libgcc |
+| CPU | Blackfin simulator ([cycle-model.md](../../research/cycle-model.md), `tools/opz_cycles.py`), 4-note chord C3 G3 C4 E4 at velocity 127, mean / worst block per voice in cycles per sample. **v2: level and pan add ~1.5 to every case** with the hand-scheduled `opz_mix.h` loops (its 11 cases: 74–137 mean, 159 worst block with P1 and P2 moving every block; v1 73–136 / 158; 9 more with the C loops); the per-case figures that follow are v1's: **one wave 59–83** (pulse 59, square 64, res I 63, saw 73, saw-pulse 71, res II 73, res III 77, double sine 82 / 84); **two waves crossfading (P2 between plateaus) 114–132 / 137**; the dearest case, resonance II/III crossfading while the sine fades in (low P1, no DCW), **158 / 159**; **P1 and P2 moving every block 98–112 / 159**; release 130; low notes C0–C2 120; high notes C6–E7 130; a 5-octave glide 128 / 143. **19 voices**: 120–130 per voice crossfading, ~158,000 cycles per block in all (19 × 8,331), 97 / 141 with P1 and P2 moving every block. Note-on 53 cycles |
+| Level | per voice, velocity 127, steady: saw −12.0 dBFS peak, −15.3 RMS (a sine's level); every wave ≤ −8.8 dBFS peak; RMS −15.3 except pulse (down to −24.2 at full P1), resonance I (−20.7) and II (−17.5). A note's start at velocity 127 (the DCW at the full wave) peaks at most −8.7 dBFS. Four-voice chords at velocity 127 peak −1.2 dBFS in the track buffer at level 255 (the engine applies the level dial) |
 
 Simulator checks: six golden scenarios (waves: P2 through all eight under a held note and P1 down to the sine and
 back; dcw: plucks at four velocities and three decays, square and resonance plucks up to C7; reso: P1 sweeps on the

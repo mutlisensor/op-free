@@ -9,8 +9,9 @@ FX track tune the tape loop to a pitch: the echo becomes a plucked string (Karpl
 |---|---|
 | P1 **time** | echo time, **19.8 ms to 5 s**, exponential at 32 steps per octave (each step 2.2 %), and exact at 120 BPM: **85 = 125 ms (1/16), 117 = 250 ms (1/8), 136 = 377 ms (dotted 1/8, 0.6 % long), 149 = 500 ms (1/4), 181 = 1 s (1/2), 213 = 2 s (one bar)**. Other values: 0 = 19.8 ms, 32 = 40 ms, 64 = 79 ms, 128 = 317 ms, 192 = 1.27 s, 255 = 4.97 s. Turning it changes the **tape speed**: within an octave the delay glides like a tape motor (critically damped, ~0.3 s for one step, ~0.8 s to double the time, ~0.4 s to halve it) and the repeats bend in pitch on the way, the right-hand repeats by at most −1.3 / +1.3 octaves, the left-hand ones by at most −0.5 / +0.8. A jump of more than an octave (a fast turn) crossfades to the new time in 6 ms instead. No click either way. Ignored while a note is held |
 | P2 **feedback** | one macro for how long the echo lasts and how worn the tape sounds. **Feedback** rises 0 → 0.9 from P2 0 to 192 (64 = 0.3, 128 = 0.6, 160 = 0.75), then 0.9 → **1.4** from 192 to 255: it passes 1 at 204, and from about **210** the echo **self-oscillates** (louder and faster the higher you go, held at about −6 dBFS by the saturator). At the same time each pass through the tape gets **darker** (low-pass, 12 dB/octave, 9 kHz at 0 → 4.7 kHz at 128 → 3.4 kHz at 192 → 2.5 kHz at 255), **thinner** (high-pass 40 Hz → 66 Hz → 110 Hz) and more **wobbly** (wow and flutter at 15 % of full depth at 0, 36 % at 128, 63 % at 192, 100 % at 255). From ~115 a faint tape hiss goes onto the tape (−78 dBFS at 255). Continuous, so an LFO on P2 works |
-| pan | dry/wet, TE's balance law: wet = min(2p, 1), dry = min(2(1 − p), 1). **0 = dry only, 64 = dry + echoes at −6 dB, 128 = dry and echoes both at full level, 192 = echoes + dry at −6 dB, 255 = echoes only** |
-| level | output level × the track gain (255 = unity) |
+| pan | not reachable on the OP-Z: an FX track has no pan dial, app control or mixer column [proven, H-FX1], and presets can't set it, so it stays where the OS leaves it (127 on the unit checked), which this effect treats as **the echoes only** (the dry about 44 dB down). The law below the centre, for anything that does set pan: the dry blends in at equal power: 64 = dry and the echoes at −3 dB each, 0 = dry only. |
+| dry level (hold the FX track's key + **red dial**) | the OS's own dry level (byte 12; TE's app shows it as "dry level" on the FX page): how much of each sending track's own sound stays in the mix. 255 = send/return (the source plays on and the effect adds to it), 0 = insert (a track sent at 100 % is heard only through the effect). This is the dry/wet control on the OP-Z [proven, H-FX1 2026-11-11] |
+| level | output level × the track gain (255 = unity) (nothing on the OP-Z reaches an FX track's level, neither a dial nor the mixer page [proven, H-FX1], so the preset's value holds) |
 | filter, resonance | not used: they are the OS's own track filter, also on FX tracks. The preset leaves it neutral (128, 0) |
 | pitch bend | bends the tape speed, ±2 semitones at full scale (the simulator's scale; the device's is not confirmed). Bending up shortens the echo time (it glides, so the echoes bend in pitch), and transposes a ringing note |
 | **notes on the FX track** | the tape loop becomes **one period of the note**: the echo rings at the note's pitch (Karplus-Strong), tuned within ~2 cents from C1 to C5 and within ~6 cents above (simulator). Each note with a velocity also **plucks** the loop: a burst of tape noise one period long (at least 64 samples, at most 23 ms), at a level of (velocity / 127)² × −12 dBFS, so velocity 127 plucks hard, 64 a quarter as loud, 1 not at all. **P2 sets how long a note rings**: about 0.1 s at P2 0, 0.4 s at 128, 0.7 s at 160, 1.2 s at 192 (the fundamental lasts longer, the harmonics die faster at dark settings), and from ~204 the note **drones** on (self-oscillation at the note). Whatever is sent to the track is also tuned by the loop (a resonator). The newest note plays (up to 8 held notes remembered; releasing it returns to the previous held note). A new note within an octave of the playing one **glides** to it (~12 ms); a bigger jump, and the switch from the echo to a note, crossfade in 6 ms (the pluck waits for that crossfade). Releasing every note crossfades back to the P1 echo, and the last ring comes back as echoes at P1's time. Notes fold into C1–C7 by octaves. A note re-sent with velocity 0 (the OS handing back a held note) changes the pitch without a pluck |
@@ -52,22 +53,22 @@ device.
 |---|---|---|---|---|
 | slapback | 40 | 20 | 128 | one short 47 ms slap (feedback 0.09): rockabilly vocals, snappy drums |
 | eighths | 117 | 140 | 128 | 1/8 at 120 BPM, feedback 0.66: a rhythmic bed of repeats |
-| dub | 149 | 195 | 150 | 1/4, feedback 0.93, dark and wobbly: long tails; nudge P2 past 205 for a runaway and back |
-| siren | 100 | 235 | 200 | self-oscillating loop (feedback 1.24); sweep P1 slowly for pitch dives. **Loud: start with the level down** |
-| space | 181 | 160 | 100 | 1 s, feedback 0.75: long ambient repeats tucked under the dry signal |
-| pluck | 128 | 170 | 160 | sequence notes on FX1 (velocity 100–127): plucked, tape-dark strings ringing ~0.8 s; the last one echoes at 317 ms after the note ends |
-| drone | 128 | 215 | 180 | hold notes on FX1 and send a pad or noise: the loop rings on at the note's pitch, a tape-saturated drone |
+| dub | 149 | 195 | 128 | 1/4, feedback 0.93, dark and wobbly: long tails; nudge P2 past 205 for a runaway and back |
+| siren | 100 | 235 | 128 | self-oscillating loop (feedback 1.24); sweep P1 slowly for pitch dives. **Loud: start with the level down** |
+| space | 181 | 160 | 128 | 1 s, feedback 0.75: long ambient repeats tucked under the dry signal (FX1 level ~170) |
+| pluck | 128 | 170 | 128 | sequence notes on FX1 (velocity 100–127): plucked, tape-dark strings ringing ~0.8 s; the last one echoes at 317 ms after the note ends |
+| drone | 128 | 215 | 128 | hold notes on FX1 and send a pad or noise: the loop rings on at the note's pitch, a tape-saturated drone |
 
 ## Facts
 
 | | |
 |---|---|
-| Plug | 61005, version 1, `trackmask` 0x100 (**FX1 only**); preset byte 12 (the FX **dry level**) 255: the sending track keeps its dry signal, classic send/return ([host-tables-flags.md](../../research/host-tables-flags.md#the-bits)) |
+| Plug | 61005, version 2, `trackmask` 0x100 (**FX1 only**); preset byte 12 (the FX **dry level**) 255: the sending track keeps its dry signal, classic send/return ([host-tables-flags.md](../../research/host-tables-flags.md#the-bits)) |
 | Memory slot | 48 (10 KB class), 8,220 of 10,240 bytes used (Blackfin build, `-O2`) |
 | Memory request | **1,048,576 B (1 MB)** of FX1's 2 MB pool: 2^19 16-bit samples, 11.9 s of mono tape. The longest loop is 10 s (the right head at twice the 5 s echo time), plus 1,024 samples of margin for the wow and the read ramps. Not cleared: `init` writes 128 bytes of silence, and a head that would read tape not yet written since `init` reads that silence instead. The record level fades in over the first 23 ms after the plug is selected |
 | FX2 | the OS does not enforce `trackmask` (`opz.py` warns, it doesn't refuse), and the FX pools sit back to back (FX2's 256 KB right before tape's pool). So on any track but FX1 (`init`'s `track` ≠ 8) echo uses only **256 KB** (2.97 s of tape): times up to **1.47 s**, P1 above ~199 stays at 1.47 s. Making FX2 official is a `trackmask` change to 0x300 after a hardware check: does `init` get track 9 on FX2, and does the OS accept a 1 MB request there |
 | State | 188 B of 200 (Blackfin, 32-bit pointers) |
-| CPU (Blackfin simulator, `tools/opz_cycles.py`) | **~186 cycles per stereo sample** (11,900 per block) at every P1/P2, 196 in the worst block; ~219 in a block that crossfades (four heads). Note-on 108 cycles; the note's tuning and gain (two `atan`, a few 32-bit divisions) are worked out once per note, bend or P2 change. 2.1 % of the 580,499-cycle block |
+| CPU (Blackfin simulator, `tools/opz_cycles.py`) | **v2 (2026-11-11): 193 cycles per stereo frame in its worst case, worst block 226** (fx-usability.md §4a). Earlier figures: **~186 cycles per stereo sample** (11,900 per block) at every P1/P2, 196 in the worst block; ~219 in a block that crossfades (four heads). Note-on 108 cycles; the note's tuning and gain (two `atan`, a few 32-bit divisions) are worked out once per note, bend or P2 change. 2.1 % of the 580,499-cycle block |
 | Latency | none for the dry signal; the first echo arrives at P1's time |
 | Library code | libgcc's 32-bit `__udivsi3` (note setup only); no 64-bit maths, no floating point |
 
@@ -116,6 +117,24 @@ Offline checks (a harness linking `echo.c` directly, plus the six golden scenari
    note changes.
 7. If FX2 is to be tried (it is outside the `trackmask`, see Facts): put echo there and check the longest time is
    ~1.5 s and that the tape track's audio is untouched.
+
+## Version 2 (2026-11-11): what changed, what to listen for
+
+Testers found our effects hard to use: the mix knob seemed not to work, some effects seemed not to pass the sound, and
+loud material clipped. Measured in the simulator (fx-usability.md). echo used
+TE's balance law, where pan's centre plays the dry signal **and** the echoes at full level. With the preset's dry
+level 255 (the sending track keeps its dry sound) the source then reached the mix twice: +6 dB, and loud parts clipped
+where dry and echoes summed past full scale. Turning the FX track's dry level down did nothing audible at a full send,
+since echo put the dry back itself. Now:
+
+- **Pan**: the SDK's law. 128–255 = echoes only; below 128 the dry blends in at equal power. The settings above all
+  use 128 now; set the echo's loudness with FX1's level or the send.
+- **Output**: dry and echoes summed at half scale through the SDK's limiter (`opz_limit_half`): no hard clip. The
+  echoes' own level is unchanged (the first repeat of an in-phase input at unity).
+
+On the device (FX1, a synth sending at 100 %, FX1's dry level 255, pan centre): the synth at the same loudness as with
+FX1 muted, plus echoes; no jump in level when echo is chosen. FX1's dry level to 0 (hold FX1 + red dial): the echoes alone.
+(Pan towards 0 brings the dry back inside the effect, but no control on the OP-Z reaches an FX track's pan.)
 
 ## Credits
 

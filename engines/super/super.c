@@ -33,6 +33,7 @@
 #include "opz_adsr.h"
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_mix.h"
 #include "super_tables.h"
 
 #define SAWS 7
@@ -45,6 +46,7 @@ typedef struct State {
     fract32 hp_s;           /* side high-pass state (its low-pass part) */
     int32_t tone;           /* tone coefficient, Q15 */
     fract32 amp;            /* velocity x output gain, Q31 */
+    OpzMix mix;             /* the track's level and pan (opz_mix.h) */
 } State;
 
 _Static_assert(sizeof(State) <= OPZ_VOICE_STATE_BYTES, "voice state must fit in 280 bytes");
@@ -123,8 +125,9 @@ static void saw_events(uint32_t p, uint32_t inc, uint32_t recip, int32_t wm, int
 }
 
 /* Integrate mid and side from slope + events, side high-pass, velocity tone on both, L = M + S and R = M - S
- * with the envelope, added into out. Returns the envelope level. */
-ALWAYS_INLINE int32_t pass_out(fract32 *out, State *s, uint32_t m, uint32_t dm, uint32_t sd, uint32_t ds,
+ * with the envelope, into the interleaved block buffer st that opz_mix_stereo adds into out. Returns the envelope
+ * level. */
+ALWAYS_INLINE int32_t pass_out(fract32 *st, State *s, uint32_t m, uint32_t dm, uint32_t sd, uint32_t ds,
                                int32_t hp, uint32_t ps, uint32_t is, fract32 g_sub, int sub,
                                int32_t level, int32_t coef, int32_t step, int step0)
 {
@@ -143,8 +146,8 @@ ALWAYS_INLINE int32_t pass_out(fract32 *out, State *s, uint32_t m, uint32_t dm, 
         lm = opz_add_q31(lm, opz_mul_q31_q15(opz_sub_q31(mid, lm), tone));
         ls = opz_add_q31(ls, opz_mul_q31_q15(opz_sub_q31(x, ls), tone));
         int32_t lv = level >> 16;
-        out[2 * i] = opz_add_q31(out[2 * i], opz_mul_q31_q15(opz_add_q31(lm, ls), lv));
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], opz_mul_q31_q15(opz_sub_q31(lm, ls), lv));
+        st[2 * i] = opz_mul_q31_q15(opz_add_q31(lm, ls), lv);
+        st[2 * i + 1] = opz_mul_q31_q15(opz_sub_q31(lm, ls), lv);
         level = step0 ? opz_env_tick0(level, coef) : opz_env_tick(level, coef, step);
         ps += is;
     }
@@ -177,7 +180,6 @@ void init(void *state, uint32_t track, uint32_t arg2, void *mem, void *scratch)
 
 void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
 {
-    (void)params;
     State *s = state;
     for (int k = 0; k < SAWS; k++) s->ph[k] = rnd();        /* free-running oscillators: any phase at note-on */
     s->ph_sub = 0;
@@ -190,6 +192,7 @@ void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
     int32_t fc_q16 = 3000 * opz_exp2_q16(oct);
     int32_t x = (int32_t)(((int64_t)fc_q16 * 882827) >> 32);                 /* fc / fs * 2 pi / ln 2, Q16 */
     s->tone = (65536 - opz_exp2_q16(-x)) >> 1;               /* Q15 */
+    if (params) opz_mix_start(&s->mix, params);              /* NULL (engine-abi.md §3): ramps in at render */
 }
 
 void onNoteOff(int note, void *state)
@@ -248,13 +251,15 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
     int32_t level = OPZ_ADSR_LEVEL(env), env_coef = OPZ_ADSR_COEF(env), env_step = OPZ_ADSR_STEP(env);
     uint32_t ps = s->ph_sub, is = inc >> 1;
     int32_t gb = g_sub >> 16;
+    fract32 st[2 * N];                                       /* the voice, interleaved L R, before level and pan */
     if (gb) {
-        level = env_step ? pass_out(out, s, m, dm, sd, ds, hp, ps, is, gb, 1, level, env_coef, env_step, 0)
-                         : pass_out(out, s, m, dm, sd, ds, hp, ps, is, gb, 1, level, env_coef, 0, 1);
+        level = env_step ? pass_out(st, s, m, dm, sd, ds, hp, ps, is, gb, 1, level, env_coef, env_step, 0)
+                         : pass_out(st, s, m, dm, sd, ds, hp, ps, is, gb, 1, level, env_coef, 0, 1);
     } else {
-        level = env_step ? pass_out(out, s, m, dm, sd, ds, hp, ps, is, 0, 0, level, env_coef, env_step, 0)
-                         : pass_out(out, s, m, dm, sd, ds, hp, ps, is, 0, 0, level, env_coef, 0, 1);
+        level = env_step ? pass_out(st, s, m, dm, sd, ds, hp, ps, is, 0, 0, level, env_coef, env_step, 0)
+                         : pass_out(st, s, m, dm, sd, ds, hp, ps, is, 0, 0, level, env_coef, 0, 1);
     }
+    opz_mix_stereo(out, st, &s->mix, params);               /* level and pan, added into interleaved out */
     OPZ_ADSR_LEVEL(env) = level;
 }
 

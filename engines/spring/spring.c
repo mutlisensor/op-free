@@ -8,8 +8,8 @@
  *   P2     drip       how much each pass disperses and how bright it stays: the chirp all-pass coefficient
  *                     0.35 -> 0.82 (the low end arrives 1.7 -> 11 ms after the top end, per pass) and the loop's
  *                     damping 2.5 -> 6.5 kHz. 0 = a smooth, dark spring; 255 = the surf-guitar "pew" on every hit
- *   pan    dry / wet  TE's balance law normalised to unity (centre = half and half); the preset is wet only, as a
- *                     send (FX dry level 255 keeps the source)
+ *   pan    dry / wet  the SDK's FX law: 128 .. 255 the springs only (the OS's dry level keeps the source), below
+ *                     128 the dry blends in at equal power, 0 = dry only; output through the SDK's limiter
  *   level  output level (x gain)
  *   notes  on the FX track: kick the tank. A noise burst (20 ms decay) goes into both springs, low-passed at 8x the
  *          note's frequency (C3 a thud, C6 a bright crash) and as loud as the velocity. Note off does nothing;
@@ -72,8 +72,6 @@ typedef struct State {
     int32_t hp, lp;                             /* input band limit */
     int32_t damp[2];                            /* loop low-passes */
     int32_t fb[2];                              /* loop outputs after the decay gain */
-    int32_t wet, dry;                           /* normalised dry/wet gains, Q31 */
-    uint32_t pan;                               /* the pan word they were computed for (bit 31: none yet) */
     uint32_t seed;                              /* kick noise */
     int32_t kick_lp;                            /* kick low-pass memory */
     /* written by onNoteOn (word stores, the level last: safe if render runs in the middle) */
@@ -106,7 +104,6 @@ void init(void *state, uint32_t track, uint32_t arg2, void *mem, void *scratch)
     for (unsigned i = 0; i < sizeof(State); i++) p[i] = 0;
     /* 41 KB fits FX1 and FX2 (and master's 16 KB would not): dry anywhere else */
     s->mem = (track == OPZ_TRACK_FX1 || track == OPZ_TRACK_FX2) ? (int32_t *)mem : (int32_t *)0;
-    s->pan = 0x80000000u;
     s->seed = 0x2545f491u;
 }
 
@@ -175,18 +172,11 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
     int32_t a_t = A_MIN + (((A_MAX - A_MIN) * u2) >> 16);
     int32_t damp = DAMP_MIN + (((DAMP_MAX - DAMP_MIN) * u2) >> 16);
 
-    uint32_t pan = params[OPZ_P_PAN] & OPZ_Q31_ONE;
-    if (pan != s->pan) {                                       /* TE's law, then / (dry + wet): no division */
-        int32_t w = opz_shl_q31((int32_t)pan, 1), d = opz_shl_q31(OPZ_Q31_ONE - (int32_t)pan, 1);
-        uint32_t half = ((uint32_t)w + (uint32_t)d) >> 1;
-        fract32 h = opz_recip_q31(half > OPZ_Q31_ONE ? OPZ_Q31_ONE : (int32_t)half);
-        s->wet = opz_mul_q31(w, h);
-        s->dry = opz_mul_q31(d, h);
-        s->pan = pan;
-    }
+    int32_t dry, wet;                                          /* the SDK's FX law (equal power) */
+    opz_fx_drywet(params[OPZ_P_PAN], &dry, &wet);
     int32_t out_gain = opz_mul_q31((int32_t)(params[OPZ_P_LEVEL] & OPZ_Q31_ONE), gain);
-    int32_t dg = opz_mul_q31(s->dry, out_gain);                         /* dry and wet with the level in them */
-    int32_t wg = opz_mul_q31(opz_mul_q31(s->wet, out_gain), OUT_GAIN);
+    int32_t dg = opz_mul_q31(dry, out_gain) >> 1;              /* dry and wet with the level in them, the dry at */
+    int32_t wg = opz_mul_q31(opz_mul_q31(wet, out_gain), OUT_GAIN);   /* half scale for the output limiter */
 
     int32_t *mem = s->mem;
     int ready = 0;
@@ -202,7 +192,7 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
         }
     }
     if (!ready) {                                              /* clearing (5 blocks) or no buffer: dry only */
-        for (int i = 0; i < 2 * OPZ_BLOCK_FRAMES; i++) out[i] = opz_mul_q31(dg, in[i]);
+        for (int i = 0; i < 2 * OPZ_BLOCK_FRAMES; i++) out[i] = opz_limit_half(opz_mul_q31(dg, in[i]));
         return;
     }
     if (!s->started) {                                         /* first block: no glide from zero */
@@ -234,9 +224,10 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
         int32_t rb = spring_tick(s, 1, x, a, hb, j, mem + RING, dfb, w, db, damp, gb);
         w = (w + 1) & RMASK;
         if (++j == K) j = 0;
-        out[2 * i] = opz_add_q31(opz_mul_q31(dg, xl), opz_mul_q31(wg, opz_shl_q31(ra, 5)));
-        out[2 * i + 1] = opz_add_q31(opz_mul_q31(dg, xr), opz_mul_q31(wg, opz_shl_q31(rb, 5)));
+        out[2 * i] = opz_mul_q31(wg, opz_shl_q31(ra, 4));     /* the springs at half scale */
+        out[2 * i + 1] = opz_mul_q31(wg, opz_shl_q31(rb, 4));
     }
+    opz_fx_finish(out, in, dg, dg);                            /* + the dry (none at pan 128 .. 255), limited */
     s->w = w;
     s->j = j;
     s->d[0] = da;

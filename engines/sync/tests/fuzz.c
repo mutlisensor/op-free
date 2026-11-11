@@ -60,6 +60,8 @@ static int check_reference(void)
         State st;
         sync_init(&st, 5, 0, 0, 0);
         uint32_t params[OPZ_NUM_PARAMS] = { 0 };
+        params[OPZ_P_PAN] = 0x40000000u;                      /* the track's level and pan (opz_mix.h): unity */
+        params[OPZ_P_LEVEL] = 0x7fffffffu;
         sync_onNoteOn(60, (uint8_t)(1 + r32() % 127), &st, params);
         int32_t envw[6] = { 0, 0x7fffffff, 0x7fffffff, 0, 3, 0 };
         int ne = 0;

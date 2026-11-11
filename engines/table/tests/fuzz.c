@@ -68,7 +68,7 @@ int main(int argc, char **argv)
         busy_since[v] = -1;
         pitch[v] = note_pitch(60);
     }
-    uint8_t target[OPZ_NUM_PARAMS] = { 128, 128, 0, 64, 200, 40, 0, 0, 128, 0, 128, 200, 0, 0, 64, 0, 0, 0 };
+    uint8_t target[OPZ_NUM_PARAMS] = { 128, 128, 0, 64, 200, 40, 0, 0, 128, 0, 128, 255, 0, 0, 64, 0, 0, 0 };
     uint32_t params[OPZ_NUM_PARAMS];
     for (int i = 0; i < OPZ_NUM_PARAMS; i++) params[i] = opz_param_from_byte(target[i]);
     fract32 out[2 * N];

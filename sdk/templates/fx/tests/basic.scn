@@ -1,4 +1,4 @@
-# my_engine: drive and tone swept on a sawtooth, wet only, then 50/50.
+# my_engine: drive and tone swept on a sawtooth, wet only, then 50/50 (pan 64).
 tempo 120
 steps 32
 tail 0.5
@@ -8,7 +8,7 @@ sweep p1 0 255 0 16
 sweep p2 0 255 0 16
 param pan 255
 param level 255
-param pan 128 16
+param pan 64 16
 gain 1
 expect sound 0 32
 expect peak_below 0

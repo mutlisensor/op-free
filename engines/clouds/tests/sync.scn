@@ -1,0 +1,18 @@
+# Time lock: while the sequencer plays, the grains start on the tempo grid nearest P1's density. At 120 BPM, P1 60
+# is the 1/8 grid (a grain every 250 ms, 130 ms long, so they pulse), with a little reach and spread (P2 40). At
+# step 16 the sequencer stops: the onsets go free (random, 0.5 .. 1.5 x the mean); at step 24 it plays again from
+# the pattern start and the grid comes back; at step 32 P1 moves to 100 (the 1/16 grid), and at step 40 to 200,
+# denser than 1/64: free again although playing.
+tempo 120
+steps 48
+tail 1
+track fx1
+input saw 110 0.3
+preset 60 40 0 0 255 0 0 0 255 0 128 255 0 0 0 0 0 0
+gain 1
+transport 16 stop
+transport 24 play
+param p1 100 32
+param p1 200 40
+expect sound 2 48
+expect peak_below -1

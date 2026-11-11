@@ -39,6 +39,7 @@
 #include "opz_adsr.h"
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_mix.h"
 
 #define N OPZ_BLOCK_FRAMES
 #define ALWAYS_INLINE static inline __attribute__((always_inline))
@@ -62,6 +63,7 @@ typedef struct State {
     fract32 amp;            /* velocity x OPZ_VOICE_PEAK, Q31 */
     int32_t voct;           /* velocity ratio offset, octaves Q16 */
     int32_t sub;            /* the sub square's sign at the block's first sample, +1 / -1 */
+    OpzMix mix;             /* the track's level and pan (opz_mix.h) */
 } State;
 
 _Static_assert(sizeof(State) <= 280, "voice state must fit in the 280 bytes the OS leaves");
@@ -278,14 +280,13 @@ static void add_noise(State *s, int32_t g)
     s->nprev = prev;
 }
 
-/* The envelope as a ramp lv += dl, added into both channels; leaves s_e zeroed. */
+/* The envelope as a ramp lv += dl, into the mono buffer opz_mix_mono adds into out; leaves s_e zeroed. */
 static void pass_out(fract32 *out, int32_t lv, int32_t dl)
 {
     for (int i = 0; i < N; i++) {
         fract32 v = opz_mul_q31_q15(s_e[i], lv >> 16);
         s_e[i] = 0;
-        out[2 * i] = opz_add_q31(out[2 * i], v);
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], v);
+        out[i] = v;
         lv += dl;
     }
 }
@@ -314,8 +315,10 @@ void init(void *state, uint32_t track, uint32_t arg2, void *mem, void *scratch)
 
 void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
 {
-    (void)note; (void)params;                                /* params may be NULL (engine-abi.md §3); not needed */
+    (void)note;
     State *s = state;
+    if (params) opz_mix_start(&s->mix, params);              /* params may be NULL (engine-abi.md §3) */
+    else s->mix.l = s->mix.r = OPZ_MIX_UNITY;
     int32_t vel = velocity > 127 ? 127 : velocity;
     s->amp = (fract32)((uint32_t)vel * 0x01020408u) >> 2;    /* vel / 127 x OPZ_VOICE_PEAK */
     s->voct = (vel - 100) * VEL_OCT;
@@ -411,7 +414,9 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
     int32_t l1 = env_block(l0, OPZ_ADSR_COEF(env), OPZ_ADSR_STEP(env));
     integrate(s, acc, slope);
     if (k.gn) add_noise(s, k.gn);
-    pass_out(out, l0, (l1 - l0) >> 6);
+    fract32 mono[N];
+    pass_out(mono, l0, (l1 - l0) >> 6);
+    opz_mix_mono(out, mono, &s->mix, params);                /* level and pan, into interleaved out */
     OPZ_ADSR_LEVEL(env) = l1;
 }
 

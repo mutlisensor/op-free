@@ -10,7 +10,7 @@
   <header class="top">
     <div class="brand">
       <h1>opzsim <span>web</span></h1>
-      <p>Play a synth through FX1 and FX2 before any of them goes on the OP-Z. Host and engines run in WebAssembly, the same C
+      <p>Play up to eight tracks through FX1 and FX2 before any of them goes on the OP-Z, from the keyboard or an OP-Z over MIDI. Host and engines run in WebAssembly, the same C
         as <code>opzsim</code>: 44.1 kHz, 64-frame blocks.</p>
     </div>
     <div class="top-controls">
@@ -22,18 +22,47 @@
   </header>
 
   <main class="layout">
-    <section class="panel slot synth" id="slot-synth" aria-labelledby="h-synth" data-testid="slot-synth">
+    <section class="panel tracks" aria-labelledby="h-tracks" data-testid="tracks">
+      <div class="tracks-head">
+        <h2 id="h-tracks">Tracks</h2>
+        <button id="midi-connect">Connect MIDI</button>
+        <span id="midi" class="hint" data-testid="midi">Web MIDI: not connected</span>
+        <label class="inline" title="Turning a dial on the OP-Z selects that track here. Parameter locks in a playing pattern send CCs too: turn this off if the selection jumps.">
+          <input id="midi-follow" type="checkbox" checked> Follow the OP-Z's dials</label>
+        <label class="inline" title="For a plain keyboard on one channel: every note plays the selected track. CCs still follow the channels.">
+          <input id="midi-omni" type="checkbox" data-testid="midi-omni"> All notes to the selected track</label>
+        <button id="midi-learn" data-testid="midi-learn" aria-pressed="false" title="Click Learn, then a knob, then move a control on your MIDI device">Learn</button>
+        <button id="midi-forget" data-testid="midi-forget" title="Forget every learned CC; the OP-Z map stays">Clear learned</button>
+        <button id="vopz-toggle" data-testid="vopz-toggle" aria-pressed="false" title="An on-screen OP-Z that sends what the real one sends: for trying this without the device">Virtual OP-Z</button>
+      </div>
+      <div class="track-strip" role="tablist" aria-label="Instrument tracks" data-testid="track-strip"></div>
+      <p class="hint midi-line"><span id="midi-status" data-testid="midi-status"></span> <span id="midi-monitor" class="monitor" data-testid="midi-monitor"></span></p>
+      <div id="vopz" class="vopz" hidden data-testid="vopz">
+        <label class="field small">Track (channel)
+          <select id="vopz-track" data-testid="vopz-track"></select></label>
+        <div class="vopz-pages" role="radiogroup" aria-label="Dial page" data-testid="vopz-pages"></div>
+        <div class="knobs vopz-dials" data-testid="vopz-dials"></div>
+        <button id="vopz-note" data-testid="vopz-note">Play a note</button>
+        <p class="hint vopz-note">Sends what the OP-Z sends: dial <em>d</em> of page <em>p</em> is CC 4·(p−1)+d on the track's
+          channel, 7-bit; notes on the same channel. The CC numbers are the OP-Z's incoming map, still to be confirmed for
+          its output on a device (docs/research/opz-as-controller.md).</p>
+      </div>
+    </section>
+
+    <div id="inst-slots" class="inst-slots"></div>
+
+    <template id="inst-template">
       <div class="slot-head">
-        <h2 id="h-synth"><span class="dot synth"></span>Synth</h2>
-        <select class="slot-engine" data-testid="synth-engine" aria-label="Synth engine"></select>
-        <select class="slot-track" data-testid="synth-track" aria-label="Synth track"></select>
+        <h2><span class="dot synth"></span><span class="slot-title">Track</span></h2>
+        <select class="slot-engine" aria-label="Engine"></select>
+        <label class="inline small-label">MIDI ch <select class="slot-channel" aria-label="MIDI channel"></select></label>
       </div>
       <div class="slot-info"></div>
       <div class="presets"><span class="label">Presets</span><div class="preset-list"></div></div>
       <div class="knobs main-knobs"></div>
       <details class="more"><summary>All 18 parameter bytes</summary><div class="knobs more-knobs"></div></details>
       <details class="readme"><summary>README</summary><pre></pre></details>
-    </section>
+    </template>
 
     <section class="panel slot fx" id="slot-fx1" aria-label="Effect on FX1" data-testid="slot-fx1"></section>
     <section class="panel slot fx" id="slot-fx2" aria-label="Effect on FX2" data-testid="slot-fx2"></section>
@@ -42,7 +71,7 @@
       <div class="slot-head">
         <h2><span class="dot fx"></span><span class="slot-title">Effect</span></h2>
         <select class="slot-engine" aria-label="Effect engine"></select>
-        <select class="slot-track" hidden></select>
+        <label class="inline small-label">MIDI ch <select class="slot-channel" aria-label="MIDI channel"></select></label>
       </div>
       <div class="slot-info"></div>
       <div class="routing">
@@ -50,7 +79,7 @@
         <div class="routing-text">
           <label class="field">Input
             <select class="source">
-              <option value="send">the synth, through its send</option>
+              <option value="send">the tracks, through their sends</option>
               <option value="saw">saw</option>
               <option value="sine">sine</option>
               <option value="noise">noise</option>
@@ -82,13 +111,11 @@
         <label class="inline">Velocity <input id="velocity" type="range" min="1" max="127" value="100"></label>
         <label class="inline">Keys play
           <select id="keys-target" data-testid="keys-target">
-            <option value="synth">the synth</option>
+            <option value="track">the selected track</option>
             <option value="fx1">FX1's effect (onNoteOn)</option>
             <option value="fx2">FX2's effect (onNoteOn)</option>
           </select>
         </label>
-        <span id="midi" class="hint" data-testid="midi">Web MIDI: not connected</span>
-        <button id="midi-connect">Connect MIDI</button>
       </div>
       <p id="track-note" class="hint"></p>
       <div id="keyboard" data-testid="keyboard"></div>
@@ -104,13 +131,13 @@
     <section class="panel checks" aria-labelledby="h-checks">
       <h2 id="h-checks">Host checks</h2>
       <table class="stats" data-testid="stats">
-        <thead><tr><th></th><th><span class="dot synth"></span>Synth</th><th><span class="dot fx"></span>FX1</th><th><span class="dot fx"></span>FX2</th></tr></thead>
+        <thead><tr><th></th><th><span class="dot synth"></span><span id="th-track">Track</span></th><th><span class="dot fx"></span>FX1</th><th><span class="dot fx"></span>FX2</th></tr></thead>
         <tbody>
-          <tr><th>State budget</th><td id="st-state-synth">–</td><td id="st-state-fx1">–</td><td id="st-state-fx2">–</td></tr>
-          <tr><th>Adds into out</th><td id="st-add-synth">–</td><td class="hint" colspan="2">n/a (effects write out)</td></tr>
-          <tr><th>Voices</th><td id="st-voices-synth">–</td><td class="hint" colspan="2">–</td></tr>
-          <tr><th>Host CPU</th><td id="st-cpu-synth">–</td><td id="st-cpu-fx1">–</td><td id="st-cpu-fx2">–</td></tr>
-          <tr><th>Static size</th><td id="st-size-synth">–</td><td id="st-size-fx1">–</td><td id="st-size-fx2">–</td></tr>
+          <tr><th>State budget</th><td id="st-state-track">–</td><td id="st-state-fx1">–</td><td id="st-state-fx2">–</td></tr>
+          <tr><th>Adds into out</th><td id="st-add-track">–</td><td class="hint" colspan="2">n/a (effects write out)</td></tr>
+          <tr><th>Voices</th><td id="st-voices-track">–</td><td class="hint" colspan="2">–</td></tr>
+          <tr><th>Host CPU</th><td id="st-cpu-track">–</td><td id="st-cpu-fx1">–</td><td id="st-cpu-fx2">–</td></tr>
+          <tr><th>Static size</th><td id="st-size-track">–</td><td id="st-size-fx1">–</td><td id="st-size-fx2">–</td></tr>
         </tbody>
       </table>
       <p class="hint"><span id="st-mix" data-testid="mix"></span> <span id="st-load"></span></p>

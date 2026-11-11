@@ -54,6 +54,7 @@
 #include "opz_adsr.h"
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_mix.h"
 
 #include "dx_bank.h"
 #include "dx_tables.h"
@@ -113,6 +114,7 @@ typedef struct State {
     uint8_t  note, vel;  /* as given to onNoteOn (to restart with another patch, see render) */
     uint8_t  fresh;      /* no block rendered since note-on */
     uint32_t p1_on;      /* params[P1] at note-on */
+    OpzMix   mix;        /* the track's level and pan (opz_mix.h) */
 } State;
 
 _Static_assert(sizeof(Op) == 36, "Op layout");
@@ -365,14 +367,13 @@ static void loop_run(State *s, int n, const uint32_t *inc, const int32_t *g0, co
     s->fb[1] = y2;
 }
 
-/* The OP-Z envelope and level, added into out. step0 (decay, release: the envelope's step is 0) is a compile-time
- * constant in each copy. The carrier sum is Q31 with 0.5 = one carrier at full level, which becomes -12 dBFS. */
-ALWAYS_INLINE int32_t out_run(fract32 *out, const int32_t *c, int32_t level, int32_t coef, int32_t step, int step0)
+/* The OP-Z envelope and level, into the mono block buffer x (opz_mix_mono then adds it into out with the track's
+ * level and pan). step0 (decay, release: the envelope's step is 0) is a compile-time constant in each copy. The
+ * carrier sum is Q31 with 0.5 = one carrier at full level, which becomes -12 dBFS (at track level 255). */
+ALWAYS_INLINE int32_t out_run(fract32 *x, const int32_t *c, int32_t level, int32_t coef, int32_t step, int step0)
 {
     for (int i = 0; i < OPZ_BLOCK_FRAMES; i++) {
-        fract32 v = opz_mul_q31_q15(c[i], level >> 17);
-        out[2 * i] = opz_add_q31(out[2 * i], v);                             /* interleaved stereo */
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], v);
+        x[i] = opz_mul_q31_q15(c[i], level >> 17);
         level = step0 ? opz_env_tick0(level, coef) : opz_env_tick(level, coef, step);
     }
     return level;
@@ -509,6 +510,7 @@ void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
     if (params) {
         s->p1_on = params[OPZ_P_P1];
         s->patch = (uint8_t)(s->p1_on >> 26);                           /* P1 byte / 8 */
+        opz_mix_start(&s->mix, params);
     }
     s->note = (uint8_t)clampi(note, 0, 127);
     s->vel = velocity > 127 ? 127 : velocity;
@@ -648,7 +650,9 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
     if (!valid[2])
         for (int i = 0; i < OPZ_BLOCK_FRAMES; i++) c[i] = 0;
     int32_t level = OPZ_ADSR_LEVEL(env), coef = OPZ_ADSR_COEF(env), step = OPZ_ADSR_STEP(env);
-    OPZ_ADSR_LEVEL(env) = step ? out_run(out, c, level, coef, step, 0) : out_run(out, c, level, coef, 0, 1);
+    fract32 mono[OPZ_BLOCK_FRAMES];                                    /* the voice, before level and pan */
+    OPZ_ADSR_LEVEL(env) = step ? out_run(mono, c, level, coef, step, 0) : out_run(mono, c, level, coef, 0, 1);
+    opz_mix_mono(out, mono, &s->mix, params);                          /* level and pan, added into out */
 
     /* every carrier silent and done (sustain or release): free the voice now */
     if (!audible && OPZ_ADSR_STAGE(env) != 0) OPZ_ADSR_STAGE(env) = 0;

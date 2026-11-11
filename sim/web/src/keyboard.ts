@@ -1,6 +1,7 @@
 /**
  * Note input: an on-screen keyboard (pointer), the computer keyboard (A W S E D F T G Y H U J K O L P ; ' play
- * the notes, Z and X move an octave) and Web MIDI note input (any input port; no SysEx, so no HTTPS needed).
+ * the notes, Z and X move an octave) and Web MIDI input (any input port; no SysEx, so no HTTPS needed): the page routes
+ * each message by channel (src/midimap.ts) and marks the selected track's MIDI notes here.
  */
 
 const COMPUTER_KEYS = ["a", "w", "s", "e", "d", "f", "t", "g", "y", "h", "u", "j", "k", "o", "l", "p", ";", "'"];
@@ -76,6 +77,15 @@ export class Keyboard {
     this.press(note, on && velocity > 0, velocity);
   }
 
+  /** Show a note held from MIDI (it is played by the page, not through this keyboard's sink). */
+  mark(note: number, on: boolean): void {
+    this.el.querySelector(`[data-note="${note}"]`)?.classList.toggle("midi", on);
+  }
+
+  clearMarks(): void {
+    this.el.querySelectorAll(".midi").forEach((k) => k.classList.remove("midi"));
+  }
+
   releaseAll(): void {
     for (const [note, count] of this.sounding) if (count > 0) this.sink(false, note, 0);
     this.sounding.clear();
@@ -144,9 +154,10 @@ export class Keyboard {
   }
 }
 
-/** Web MIDI note input from every input port. Returns the port names, or a reason it is unavailable. */
-export async function connectMidi(onNote: (on: boolean, note: number, velocity: number) => void,
-  onBend: (cents: number) => void): Promise<{ ports: string[]; error?: string }> {
+/** Web MIDI input from every input port (and ports plugged in later). Returns the port names, or a reason it is
+ * unavailable. */
+export async function connectMidi(onMessage: (data: Uint8Array) => void,
+  onPorts: (ports: string[]) => void = () => {}): Promise<{ ports: string[]; error?: string }> {
   if (!("requestMIDIAccess" in navigator)) return { ports: [], error: "this browser has no Web MIDI (use Chrome or Edge)" };
   try {
     const access = await navigator.requestMIDIAccess();
@@ -155,18 +166,13 @@ export async function connectMidi(onNote: (on: boolean, note: number, velocity: 
       for (const input of access.inputs.values()) {
         names.push(input.name ?? "MIDI input");
         input.onmidimessage = (m) => {
-          const d = m.data;
-          if (!d || d.length < 2) return;
-          const status = d[0] & 0xf0;
-          if (status === 0x90) onNote(d[2] > 0, d[1], d[2]);
-          else if (status === 0x80) onNote(false, d[1], 0);
-          else if (status === 0xe0 && d.length >= 3) onBend(Math.round((((d[2] << 7) | d[1]) - 8192) / 8192 * 200));
+          if (m.data && m.data.length) onMessage(m.data);
         };
       }
       return names;
     };
     const ports = attach();
-    access.onstatechange = () => attach();
+    access.onstatechange = () => onPorts(attach());
     return { ports };
   } catch (e) {
     return { ports: [], error: (e as Error).message || "MIDI access refused" };

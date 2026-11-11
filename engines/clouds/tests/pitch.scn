@@ -8,6 +8,7 @@ track fx1
 input saw 165 0.25
 preset 170 0 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
 gain 1
+transport 0 stop                 # sequencer stopped: the free cloud (sync.scn has the time lock)
 note 4 C5 2 100
 note 10 G4 2 100
 note 16 C3 2 100

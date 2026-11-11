@@ -8,8 +8,9 @@ held together form a chord.
 |---|---|
 | P1 **decay** | how long the strings ring: 40 ms (a short knock) to 16 s, exponential (64 ≈ 0.18 s, 128 ≈ 0.8 s, 192 ≈ 3.6 s). Exact for the fundamental at any P2, except that dark settings (P2 below ~64) cut high notes short: at P2 0, C5 rings at most ~2 s |
 | P2 **structure** | one macro over tone and partials. 0–127: dark, muted string → bright string (the damping opens; dark settings get up to +6 dB make-up). 128–255: harmonic → inharmonic, bell- and metal-like (dispersion stretches the partials: at 255 a C3 has partials at 1, 2.26, 3.74, 5.33, 6.95 × the fundamental instead of 1, 2, 3, 4, 5), with a little more damping towards 255. The pitch stays put over the whole range |
-| pan | dry/wet balance (TE's law, normalised to unity gain): 0 dry only, 128 half and half, 255 wet only |
-| level | output level |
+| pan | not reachable on the OP-Z: an FX track has no pan dial, app control or mixer column [proven, H-FX1], and presets can't set it, so it stays where the OS leaves it (127 on the unit checked), which this effect treats as **the strings only** (the dry about 44 dB down). The law below the centre, for anything that does set pan: the dry blends in at equal power: 64 = dry and the strings at −3 dB each, 0 = dry only. |
+| dry level (hold the FX track's key + **red dial**) | the OS's own dry level (byte 12; TE's app shows it as "dry level" on the FX page): how much of each sending track's own sound stays in the mix. 255 = send/return (the source plays on and the effect adds to it), 0 = insert (a track sent at 100 % is heard only through the effect). This is the dry/wet control on the OP-Z [proven, H-FX1 2026-11-11] |
+| level | output level (nothing on the OP-Z reaches an FX track's level, neither a dial nor the mixer page [proven, H-FX1], so the preset's value holds) |
 | filter, resonance | not used: they are the OS's own track filter, also on FX tracks. Presets leave it neutral (128, 0) |
 | pitch bend | bends every string, ±2 semitones at full scale (the simulator's bend scale; the device's is not confirmed yet) |
 | **notes on the FX track** | each note tunes a string (up to four). Notes held together form a chord, and the chord **stays after the keys are released** (latch); the next note after all keys are up starts a new chord. The old chord's strings stop being fed and ring out at their own pitch, like a sustain pedal. A new note takes a silent string if there is one, else the oldest ringing-out string, else the oldest string of the chord (a fifth held note). A string that is still ringing glides to its new note (~30 ms, S-curve); a silent one just starts. Notes fold into C1–C7 by octaves. Velocity is ignored |
@@ -27,23 +28,24 @@ FX tracks have no preset keys: the OP-Z applies one preset, slot 0 index 0, when
 
 | Name | P1 | P2 | pan | Sound |
 |---|---|---|---|---|
-| **string** (preset) | 150 | 105 | 128 | bright harmonic string, ~1.4 s |
-| knock | 55 | 35 | 150 | short dark knock, for drums: a tonal thump under each hit |
-| halo | 215 | 80 | 100 | warm, ~6 s ring behind a pad, mostly dry |
-| bell | 185 | 215 | 140 | inharmonic bell, ~3 s |
-| metal | 120 | 255 | 170 | short clangy metal, mostly wet |
+| **string** (preset) | 150 | 105 | 64 | bright harmonic string, ~1.4 s |
+| knock | 55 | 35 | 72 | short dark knock, for drums: a tonal thump under each hit |
+| halo | 215 | 80 | 54 | warm, ~6 s ring behind a pad, mostly dry |
+| bell | 185 | 215 | 68 | inharmonic bell, ~3 s |
+| metal | 120 | 255 | 80 | short clangy metal, mostly wet |
 
-All at filter 128, resonance 0, level 200.
+All at filter 128, resonance 0, level 200, FX dry level 0 (an insert); the pans keep v2's dry/wet balance under the
+new law.
 
 ## Facts
 
 | | |
 |---|---|
-| Plug | 61003, version 2, `trackmask` 0x300 (FX1, FX2), flags 1 (insert-type FX, [host-tables-flags.md](../../research/host-tables-flags.md#recommended-flags-for-our-engines)) |
+| Plug | 61003, version 3, `trackmask` 0x300 (FX1, FX2), flags 1 (insert-type FX, [host-tables-flags.md](../../research/host-tables-flags.md#recommended-flags-for-our-engines)) |
 | Memory slot | 53 (10 KB class), 6.4 KB used on Blackfin |
 | Memory request | 67,760 B: 4 strings × 2048 int32 samples, each written twice so reads never wrap. Fits FX2's 256 KB, not master's 16 KB. Cleared 2048 words per block, so `init` stays short; for the first 8 blocks (12 ms) only the dry signal plays |
 | State | 88 B of 200 (Blackfin, 32-bit pointers) |
-| CPU | Blackfin simulator (`bfin-elf-run`, the cycle harness in progress): ~262 cycles/sample with one string (no notes), ~411 with a 2-note chord, ~710 with 4 notes, worst block 867. Strings that rang out stop costing anything. Host: 8–19 ns/sample |
+| CPU | **v3 (2026-11-11): 250 cycles per stereo frame in its worst case, worst block 290** (fx-usability.md §4a). Earlier figures: Blackfin simulator (`bfin-elf-run`, the cycle harness in progress): ~262 cycles/sample with one string (no notes), ~411 with a 2-note chord, ~710 with 4 notes, worst block 867. Strings that rang out stop costing anything. Host: 8–19 ns/sample |
 | Notes on FX tracks | the OS has no voice limit there: `FxManager` passes every note-on and note-off to the effect, which decides (here: four strings, oldest stolen). When a note is released while another is held, the OS may re-send the held note as a note-on with velocity 0 and no parameters (see [engine-abi.md §3](../../sdk/docs/engine-abi.md#onnoteon--onnoteoff)); resonator treats that as "this note alone" |
 
 Each string is a fractional delay line (4-point Hermite) with a one-pole damping low-pass, two first-order all-passes
@@ -61,6 +63,16 @@ Install on FX1, raise a drum track's FX1 send: every hit rings at C3. Sequence a
 FX1: the ringing follows the notes and the chord stays after the step ends. Turn P1 from a short knock to a long
 ring and P2 from dark through bright to metallic; the pitch should not move. No clicks when notes change, no clipping
 with P1 at 255.
+
+## Version 3 (2026-11-11): what changed, what to listen for
+
+Testers found our effects hard to use: the mix knob seemed not to work, some effects seemed not to pass the sound, and
+loud material clipped. Measured in the simulator (fx-usability.md). resonator
+used TE's balance law normalised to unity, so pan's centre returned half dry, half strings. Now the centre and up are
+the strings only and the dry blends in below it at equal power (the SDK's law); the strings and the dry are summed at
+half scale into the SDK's output limiter. The settings above moved their pan so they sound as before (string 128 → 64
+and so on). On the device: a drum loop on FX1 at 100 % send, dry level 0, pan centred: only the tuned strings ringing
+on the hits; pan 64: the drums with the strings under them.
 
 ## Credits
 

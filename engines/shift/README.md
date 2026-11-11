@@ -9,13 +9,14 @@ Ring modulator and frequency shifter in one knob for FX1 and FX2 (X-10); keys on
 | Plug id | 61103 |
 | P1 **carrier** | 0.2 Hz (0) → 3.3 kHz (255), exponential over 14 octaves (128 ≈ 26 Hz). Low settings: tremolo (ring) or slow barber-pole phasing (shift); higher ones the metallic, inharmonic sounds |
 | P2 **mode** | a continuous morph: 0 = **shift down** (lower sideband only), 128 = **ring modulation** (both sidebands), 255 = **shift up** (upper sideband only); in between one sideband fades against the other. The level is evened out (ring mode +3 dB), so every setting is about as loud as the input |
-| pan | dry/wet, TE's balance law normalised to unity (centre = half and half). The preset is wet only, an insert |
-| level | output level, times the FX track's mixer level and mute |
+| pan | not reachable on the OP-Z: an FX track has no pan dial, app control or mixer column [proven, H-FX1], and presets can't set it, so it stays where the OS leaves it (127 on the unit checked), which this effect treats as **the shifted sound only** (the dry about 44 dB down). The law below the centre, for anything that does set pan: the dry blends in at equal power: 64 = dry and the shifted sound at −3 dB each, 0 = dry only. |
+| dry level (hold the FX track's key + **red dial**) | the OS's own dry level (byte 12; TE's app shows it as "dry level" on the FX page): how much of each sending track's own sound stays in the mix. 255 = send/return (the source plays on and the effect adds to it), 0 = insert (a track sent at 100 % is heard only through the effect). This is the dry/wet control on the OP-Z [proven, H-FX1 2026-11-11] |
+| level | output level, times the FX track's mixer level and mute (nothing on the OP-Z reaches an FX track's level, neither a dial nor the mixer page [proven, H-FX1], so the preset's value holds) |
 | Filter / resonance | the OP-Z's own track filter, also on FX tracks |
 | **Notes on the FX track** | a held key sets the carrier to the note's frequency (A4 = 440 Hz): tuned ring modulation, or a shift by a musical amount; release returns to P1. The newest note wins; the OS's velocity-0 re-send of a held note sets the carrier the same way |
 | Memory request | 0 (everything is in the FX state) |
 | State | 180 of 200 bytes (device) |
-| CPU | Blackfin simulator (`tools/opz_cycles.py engines/shift`): **372 cycles/frame** at every setting, notes and knob moves included (worst block 372), against the ≤ 600 effect target |
+| CPU | **v2 (2026-11-11): 377 cycles per stereo frame in its worst case, worst block 377** (fx-usability.md §4a). Earlier figures: Blackfin simulator (`tools/opz_cycles.py engines/shift`): **372 cycles/frame** at every setting, notes and knob moves included (worst block 372), against the ≤ 600 effect target |
 
 Not for master: the OS passes `out = NULL` there ([engine-abi.md](../../sdk/docs/engine-abi.md) §3).
 
@@ -37,8 +38,8 @@ pan 255 (wet only), level 255, byte 12 (FX dry level) 0 for an insert. Settings 
 |---|---|---|---|
 | bell ring (preset) | 170 | 128 | metallic ring modulation |
 | tremolo | 60 | 128 | ~2 Hz amplitude wobble |
-| barber pole | 40 | 255 | an endless slow phasing (shift up by ~1 Hz) at pan 128 |
-| detune up | 120 | 255 | everything ~19 Hz higher: inharmonic, chorus-like at pan 128 |
+| barber pole | 40 | 255 | an endless slow phasing (shift up by ~1 Hz) at pan 64 |
+| detune up | 120 | 255 | everything ~19 Hz higher: inharmonic, chorus-like at pan 64 |
 | dalek | 200 | 128 | a ~400 Hz ring on a voice or a synth |
 | down shift | 190 | 0 | the whole sound shifted ~280 Hz down: hollow and dark |
 
@@ -46,7 +47,7 @@ pan 255 (wet only), level 255, byte 12 (FX dry level) 0 for an insert. Settings 
 
 1. Install on FX1, send a synth chord. P2 at 128, P1 slowly up: tremolo, then the ring-mod "bell" tones; no
    clicks while turning.
-2. P2 to 255, P1 low (~40) at pan 128: a smooth endless phasing that only moves one way. P2 to 0: it moves the
+2. P2 to 255, P1 low (~40) at pan 64: a smooth endless phasing that only moves one way. P2 to 0: it moves the
    other way. Check the unwanted sideband is gone (no "both directions" beating): it should be ~35 dB down.
 3. P1 higher with P2 at 255: the sound shifted up by a fixed amount in Hz, inharmonic; P2 0: shifted down.
 4. Hold keys on FX1 in ring mode: the carrier follows the key (A4 = 440 Hz); release returns to P1. A sequenced
@@ -60,6 +61,17 @@ in ring mode, then up-shift, at 50/50), `notes` (keys A2, E3, A3, C5 as carriers
 of 100 Hz, 1 kHz and 8 kHz with a 204 Hz carrier: the kept sideband at −6.0 dBFS, the other at −42 dBFS (36 dB
 rejection) in both shift modes; ring mode −9.0/−9.1 dBFS per sideband; RMS out = RMS in (−9.0 dBFS) at P2 0, 128
 and 255.
+
+## Version 2 (2026-11-11): what changed, what to listen for
+
+Testers found our effects hard to use: the mix knob seemed not to work, some effects seemed not to pass the sound, and
+loud material clipped. Measured in the simulator (fx-usability.md). shift used
+TE's balance law normalised to unity (pan's centre half dry), and its 90-degree phase splitter ran at half scale: the
+quadrature image of a saw or a pulse peaks well above the input, so a −6 dBFS saw clipped 1,426 samples flat in 4 s.
+Now the splitter runs at a quarter scale, the output passes the SDK's limiter (0 flat samples at −6 dBFS; a full-scale
+saw is softly limited) and pan follows the SDK's law (centre = the shifted sound only; the barber-pole and chorus
+settings use pan 64). On the device: a loud saw lead at 100 % send through shift at P2 255: a clean shift, no crackle
+on the saw's edges.
 
 ## Credits
 

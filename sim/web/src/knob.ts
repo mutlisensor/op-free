@@ -10,6 +10,10 @@ export interface Knob {
   set(value: number): void;
   get(): number;
   rename(label: string): void;
+  /** The learned MIDI CC shown under the knob (null: none). */
+  setCc(text: string | null): void;
+  /** Waiting for a CC in learn mode. */
+  setArmed(armed: boolean): void;
 }
 
 function arc(value: number): string {
@@ -35,12 +39,14 @@ export function knob(label: string, index: number, initial: number, reset: numbe
       </svg>
     </div>
     <div class="knob-label"></div>
-    <div class="knob-number"></div>`;
+    <div class="knob-number"></div>
+    <div class="knob-cc" hidden></div>`;
   const dial = el.querySelector<HTMLElement>(".knob-dial")!;
   const valuePath = el.querySelector<SVGPathElement>(".knob-value")!;
   const pointer = el.querySelector<SVGLineElement>(".knob-pointer")!;
   const labelEl = el.querySelector<HTMLElement>(".knob-label")!;
   const numberEl = el.querySelector<HTMLElement>(".knob-number")!;
+  const ccEl = el.querySelector<HTMLElement>(".knob-cc")!;
   dial.dataset.param = String(index);
 
   const draw = () => {
@@ -98,5 +104,12 @@ export function knob(label: string, index: number, initial: number, reset: numbe
     },
     get: () => value,
     rename,
+    setCc(text: string | null) {
+      ccEl.hidden = !text;
+      ccEl.textContent = text ?? "";
+    },
+    setArmed(armed: boolean) {
+      el.classList.toggle("armed", armed);
+    },
   };
 }

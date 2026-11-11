@@ -31,6 +31,7 @@
  */
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_mix.h"
 
 enum { F_BP = 0, F_HP = 1, F_LP = 2 };
 #define G(n) ((n) << 2)            /* filtered noise x2^n (0 .. 3), saturating */
@@ -103,6 +104,7 @@ typedef struct State {
     int32_t ebody, rbody64;               /* bound on the bodies' amplitude, and r^64 */
     int32_t timer, spacing, jit, width;   /* samples to the next burst; spacing; jitter, stereo width (Q31) */
     int32_t tcount;                       /* blocks left in the tail's attack or hold */
+    OpzMix mix;                           /* the track's level and pan (opz_mix.h) */
     uint8_t bursts, tstage, mode, body, model, active, fading, hold;
 } State;
 
@@ -302,6 +304,8 @@ PER_HIT void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *p
     tail_stage(s, T_WAIT);
     s->active = 1;
     s->fading = 0;
+    if (params) opz_mix_start(&s->mix, params);
+    else s->mix.l = s->mix.r = OPZ_MIX_UNITY;
     burst(s);                                                      /* the first burst now */
 }
 
@@ -317,8 +321,8 @@ void onNoteOff(int note, void *state)
 #define ALWAYS_INLINE static inline __attribute__((always_inline))
 
 /* n samples of filtered noise under the burst and tail envelopes, plus the two body resonators (with_body), added
- * into out (interleaved stereo). A voice is computed in a range where 1.0 is OPZ_VOICE_PEAK and saturates there
- * once, then is shifted down by 2: no hit peaks above -12 dBFS. */
+ * into the interleaved stereo buffer that opz_mix_stereo adds into out. A voice is computed in a range where 1.0 is
+ * OPZ_VOICE_PEAK and saturates there once, then is shifted down by 2: no hit peaks above -12 dBFS. */
 ALWAYS_INLINE void voice_run(State *s, fract32 *out, int n, int with_body)
 {
     int mode = s->mode & 3, boost = s->mode >> 2;
@@ -348,8 +352,8 @@ ALWAYS_INLINE void voice_run(State *s, fract32 *out, int n, int with_body)
             vl = opz_add_q31(vl, v);
             vr = opz_add_q31(vr, v);
         }
-        out[2 * i] = opz_add_q31(out[2 * i], vl >> 2);
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], vr >> 2);
+        out[2 * i] = vl >> 2;
+        out[2 * i + 1] = vr >> 2;
     }
     s->seed = seed;
     s->lo = lo;
@@ -369,7 +373,7 @@ NOINLINE void body_run(State *s, fract32 *out, int n) { voice_run(s, out, n, 1);
 
 void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const uint32_t *params, ADSR *env)
 {
-    (void)pitch; (void)pitchSlope; (void)params;                  /* tone comes from the key's model */
+    (void)pitch; (void)pitchSlope;                                /* tone comes from the key's model */
     State *s = state;
     if (OPZ_ADSR_STAGE(env) == 0) return;
     if (!s->active || s->model >= 24) { OPZ_ADSR_STAGE(env) = 0; return; }
@@ -389,13 +393,14 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
         s->rbody64 = opz_mul_q31(s->rbody64, 0x1152aaa4);           /* x k^64 = e^-2 */
     }
 
+    fract32 st[2 * OPZ_BLOCK_FRAMES];                               /* the voice, interleaved stereo */
     int i = 0;
     while (i < OPZ_BLOCK_FRAMES) {
         int n = OPZ_BLOCK_FRAMES - i;
         if (s->bursts && s->timer < n) n = s->timer;
         if (n > 0) {
-            if (s->body) body_run(s, out + 2 * i, n);
-            else noise_run(s, out + 2 * i, n);
+            if (s->body) body_run(s, st + 2 * i, n);
+            else noise_run(s, st + 2 * i, n);
             i += n;
         }
         if (s->bursts) {
@@ -403,6 +408,7 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
             if (s->timer <= 0) burst(s);
         }
     }
+    opz_mix_stereo(out, st, &s->mix, params);                      /* level and pan, into interleaved out */
 
     if ((s->tstage == T_ATTACK || s->tstage == T_HOLD) && --s->tcount <= 0) {
         if (s->tstage == T_ATTACK && s->hold) tail_stage(s, T_HOLD);

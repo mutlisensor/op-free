@@ -1,5 +1,6 @@
 /**
- * The OS mixer between a synth track and the FX tracks, as the web simulator models it (opzsim itself has no mixer).
+ * The OS mixer between the instrument tracks and the FX tracks, as the web simulator models it (opzsim itself has no
+ * mixer). Each instrument track has its own sends and dry path; the effects' inputs are the sum of every track's send.
  *
  * - The synth track's FX sends (byte 6 to FX1, byte 7 to FX2) **crossfade**: raising one moves the signal from the dry
  *   path into that effect, so at 255 the track is heard only through the effect [proven, engine-abi.md "renderFX"].
@@ -54,6 +55,22 @@ export function scaleBlock(src: Int32Array, g0: number, g1: number, out: Int32Ar
     for (let c = 0; c < 2; c++) {
       const v = Math.round(src[2 * i + c] * g);
       out[2 * i + c] = v > Q31_MAX ? Q31_MAX : v < Q31_MIN ? Q31_MIN : v;
+    }
+  }
+}
+
+/**
+ * Add `src` scaled by a gain ramping from g0 to g1 into `acc`, saturating: several tracks' sends summed into one
+ * effect's input, or several tracks' dry paths into the mix.
+ */
+export function addBlock(src: Int32Array, g0: number, g1: number, acc: Int32Array): void {
+  const frames = src.length >> 1;
+  if (g0 === 0 && g1 === 0) return;
+  for (let i = 0; i < frames; i++) {
+    const g = g0 + ((g1 - g0) * i) / frames;
+    for (let c = 0; c < 2; c++) {
+      const v = acc[2 * i + c] + Math.round(src[2 * i + c] * g);
+      acc[2 * i + c] = v > Q31_MAX ? Q31_MAX : v < Q31_MIN ? Q31_MIN : v;
     }
   }
 }

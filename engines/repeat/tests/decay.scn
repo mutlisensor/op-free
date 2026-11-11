@@ -1,5 +1,5 @@
 # 1/8 repeats of a saw burst with P2 255 (-12 dB per repeat): the repeats die away; then P2 0 holds them, at 50/50
-# dry/wet; a held G3 (1/8T) takes over at step 20.
+# dry/wet (pan 64: the linear law); a held G3 (1/8T) takes over at step 20.
 tempo 140
 steps 32
 tail 0.5
@@ -11,7 +11,7 @@ param pan 255
 param level 255
 gain 1
 param p2 0 16
-param pan 128 16
+param pan 64 16
 note 20 G3 8
 expect sound 0 32
 expect peak_below 0

@@ -10,8 +10,8 @@
  *   P2     space      0 = the voices alone (dry-sounding harmony); up: a stereo delay network (20 -> 110 ms left,
  *                     1.37x right, slowly moving) mixes in and feeds back through the shifter (up to 0.85), so the
  *                     harmony repeats and climbs (or falls) by the interval and smears into a swirl
- *   pan    dry / wet  TE's balance law normalised to unity (centre = half and half); the preset is wet only, as a
- *                     send (FX dry level 255 keeps the source)
+ *   pan    dry / wet  the SDK's FX law: 128 .. 255 the harmony only (the OS's dry level keeps the source), below
+ *                     128 the dry blends in at equal power, 0 = dry only; output through the SDK's limiter
  *   level  output level (x gain)
  *   notes  on the FX track: a held key sets the interval for as long as it is held, its distance from C4 (C4 =
  *          unison, G4 +7, C5 +12, F3 -7, clamped to +-24): voice 1 on the newest key, voice 2 on the key held
@@ -204,13 +204,11 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
     int32_t tl = dl_t + opz_mul_q31(opz_sine(s->mod_ph[0]), mod);
     int32_t tr = (int32_t)opz_mul_u32_shr16((uint32_t)dl_t, D_RATIO) + opz_mul_q31(opz_sine(s->mod_ph[1]), mod);
 
-    uint32_t pan = params[OPZ_P_PAN] & OPZ_Q31_ONE;            /* TE's law, then / (dry + wet): no division */
-    int32_t pw = opz_shl_q31((int32_t)pan, 1), pd = opz_shl_q31(OPZ_Q31_ONE - (int32_t)pan, 1);
-    uint32_t half = ((uint32_t)pw + (uint32_t)pd) >> 1;
-    fract32 h = opz_recip_q31(half > OPZ_Q31_ONE ? OPZ_Q31_ONE : (int32_t)half);
+    int32_t pd, pw;                                            /* the SDK's FX law (equal power) */
+    opz_fx_drywet(params[OPZ_P_PAN], &pd, &pw);
     int32_t out_gain = opz_mul_q31((int32_t)(params[OPZ_P_LEVEL] & OPZ_Q31_ONE), gain);
-    int32_t dg = opz_mul_q31(opz_mul_q31(pd, h), out_gain);
-    int32_t wg = opz_mul_q31(opz_mul_q31(pw, h), out_gain);
+    int32_t dg = opz_mul_q31(pd, out_gain) >> 1;               /* half scale: the dry, for the output limiter */
+    int32_t wg = opz_mul_q31(pw, out_gain);                    /* the wet sum is held at a quarter */
 
     int32_t *mem = s->mem;
     if (mem && s->cleared < MEM_WORDS) {
@@ -219,7 +217,7 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
         s->cleared += CLEAR_STEP;
     }
     if (!mem || s->cleared < MEM_WORDS) {                      /* clearing (4 blocks) or no buffer: dry only */
-        for (int i = 0; i < 2 * OPZ_BLOCK_FRAMES; i++) out[i] = opz_mul_q31(dg, in[i]);
+        for (int i = 0; i < 2 * OPZ_BLOCK_FRAMES; i++) out[i] = opz_limit_half(opz_mul_q31(dg, in[i]));
         return;
     }
     if (!s->started) { s->d[0] = tl; s->d[1] = tr; s->started = 1; }
@@ -245,14 +243,16 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
         s->fb_lp = opz_add_q31(s->fb_lp, opz_mul_q31_q15(opz_sub_q31(opz_sub_q31(f, s->fb_hp), s->fb_lp), K_FB_LP));
         fb = opz_mul_q31_q15(opz_soft(s->fb_lp), fbg);
         w++;
-        /* voice 1 leans left, voice 2 right */
-        int32_t ml = opz_mul_q31_q15(opz_add_q31(v1, v2 >> 2), gd), mr = opz_mul_q31_q15(opz_add_q31(v2, v1 >> 2), gd);
-        ml = opz_add_q31(ml, ml >> 1);                         /* +3.5 dB makeup (x 1.5) */
-        mr = opz_add_q31(mr, mr >> 1);
-        int32_t yl = opz_add_q31(ml, opz_mul_q31_q15(el, gs)), yr = opz_add_q31(mr, opz_mul_q31_q15(er, gs));
-        out[2 * i] = opz_add_q31(opz_mul_q31(dg, xl), opz_mul_q31(wg, yl));
-        out[2 * i + 1] = opz_add_q31(opz_mul_q31(dg, xr), opz_mul_q31(wg, yr));
+        /* voice 1 leans left, voice 2 right; the wet sum at a quarter scale, so nothing in it saturates (at full
+         * scale the voices, the makeup and the space could add up to 2.4) */
+        int32_t ml = opz_mul_q31_q15((v1 >> 1) + (v2 >> 3), gd), mr = opz_mul_q31_q15((v2 >> 1) + (v1 >> 3), gd);
+        ml = (ml >> 1) + (ml >> 2);                            /* +3.5 dB makeup (x 1.5), / 2 */
+        mr = (mr >> 1) + (mr >> 2);
+        int32_t yl = ml + (opz_mul_q31_q15(el, gs) >> 2), yr = mr + (opz_mul_q31_q15(er, gs) >> 2);
+        out[2 * i] = opz_shl_q31(opz_mul_q31(wg, yl), 1);    /* the wet at half scale */
+        out[2 * i + 1] = opz_shl_q31(opz_mul_q31(wg, yr), 1);
     }
+    opz_fx_finish(out, in, dg, dg);                            /* + the dry, through the SDK's limiter */
     s->w = w & DL_MASK;
     s->ph[0] = ph1;
     s->ph[1] = ph2;

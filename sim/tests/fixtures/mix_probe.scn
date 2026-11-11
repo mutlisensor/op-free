@@ -1,0 +1,13 @@
+# Used by tests/golden.py (opz_mix.h): level 255 and pan 127 at the note-on, then level 128 at step 2, pan 0 (hard
+# left) at step 4, pan 255 (hard right) at step 14 and level 0 at step 24; the host smooths each move by 1/64 per
+# block, so each gets ten steps (~860 blocks) to reach a gain of exactly 0.
+tempo 120
+steps 36
+tail 0.1
+track lead
+preset 0 0 0 0 255 0 0 0 0 0 127 255 0 0 0 0 0 0
+param level 128 2
+param pan 0 4
+param pan 255 14
+param level 0 24
+note 0 C4 36 100

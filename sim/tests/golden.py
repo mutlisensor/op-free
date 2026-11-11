@@ -134,6 +134,7 @@ def host_checks(build, res, tmp):
     tempo_check(build, res, tmp)
     sample_check(build, res, tmp)
     voicecap_check(build, res, tmp)
+    mix_check(build, res, tmp)
 
 
 def voicecap_check(build, res, tmp):
@@ -171,6 +172,131 @@ def voicecap_check(build, res, tmp):
         bad.append("not silent at the end")
     res.check(name, not bad, "%d evictions, longest fade %d frames" % (len(runs), max(runs or [0]))
               if not bad else bad[0], log)
+
+
+# Level and pan (opz_mix.h), modelled from sdk/docs/engine-abi.md §4 independently of the C code: TE's balance law,
+# gain_L = level * min(2(1 - pan), 1), gain_R = level * min(2 pan, 1), Q15, ramped linearly across each block.
+
+def mix_targets(level_word, pan_word):
+    level, pan = level_word & 0x7fffffff, pan_word & 0x7fffffff
+    a = (0x7fffffff - pan) << 1 if pan >= 0x40000000 else 0x7fffffff
+    b = pan << 1 if pan < 0x40000000 else 0x7fffffff
+    return min((level * a) >> 31, 0x7fffffff) >> 16, min((level * b) >> 31, 0x7fffffff) >> 16
+
+
+def mix_check(build, res, tmp):
+    """opz_mix.h through the host: a constant voice shows the gains, their per-sample ramps and the host's
+    per-block smoothing of params 10/11 exactly; the same voice through an FX shows that what an FX track is fed
+    (the OS takes the sends from the track buffer) follows level and pan."""
+    name = "sdk: opz_mix.h applies level and pan with TE's law, ramped per block"
+    wav = os.path.join(tmp, "mix_probe.wav")
+    dylib, scn = os.path.join(build, "fixtures", "mix_probe.dylib"), os.path.join(FIXTURES, "mix_probe.scn")
+    rc, log = opzsim(build, dylib, scn, out=wav)
+    if rc != 0:
+        res.check(name, False, "exit %d" % rc, log)
+        return
+    x = read_wav32(wav)
+    step = 44100 * 15 / 120
+    events = [(int(2 * step + 0.5), 11, 128), (int(4 * step + 0.5), 10, 0), (int(14 * step + 0.5), 10, 255),
+              (int(24 * step + 0.5), 11, 0)]
+    cur, tgt = {10: param_word(127), 11: param_word(255)}, {10: param_word(127), 11: param_word(255)}
+    sl, sr = mix_targets(cur[11], cur[10])                 # opz_mix_start at the note-on
+    bad, seen = [], set()
+    for b in range(int(36 * step + 0.5) // 64):
+        for t, idx, byte in events:
+            if b * 64 >= t:
+                tgt[idx] = param_word(byte)
+        for idx in cur:
+            diff = (tgt[idx] - cur[idx] + 2**31) % 2**32 - 2**31
+            cur[idx] = (cur[idx] + (diff >> 6)) % 2**32
+        tl, tr = mix_targets(cur[11], cur[10])
+        for i in range(64):
+            gl = tl if (sl, sr) == (tl, tr) else ((sl << 6) + (i + 1) * (tl - sl)) >> 6
+            gr = tr if (sl, sr) == (tl, tr) else ((sr << 6) + (i + 1) * (tr - sr)) >> 6
+            want = ((0x20000000 * gl) >> 15, (0x20000000 * gr) >> 15)
+            got = (x[2 * (b * 64 + i)], x[2 * (b * 64 + i) + 1])
+            if got != want and not bad:
+                bad.append("block %d frame %d: L, R = %r, model %r" % (b, i, got, want))
+            seen.add((gl == 0, gr == 0))
+        sl, sr = tl, tr
+    if not bad and not {(True, False), (False, True)} <= seen:
+        bad.append("the pans never reached hard left and hard right")
+    if not bad and any(x[2 * (int(34 * step) + i)] or x[2 * (int(34 * step) + i) + 1] for i in range(64)):
+        bad.append("level 0 is not silent")
+    res.check(name, not bad, "level 255 -> 128 -> 0, pan 127 -> 0 -> 255, every sample as modelled"
+              if not bad else bad[0], log)
+
+    name = "sdk: what an FX track is fed follows the instrument's level and pan"
+    fx = os.path.join(build, "engines", "opz_test_passthrough.dylib")
+    wav_fx = os.path.join(tmp, "mix_probe_fx.wav")
+    rc, log = opzsim(build, dylib, scn, "--fx", fx, out=wav_fx)
+    res.check(name, rc == 0 and read_wav32(wav_fx) == x, "exit %d" % rc if rc else
+              "FX input identical to the levelled, panned track", log)
+
+
+# No pan byte is the exact centre: 127 (0x3fbfbfbf) has gain_L = 1 and gain_R = 0.996, 128 (0x40404040) the reverse.
+MIX_VARIANTS = {"ref": (255, 127), "ref_r": (255, 128), "half": (128, 127), "left": (255, 0), "right": (255, 255),
+                "off": (0, 127)}
+
+
+def mix_scenario(src, dst, level, pan):
+    """src with every track at this level and pan: expectations dropped (a silent variant would fail them), level
+    and pan moves dropped, the two set after every track and preset line."""
+    out = []
+    with open(src) as f:
+        for line in f:
+            w = line.split()
+            if w and w[0] == "expect":
+                continue
+            if len(w) > 1 and w[0] in ("param", "sweep") and w[1].lower() in ("level", "pan", "10", "11"):
+                continue
+            if len(w) > 1 and w[0] in ("sample", "preset_file") and w[1] not in ("builtin", "unloaded") \
+                    and not os.path.isabs(w[1]):         # the variant lives elsewhere: re-anchor relative paths
+                target = os.path.join(os.path.dirname(os.path.abspath(src)), w[1])
+                line = " ".join([w[0], os.path.relpath(target, os.path.dirname(os.path.abspath(dst)))] + w[2:])
+            out.append(line.rstrip("\n") + "\n")
+            if w and w[0] in ("track", "preset"):
+                out.append("param level %d\nparam pan %d\n" % (level, pan))
+    with open(dst, "w") as f:
+        f.writelines(out)
+
+
+def engine_mix_check(build, res, tmp, name, plug, dylib, scn):
+    """An instrument engine must apply the track's level and pan (the OS does not): renders scn at level 255/128/0
+    and pan centre/hard left/hard right and compares the channels."""
+    label = "%s: level and pan dials (engine-abi.md §4)" % name
+    x = {}
+    for key, (level, pan) in MIX_VARIANTS.items():
+        src = os.path.join(tmp, name, "mix_%s.scn" % key)
+        mix_scenario(scn, src, level, pan)
+        wav = os.path.join(tmp, name, "mix_%s.wav" % key)
+        rc, log = opzsim(build, dylib, src, "--slot", str(plug["memoryslot"]), "--trackmask",
+                         str(plug["plug"]["trackmask"]), out=wav)
+        if rc != 0:
+            res.check(label, False, "%s variant: opzsim exit %d" % (key, rc), log)
+            return
+        w = read_wav32(wav)
+        x[key] = (w[0::2], w[1::2])
+
+    def rms(v):
+        return (sum(s * s for s in v) / max(len(v), 1)) ** 0.5
+
+    bad = []
+    ref_l, ref_r = x["ref"]
+    if rms(ref_l) < 1e5 or rms(ref_r) < 1e5:
+        bad.append("the reference render is (near) silent")
+    for ch, (r, h) in enumerate(zip(x["ref"], x["half"])):
+        ratio = rms(h) / max(rms(r), 1)
+        if not 0.49 <= ratio <= 0.515:
+            bad.append("level 128 gives %.3f x level 255 on %s (want ~0.502)" % (ratio, "LR"[ch]))
+    if any(x["left"][1]) or x["left"][0] != ref_l:
+        bad.append("pan 0 is not hard left (R silent, L as at the centre)")
+    if any(x["right"][0]) or x["right"][1] != x["ref_r"][1]:
+        bad.append("pan 255 is not hard right (L silent, R as at the centre)")
+    if any(x["off"][0]) or any(x["off"][1]):
+        bad.append("level 0 is not silent")
+    res.check(label, not bad, "%s: level 128 = -6 dB, pans hard left/right, level 0 silent" % os.path.basename(scn)
+              if not bad else bad[0])
 
 
 # The drum envelope as described in sdk/docs/engine-abi.md §3, written independently of the C code.
@@ -552,6 +678,8 @@ def golden_tests(build, res, tmp, update, spectral, tolerance, only):
             detail = "sha256 differs; spectral distance %s dB" % ("%.2f" % dist if dist is not None else "n/a")
             ok = spectral and dist is not None and dist <= tolerance
             res.check(label, ok, detail + (" (within %.2f dB)" % tolerance if ok else ""), log)
+        if not update and plug["plug"]["trackmask"] & 0xff and not plug["plug"]["trackmask"] & 0xf00:
+            engine_mix_check(build, res, tmp, name, plug, dylib, os.path.join(tests, scenarios[0]))
 
 
 def main():

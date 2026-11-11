@@ -10,8 +10,8 @@
  *   P2        feedback    one macro: feedback 0 -> 0.9 at 192, then -> 1.4 at 255 (self-oscillation from ~210, held
  *                         by the tape saturator); the tape darkens (low-pass 9 kHz -> 2.5 kHz, 12 dB/oct), thins
  *                         (high-pass 40 -> 110 Hz) and wobbles more (wow and flutter 15 % -> 100 %) as it rises
- *   pan       dry / wet   TE's balance law: wet = min(2p, 1), dry = min(2(1-p), 1); 0 dry, 128 dry + echoes, 255
- *                         echoes only
+ *   pan       dry / wet   the SDK's FX law (opz_fx_drywet): 128 .. 255 echoes only (the OS's dry level keeps the
+ *                         source), 0 .. 127 blends the dry in at equal power, 0 = dry only
  *   level     output level (x gain)
  *   pitch bend            bends the tape speed, +-2 semitones at full scale (echo time and note pitch)
  *   notes on the FX track the tape loop becomes one period of the note (Karplus-Strong: the echo rings at the note;
@@ -270,7 +270,7 @@ void onNoteOff(int note, void *state)
 typedef struct Block {
     uint32_t rd[4], rinc[4];                    /* read positions (record head - delay, Q12) and their steps */
     int32_t k, hp, nl;                          /* low-pass, high-pass, noise (Q15) */
-    int32_t g, g_inc, recg, recg_inc, dg, dg_inc, wg, wg_inc;   /* Q31 ramps: feedback / 2, gains */
+    int32_t g, g_inc, recg, recg_inc, wg, wg_inc;   /* Q31 ramps: feedback / 2, wet gain */
     int32_t xg;                                 /* crossfade position, Q31 */
 } Block;
 
@@ -335,7 +335,7 @@ ALWAYS_INLINE void run(State *s, Block *b, const fract32 *in, fract32 *out, int 
     uint32_t mask = s->mask, w = s->w, seed = s->seed;
     uint32_t r0 = b->rd[0], r1 = b->rd[1], r2 = b->rd[2], r3 = b->rd[3];
     int32_t hx = s->hx, hy = s->hy, l1 = s->l1, l2 = s->l2;
-    int32_t g = b->g, recg = b->recg, dg = b->dg, wg = b->wg, xg = b->xg;
+    int32_t g = b->g, recg = b->recg, wg = b->wg, xg = b->xg;
     for (int i = 0; i < OPZ_BLOCK_FRAMES; i++) {
         int32_t inl = in[2 * i], inr = in[2 * i + 1];
         int32_t L = tap(tape, mask, r0), R = tap(tape, mask, r1);
@@ -372,10 +372,9 @@ ALWAYS_INLINE void run(State *s, Block *b, const fract32 *in, fract32 *out, int 
         tape[w] = (int16_t)((l2 + 0x4000) >> 15);              /* |l2| < 0.5: fits 16 bits */
         w = (w + 1) & mask;
 
-        int32_t d16 = dg >> 16, w16 = wg >> 16;                /* the gains to 16 bits, ramped to 31 */
-        out[2 * i] = opz_add_q31(opz_mul_q31_q15(inl, d16), opz_mul_q31_q15(L, w16));
-        out[2 * i + 1] = opz_add_q31(opz_mul_q31_q15(inr, d16), opz_mul_q31_q15(R, w16));
-        dg += b->dg_inc;
+        int32_t w16 = wg >> 16;                                /* the gain to 16 bits, ramped to 31 */
+        out[2 * i] = opz_mul_q31_q15(L, w16);                  /* the echoes at half scale (wg holds half the */
+        out[2 * i + 1] = opz_mul_q31_q15(R, w16);              /* gain); renderFX adds the dry and limits */
         wg += b->wg_inc;
     }
     s->w = w;
@@ -408,15 +407,15 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
     uint32_t p2 = params[OPZ_P_P2] & Q31_ONE;
     if (p2 != s->p2) p2_coefs(s, p2);
 
-    /* dry / wet (TE's balance law) and level, as output gains ramped over the block */
-    int32_t pan = opz_pq31(params[OPZ_P_PAN]);
-    int32_t wet = pan >= 0x40000000 ? Q31_ONE : pan * 2;
-    int32_t dry = pan <= 0x40000000 ? Q31_ONE : (Q31_ONE - pan) * 2;
+    /* dry / wet (the SDK's FX law: 128 .. 255 echoes only, below that the dry blends in) and level, as output
+     * gains ramped over the block, at half scale for the limiter */
+    int32_t dry, wet;
+    opz_fx_drywet(params[OPZ_P_PAN], &dry, &wet);
     int32_t og = opz_mul_q31(opz_pq31(params[OPZ_P_LEVEL]), gain);
-    int32_t dg1 = opz_mul_q31(dry, og), wg1 = opz_mul_q31(wet, og);
+    int32_t dg1 = opz_mul_q31(dry, og) >> 1, wg1 = opz_mul_q31(wet, og) >> 1;
 
-    if (!s->tape) {                                            /* no buffer: dry only */
-        for (int j = 0; j < 2 * OPZ_BLOCK_FRAMES; j++) out[j] = opz_mul_q31(in[j], dg1);
+    if (!s->tape) {                                            /* no buffer: the input at the output level */
+        for (int j = 0; j < 2 * OPZ_BLOCK_FRAMES; j++) out[j] = opz_mul_q31(in[j], og);
         return;
     }
 
@@ -487,8 +486,6 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
     if (s->fade <= FADE_BLOCKS) s->fade++;
     b.recg = s->recg;
     b.recg_inc = (rec1 - s->recg) >> 6;
-    b.dg = s->dg;
-    b.dg_inc = (dg1 - s->dg) >> 6;
     b.wg = s->wg;
     b.wg_inc = (wg1 - s->wg) >> 6;
     b.xg = (XF_BLOCKS - s->xf) << 29;
@@ -501,6 +498,7 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
         else run(s, &b, in, out, 0, 0);
     }
 
+    opz_fx_finish(out, in, s->dg, dg1);                        /* + the dry (half scale), through the SDK's limiter */
     s->recg = rec1;                                            /* the ramps end within 63 LSB of these */
     s->g_last = g1;
     s->dg = dg1;

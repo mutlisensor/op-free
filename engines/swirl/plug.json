@@ -1,8 +1,8 @@
 {
   "engine": "swirl",
   "memoryslot": 56,
-  "engine_version": 4,
-  "plug": { "id": 61001, "version": 4, "name": "swirl", "trackmask": 768, "flags": 1,
+  "engine_version": 5,
+  "plug": { "id": 61001, "version": 5, "name": "swirl", "trackmask": 768, "flags": 1,
             "parameter_names": ["rate", "character"] },
   "presets": "presets.json"
 }

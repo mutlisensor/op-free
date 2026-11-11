@@ -169,7 +169,9 @@ class Device:
         logs, start = [], time.monotonic()
         last, started, pend = start, False, None
         while True:
-            chunk = self.port.read(65536)
+            # Take what is waiting, or wait up to the port timeout for one byte (pyserial's own idiom, miniterm).
+            # read(65536) also returns at the timeout, but a contributor saw it stall near 802 KB (PR 2).
+            chunk = self.port.read(self.port.in_waiting or 1)
             now = time.monotonic()
             if chunk:
                 last = now

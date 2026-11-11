@@ -14,6 +14,9 @@
  *   P2        sweep/decay read at the hit: pitch-sweep depth x0 (P2 0) .. x1 (128) .. x2 (255), and the index and
  *                         amplitude decays x1/4 (0) .. x1 (128) .. x2.8 (255)
  *   velocity              level (linear) and modulation index x0.3 (soft) .. x1 (hard): harder is brighter
+ *   attack .. release     the OP-Z drum envelope over the hit, as on TE's sample kits: start, attack, hold, decay
+ *                         (opz_drumenv in opz_adsr.h); the presets' 0 / 0 / 255 / 0 leave every hit as designed
+ *   note style gate       a key release fades the hit (~20 ms); the other styles play one-shots
  *   octave                the octave buttons transpose every pitch of the key by whole octaves (+-3 at most)
  *
  * Per hit: a pitch envelope sweeps the carrier (and with it the modulator) down linearly in frequency from up to
@@ -28,8 +31,10 @@
  * Ideas from the classic FM drum voices: Peaks' FM drum (Mutable Instruments, MIT) and the DX7's percussion
  * patches; written from scratch on sdk/include/opz_dsp.h, no code ported. MIT licence, see CONTRIBUTING.md.
  */
+#include "opz_adsr.h"
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_mix.h"
 
 #define ALWAYS_INLINE static inline __attribute__((always_inline))
 #define NOINLINE static __attribute__((noinline))
@@ -89,10 +94,15 @@ typedef struct State {
     int32_t ei, ef, ci;       /* index and feedback (index units, Q16) and their per-block multiplier */
     int32_t ea, ca;           /* amplitude (Q31, velocity, trim and OPZ_VOICE_PEAK included), per-block multiplier */
     int32_t y0, y1;           /* last two modulator outputs, Q15 (the feedback averages them) */
+    OpzMix mix;               /* the track's level and pan (opz_mix.h) */
+    OpzDrumEnv denv;                          /* the envelope page over the hit */
     uint8_t key, track, choke, active, fading;
 } State;
 
 _Static_assert(sizeof(State) <= 280, "voice state must fit in 280 bytes (the device's real limit)");
+
+/* render takes params NULL as the knobs at their centre (as it does for P1): level full, pan centre */
+static const uint32_t k_mix_centre[OPZ_P_LEVEL + 1] = { [OPZ_P_PAN] = 0x40000000u, [OPZ_P_LEVEL] = 0x7fffffffu };
 
 static const ModuleCallbackInterface *s_cb;
 static uint8_t s_choke[16];                   /* per track: bumped by closed hats, watched by open hats */
@@ -223,11 +233,21 @@ void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
     s->choke = s_choke[s->track];
     s->active = 1;
     s->fading = 0;
+    if (params) opz_mix_start(&s->mix, params);
+    else s->mix.l = s->mix.r = OPZ_MIX_UNITY;
+
+    /* The hit's length for the envelope page: the level's T60, 2^(b / 16) ms (from the peak to THRESHOLD), as
+     * 2^(b / 16 - 6) in Q16 x 64 x 44.1 x 1.05 (5 % margin) */
+    int32_t b = k->ta + dshift;
+    if (b < 0) b = 0;
+    if (b > 240) b = 240;
+    opz_drumenv_start(&s->denv, opz_mul_u32_shr16((uint32_t)opz_exp2_q16(b * 4096 - 6 * 65536), 2964), params);
 }
 
 void onNoteOff(int note, void *state)
 {
-    (void)note; (void)state;                                   /* one-shots: the hit decays on its own */
+    (void)note;
+    opz_drumenv_off(&((State *)state)->denv);                 /* gate style only; one-shots decay on their own */
 }
 
 /* ---- render: two passes over the block, each a short loop that fits the Blackfin's registers ------------------- */
@@ -256,8 +276,8 @@ ALWAYS_INLINE void mod_pass(State *s, uint32_t im, int32_t sm, int32_t ef, int32
 NOINLINE void mod_plain(State *s, uint32_t im, int32_t sm) { mod_pass(s, im, sm, 0, 0, 0); }
 NOINLINE void mod_fb(State *s, uint32_t im, int32_t sm, int32_t ef, int32_t def) { mod_pass(s, im, sm, ef, def, 1); }
 
-/* Pass 2: the carrier, phase-modulated by s_mod at index ei (+ dei), times the amplitude ea (+ dea), added into the
- * interleaved stereo out with saturation. */
+/* Pass 2: the carrier, phase-modulated by s_mod at index ei (+ dei), times the amplitude ea (+ dea), into the mono
+ * buffer opz_mix_mono adds into out. */
 NOINLINE void car_pass(fract32 *out, State *s, uint32_t ic, int32_t sc, int32_t ei, int32_t dei, int32_t ea,
                        int32_t dea)
 {
@@ -265,8 +285,7 @@ NOINLINE void car_pass(fract32 *out, State *s, uint32_t ic, int32_t sc, int32_t 
     for (int i = 0; i < OPZ_BLOCK_FRAMES; i++) {
         int32_t c = sin15(pc + ((uint32_t)mul_s16(s_mod[i], ei >> 16) << 3));
         fract32 v = mul_s16(c, ea >> 16) * 2;                     /* Q15 x Q15 -> Q31, at most OPZ_VOICE_PEAK */
-        out[2 * i] = opz_add_q31(out[2 * i], v);
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], v);
+        out[i] = v;
         pc += ic;
         ic += (uint32_t)sc;
         ei += dei;
@@ -281,11 +300,12 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
     State *s = state;
     if (OPZ_ADSR_STAGE(env) == 0) return;
     if (!s->active) { OPZ_ADSR_STAGE(env) = 0; return; }
+    if (!opz_drumenv_block(&s->denv, s_cb, env, OPZ_Q31_ONE)) return;    /* the envelope page ended the hit */
     const Recipe *k = &k_recipes[s->key];
 
     /* The host wants this voice for a new note (voice steal, stage 5/6) and starts it when we reach stage 0: fade
      * out over this block instead of ringing on. A closed hat on the same track chokes an open one: ~30 ms. */
-    if (OPZ_ADSR_STAGE(env) >= 5) s->fading = 1;
+    if (OPZ_DRUMENV_STOLEN(&s->denv, env)) s->fading = 1;
     if ((k->flags & F_CHOKED) && s->choke != s_choke[s->track]) {
         s->ca = block_coef(78);
         s->choke = s_choke[s->track];
@@ -314,7 +334,11 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
 
     if (s->ef | ef1) mod_fb(s, im, sm, s->ef, (ef1 - s->ef) >> 6);
     else mod_plain(s, im, sm);
-    car_pass(out, s, ic_a, sc, s->ei, (ei1 - s->ei) >> 6, s->ea, (ea1 - s->ea) >> 6);
+    /* the amplitude times the envelope page's ramp (exactly the hit's own while the page holds) */
+    int32_t ga = opz__drumenv_mul(s->ea, s->denv.g0), gb = opz__drumenv_mul(ea1, s->denv.g1);
+    fract32 mono[OPZ_BLOCK_FRAMES];
+    car_pass(mono, s, ic_a, sc, s->ei, (ei1 - s->ei) >> 6, ga, (gb - ga) >> 6);
+    opz_mix_mono(out, mono, &s->mix, params ? params : k_mix_centre);   /* level and pan, into interleaved out */
 
     s->ei = ei1;
     s->ef = ef1;

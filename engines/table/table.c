@@ -41,6 +41,7 @@
 #include "opz_adsr.h"
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_mix.h"
 #include "table_waves.h"
 
 #define N OPZ_BLOCK_FRAMES
@@ -66,6 +67,7 @@ typedef struct State {
     int32_t xv;             /* velocity's offset on the position, Q16 waves */
     int32_t amp;            /* velocity x output gain, Q15 */
     int32_t mip;            /* mip of the last block (MIP_ADD: the additive path); -1 before the first of a note */
+    OpzMix mix;             /* the track's level and pan (opz_mix.h) */
     uint32_t bkey;          /* additive path: the band of co (its pitch, 0 when every harmonic is in full) */
     uint32_t co[TW_ADD_H];  /* additive path: the coefficients at the end of the last block (at x, y, bkey) */
 } State;
@@ -246,13 +248,12 @@ static void positions(int32_t *pp, int32_t pos, uint32_t inc, int32_t slope, int
     }
 }
 
-/* The block's samples: a line read at the positions, times the gains, added into out. */
-NOINLINE void kernel(fract32 *out, const int16_t *line, const int32_t *pp, const int16_t *g)
+/* The block's samples: a line read at the positions, times the gains, added into the mono block buffer x. */
+NOINLINE void kernel(fract32 *x, const int16_t *line, const int32_t *pp, const int16_t *g)
 {
     for (int i = 0; i < N; i++) {
         fract32 y = mulfr(hermite(line, pp[i]), g[i]);
-        out[2 * i] = opz_add_q31(out[2 * i], y);
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], y);
+        x[i] = opz_add_q31(x[i], y);
     }
 }
 
@@ -390,14 +391,14 @@ NOINLINE int add_setup(State *s, int32_t xe, int32_t ye, uint32_t be, int cont)
     return cont && moved != 0;
 }
 
-/* The additive path's samples, times the gains, added into out. Per sample: sine and cosine of the phase, z(2) from
- * the double angle, z(h + 1) = 2 cos z(h) - z(h - 1) for the others (as q + (q - z(h - 1)) with q = cos z(h): the
- * difference is -sin(h t) sin(t) and never saturates), each z(h) lane-wise times its word (b_h, a_h): the sine terms
- * add up in hi, the cosine terms in lo. All TW_ADD_H harmonics every time (the words above the band are 0): a
- * straight run of vector instructions, no inner loop. With ramp, the coefficients move over the block: sample i
- * plays end - (63 - i) / 64 (end - start), so the last sample is at the end and the first one step past the last
- * block's last. */
-ADD_KERNEL void additive(fract32 *out, uint32_t ph, uint32_t inc, int32_t slope, const int16_t *g, int ramp)
+/* The additive path's samples, times the gains, added into the mono buffer x. Per sample: sine and cosine of the
+ * phase, z(2) from the double angle, z(h + 1) = 2 cos z(h) - z(h - 1) for the others (as q + (q - z(h - 1)) with
+ * q = cos z(h): the difference is -sin(h t) sin(t) and never saturates), each z(h) lane-wise times its word (b_h,
+ * a_h): the sine terms add up in hi, the cosine terms in lo. All TW_ADD_H harmonics every time (the words above
+ * the band are 0): a straight run of vector instructions, no inner loop. With ramp, the coefficients move over the
+ * block: sample i plays end - (63 - i) / 64 (end - start), so the last sample is at the end and the first one step
+ * past the last block's last. */
+ADD_KERNEL void additive(fract32 *x, uint32_t ph, uint32_t inc, int32_t slope, const int16_t *g, int ramp)
 {
     const uint32_t *ce = s_co[0], *cd = s_co[1], *k = k_add;
     HIDE(k);
@@ -419,36 +420,35 @@ ADD_KERNEL void additive(fract32 *out, uint32_t ph, uint32_t inc, int32_t slope,
         int32_t v = vsum(acc);
         if (ramp) v = subs16(v, mulfr16(vsum(accd), (N - 1 - i) * (32768 / N)));
         fract32 y = mulfr(v, g[i]);
-        out[2 * i] = opz_add_q31(out[2 * i], y);
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], y);
+        x[i] = opz_add_q31(x[i], y);
         ph += inc;
         inc += (uint32_t)slope;
     }
 }
 
-NOINLINE void add_static(fract32 *out, uint32_t ph, uint32_t inc, int32_t slope, const int16_t *g)
+NOINLINE void add_static(fract32 *x, uint32_t ph, uint32_t inc, int32_t slope, const int16_t *g)
 {
-    additive(out, ph, inc, slope, g, 0);
+    additive(x, ph, inc, slope, g, 0);
 }
 
-NOINLINE void add_ramp(fract32 *out, uint32_t ph, uint32_t inc, int32_t slope, const int16_t *g)
+NOINLINE void add_ramp(fract32 *x, uint32_t ph, uint32_t inc, int32_t slope, const int16_t *g)
 {
-    additive(out, ph, inc, slope, g, 1);
+    additive(x, ph, inc, slope, g, 1);
 }
 
-/* One path of the block, added into out with the gains g: the additive path (m == MIP_ADD; ramp: its coefficients
- * move) or mip m's scratch line k, read along the block's phase. */
-ALWAYS_INLINE void play(fract32 *out, int m, int k, const Span *sp, uint32_t ph, uint32_t inc, int32_t slope, int ramp,
+/* One path of the block, added into the mono block buffer x with the gains g: the additive path (m == MIP_ADD;
+ * ramp: its coefficients move) or mip m's scratch line k, read along the block's phase. */
+ALWAYS_INLINE void play(fract32 *x, int m, int k, const Span *sp, uint32_t ph, uint32_t inc, int32_t slope, int ramp,
                         const int16_t *g)
 {
     if (m == MIP_ADD) {
-        if (ramp) add_ramp(out, ph, inc, slope, g);
-        else add_static(out, ph, inc, slope, g);
+        if (ramp) add_ramp(x, ph, inc, slope, g);
+        else add_static(x, ph, inc, slope, g);
         return;
     }
     positions(s_pos[k], sp->pos, inc, slope, sp->s16);
     for (int i = 0; i < N; i++) TABLE_CHECK(s_pos[k][i] >= 65536 && (s_pos[k][i] >> 16) + 2 < sp->n);
-    kernel(out, s_line[k], s_pos[k], g);
+    kernel(x, s_line[k], s_pos[k], g);
 }
 
 uint32_t initModule(uint32_t version, const ModuleCallbackInterface *cb, uint32_t *memRequest)
@@ -481,13 +481,14 @@ void init(void *state, uint32_t track, uint32_t arg2, void *mem, void *scratch)
 
 void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
 {
-    (void)note; (void)params;                                /* params may be NULL; the knobs are read in render */
+    (void)note;                                              /* the knobs are read in render */
     State *s = state;
     int v = velocity > 127 ? 127 : velocity;
     s->ph = 0;
     s->mip = -1;
     s->xv = (v - 100) * VEL_X;
     s->amp = opz_mul_q31((fract32)((uint32_t)v * 0x01020408u), OUT_AMP);
+    if (params) opz_mix_start(&s->mix, params);              /* NULL (engine-abi.md §3): ramps in at render */
 }
 
 void onNoteOff(int note, void *state)
@@ -534,15 +535,18 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
     int32_t c2 = opz_mul_q31_rnd(coef, coef);
     int32_t c4 = opz_mul_q31_rnd(c2, c2), s4 = opz_shl_q31(step, 2);
     OPZ_ADSR_LEVEL(env) = envelope(s_gain[0], level, c4, s4);
+    fract32 mono[N];                                         /* the voice, before level and pan: both paths add here */
+    for (int i = 0; i < N; i++) mono[i] = 0;
     if (xf) {                                                /* old -> new over the block */
         for (int i = 0; i < N; i++) {
             int32_t gn = mulfr16(s_gain[0][i], i * 512 + 256);
             s_gain[1][i] = (int16_t)(s_gain[0][i] - gn);
             s_gain[0][i] = (int16_t)gn;
         }
-        play(out, mb, 1, &sb, s->ph, inc0, slope, ramp, s_gain[1]);
+        play(mono, mb, 1, &sb, s->ph, inc0, slope, ramp, s_gain[1]);
     }
-    play(out, m, 0, &sa, s->ph, inc0, slope, ramp, s_gain[0]);
+    play(mono, m, 0, &sa, s->ph, inc0, slope, ramp, s_gain[0]);
+    opz_mix_mono(out, mono, &s->mix, params);               /* level and pan, added into interleaved out */
 
     s->ph += inc0 * N + (uint32_t)slope * (N * (N - 1) / 2);
     s->x = xe;

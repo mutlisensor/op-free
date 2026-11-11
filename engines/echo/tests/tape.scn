@@ -1,5 +1,5 @@
 # The preset (tape): a dotted eighth (P1 136, 377 ms at 120 BPM) with a few darkening ping-pong repeats. Clicks on
-# every half bar, dry plus echoes (pan 128).
+# every half bar, dry plus echoes at equal power (pan 64; 128 would be the echoes alone).
 tempo 120
 steps 32
 tail 3
@@ -7,7 +7,7 @@ track fx1
 input impulse 8 0.5
 param p1 136
 param p2 110
-param pan 128
+param pan 64
 param level 255
 gain 1
 expect sound 0 32

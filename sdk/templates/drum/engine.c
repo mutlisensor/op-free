@@ -20,6 +20,7 @@
 #include "opz_adsr.h"   /* OPZ_ADSR_* accessors, opz_ahd_layout, opz_ahd_tick */
 #include "opz_dsp.h"    /* opz_sine, opz_noise, opz_exp2_q16, opz_hz_to_inc, ... */
 #include "opz_engine.h" /* the ABI */
+#include "opz_mix.h"    /* the track's level and pan: the OS leaves them to the engine */
 
 #define LENGTH      22050       /* the sound is 0.5 s long: the drum envelope's knobs cut and shape it */
 #define SWEEP_DROP  0x7c000000  /* per block, the pitch sweep keeps 0.97 of itself (~33 ms to fall to a third) */
@@ -33,6 +34,7 @@ typedef struct State {
     fract32 sweep;      /* pitch sweep: 1.0 at the hit, falling towards 0; adds up to 3x the pitch */
     uint32_t seed;      /* noise generator */
     fract32 amp;        /* velocity x OPZ_VOICE_PEAK */
+    OpzMix mix;         /* the track's level and pan gains of the last block (opz_mix.h) */
 } State;
 
 _Static_assert(sizeof(State) <= OPZ_VOICE_STATE_BYTES, "voice state must fit in OPZ_VOICE_STATE_BYTES (engine-abi.md rule 13)");
@@ -76,6 +78,7 @@ void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
     s->sweep = 0x7fffffff;
     s->ahd = ahd;
     s->pos = ahd.start;                              /* the start knob skips into the sound */
+    opz_mix_start(&s->mix, params);                  /* level and pan: the engine applies them, not the OS */
 }
 
 /* Drums are one-shots: the drum envelope ignores note-off. */
@@ -105,14 +108,15 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
 
     int32_t level = OPZ_ADSR_LEVEL(env), coef = OPZ_ADSR_COEF(env), step = OPZ_ADSR_STEP(env);
     uint32_t phase = s->phase, seed = s->seed;
+    fract32 mono[OPZ_BLOCK_FRAMES];
     for (int i = 0; i < OPZ_BLOCK_FRAMES; i++) {
         fract32 x = opz_lerp(opz_sine(phase), opz_noise(&seed), snap);
         x = opz_mul_q31(opz_mul_q31(x, s->amp), level);
-        out[2 * i] = opz_add_q31(out[2 * i], x);     /* ADD into the interleaved stereo buffer */
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], x);
+        mono[i] = x;
         level = opz_ahd_tick(level, coef, step);     /* the drum envelope's linear step (not opz_env_tick) */
         phase += inc;
     }
+    opz_mix_mono(out, mono, &s->mix, params);        /* level, pan, ADDED into the interleaved stereo buffer */
     OPZ_ADSR_LEVEL(env) = level;
     s->phase = phase;
     s->seed = seed;

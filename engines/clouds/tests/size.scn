@@ -9,5 +9,6 @@ preset 0 96 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
 sweep p1 0 255 4 36
 sweep p1 255 0 36 64
 gain 1
+transport 0 stop                 # sequencer stopped: the free cloud (sync.scn has the time lock)
 expect sound 8 64
 expect peak_below -3

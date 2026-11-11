@@ -14,6 +14,9 @@
  *   velocity              level (linear), mallet hardness (the strike's low-pass corner 500 Hz -> 16 kHz before the
  *                         material's and P2's offsets, 12 dB per octave), contact time (4 ms -> 0.25 ms), click noise
  *                         (velocity squared), strike position (0.22 -> 0.15 of the length)
+ *   attack .. release     the OP-Z drum envelope over the hit, as on TE's sample kits: start, attack, hold, decay
+ *                         (opz_drumenv in opz_adsr.h); the presets' 0 / 0 / 255 / 0 leave every hit as designed
+ *   note style gate       a key release fades the hit (~20 ms, "a hand on the bar"); the others ring out
  *
  * The knobs are read when a hit starts (as kit does): a hit keeps its sound while the knobs move, and nothing is
  * recomputed while it rings. Each mode is a sine from a 256-entry interpolated table, its amplitude an exact
@@ -34,6 +37,7 @@
 #include "opz_adsr.h"
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_mix.h"
 #include "mallet_tables.h"
 
 #define ALWAYS_INLINE static inline __attribute__((always_inline))
@@ -70,7 +74,9 @@ typedef struct State {
     int32_t gain;                               /* output level, Q31: the contact rise, then 1; the steal fade */
     int32_t gain_inc;                           /* per block during the rise, Q31 */
     int32_t fade;                               /* per sample while the voice fades out (stolen), 0 otherwise */
+    OpzMix mix;                                 /* the track's level and pan (opz_mix.h) */
     uint16_t p1, p2;                            /* the knobs at the hit, 0 .. 65535 */
+    OpzDrumEnv denv;                            /* the envelope page over the hit */
     uint8_t note, vel, phase;
 } State;
 
@@ -78,6 +84,9 @@ typedef struct State {
 _Static_assert(sizeof(State) <= 280, "voice state must fit in 280 bytes");
 
 static const ModuleCallbackInterface *s_cb;
+
+/* Level and pan when render gets params NULL (tests/fuzz.c sends it; the OS does not): 255, centre. */
+static const uint32_t k_mix_unity[OPZ_NUM_PARAMS] = { [OPZ_P_PAN] = 0x40000000u, [OPZ_P_LEVEL] = 0x7fffffffu };
 static uint32_t s_seed = 0x6d2b79f5u;          /* note-on noise seeds, one draw per hit */
 static int32_t s_acc[OPZ_BLOCK_FRAMES + 1];     /* the voice's partials, summed (render runs one voice at a time);
                                                    the last entry is a guard pass_lin reads once */
@@ -286,14 +295,34 @@ __attribute__((noinline)) static void strike(State *s)
 /* Decay multipliers per block from the material and P2. The fundamental's T60 is the material's natural ring x
  * 2^(-4 .. 0 .. 3) (P2 0, 128, 255; 12 ms .. 32 s); each mode's T60 is that times its relative decay, divided by
  * 1 + h f (f in kHz; h = the material's damping x 2^(2 - 4 q): absolute damping darkens the tail, more at low P2). */
-__attribute__((noinline)) static void decays(State *s)
+/* log2 of the fundamental's T60 (s, Q16) from the material and P2 */
+static int32_t ring_lgt(Zone Z, int32_t q)
 {
-    Zone Z = zone(s->p1);
-    int32_t q = s->p2;
     int32_t off = q < 32768 ? q * 8 - (4 << 16) : q * 6 - (3 << 16);    /* octaves, Q16 */
     int32_t lgT0 = lerp16(k_mat[Z.z].lgt, k_mat[Z.z + 1].lgt, Z.t) * 16 + off;
     if (lgT0 < LGT_MIN) lgT0 = LGT_MIN;
     if (lgT0 > LGT_MAX) lgT0 = LGT_MAX;
+    return lgT0;
+}
+
+/* The hit's length for the envelope page, frames: the longest mode's undamped T60 x 1.1 (its level falls from the
+ * strike's -12 dBFS to the -78 dBFS end in 66 dB). Damping only shortens a mode, so this is an upper bound. */
+__attribute__((noinline)) static uint32_t ring_frames(const State *s)
+{
+    Zone Z = zone(s->p1);
+    int32_t ld = 0;
+    for (int k = 0; k < NM; k++) {
+        int32_t l = lerp16(k_ldecay[Z.z][k], k_ldecay[Z.z + 1][k], Z.t) * 16;
+        if (s->amp[k] && l > ld) ld = l;
+    }
+    return opz_mul_u32_shr16(pow2(ring_lgt(Z, s->p2) + ld), 48510);    /* T60 (s, Q16) x 44100 x 1.1 */
+}
+
+__attribute__((noinline)) static void decays(State *s)
+{
+    Zone Z = zone(s->p1);
+    int32_t q = s->p2;
+    int32_t lgT0 = ring_lgt(Z, q);
     int32_t lgh = lerp16(k_mat[Z.z].lgh, k_mat[Z.z + 1].lgh, Z.t) * 16 + (32768 - q) * 4;
     uint32_t h = pow2(lgh);                                              /* Q16 per kHz */
     for (int k = 0; k < NM; k++) {
@@ -328,8 +357,7 @@ void init(void *state, uint32_t track, uint32_t arg2, void *mem, void *scratch)
 
 void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
 {
-    (void)params;                                                        /* the knobs are read in the first render */
-    State *s = state;
+    State *s = state;                                                    /* the knobs are read in the first render */
     s->note = (uint8_t)(note < 0 ? 0 : (note > 127 ? 127 : note));      /* the OS folds notes into 0 .. 127 */
     s->vel = (uint8_t)(velocity < 1 ? 1 : (velocity > 127 ? 127 : velocity));
     s_seed = s_seed * 1664525u + 1013904223u;
@@ -338,11 +366,13 @@ void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
     s->gain = 0;
     s->fade = 0;
     s->phase = PH_STRIKE;
+    if (params) opz_mix_start(&s->mix, params);                          /* NULL: ramps in at render */
 }
 
 void onNoteOff(int note, void *state)
 {
-    (void)note; (void)state;                                             /* one-shots: the hit rings on */
+    (void)note;
+    opz_drumenv_off(&((State *)state)->denv);                           /* gate style only; one-shots ring on */
 }
 
 /* One partial into s_acc: a sine from the interpolated table (one load: value and step; the fraction is the signed
@@ -424,39 +454,31 @@ static void click_pass(State *s, int first)
     s->ck_lp = end < LIVE ? 0 : lp;
 }
 
-/* s_acc x the output level, added into both channels of out, the level ramped by ls per sample. On the Blackfin the
- * loop is scheduled by hand (engines/modal), 4 cycles per frame; the C below is the same arithmetic, bit for bit.
- * Reads s_acc[64] (the guard) once. Returns the level. */
+/* s_acc x the output level into the mono block buffer x (opz_mix_mono then adds it into out with the track's level
+ * and pan), the level ramped by ls per sample. On the Blackfin the loop is scheduled by hand (engines/modal), 2
+ * instructions per frame; the C below is the same arithmetic, bit for bit. Reads s_acc[64] (the guard) once.
+ * Returns the level. */
 #if defined(__bfin__) && !defined(MALLET_C_LOOP)
-ALWAYS_INLINE int32_t pass_lin(fract32 *out, int32_t level, int32_t ls)
+ALWAYS_INLINE int32_t pass_lin(fract32 *x, int32_t level, int32_t ls)
 {
     const int32_t *acc = s_acc;
-    fract32 *w = out;
-    int32_t x, v, l, r;
-    __asm__ volatile("I0 = %[out];\n\t"
-                     "I1 = %[out];\n\t"
-                     "M0 = 8 (X);\n\t"
-                     "I1 += 4;\n\t"
-                     "%[x] = [%[acc]++];\n\t"
+    fract32 *w = x;
+    int32_t a, v;
+    __asm__ volatile("%[a] = [%[acc]++];\n\t"
                      "LSETUP (1f, 2f) LC0 = %[n];\n"
-                     "1: %[v] = %[x].H * %[lev].H || %[l] = [I0 ++ M0] || %[r] = [I1 ++ M0];\n\t"
-                     "%[l] = %[l] + %[v] (S) || %[x] = [%[acc]++] || NOP;\n\t"
-                     "%[r] = %[r] + %[v] (S) || [%[w]++] = %[l] || NOP;\n"
-                     "2: %[lev] = %[lev] + %[ls] (S) || [%[w]++] = %[r] || NOP;"
-                     : [lev] "+d"(level), [acc] "+a"(acc), [w] "+a"(w), [x] "=&d"(x), [v] "=&d"(v), [l] "=&d"(l),
-                       [r] "=&d"(r)
-                     : [out] "a"(out), [ls] "d"(ls), [n] "a"(OPZ_BLOCK_FRAMES)
-                     : "memory", "I0", "I1", "M0", "LC0", "LT0", "LB0");
+                     "1: %[v] = %[a].H * %[lev].H || %[a] = [%[acc]++] || NOP;\n"
+                     "2: %[lev] = %[lev] + %[ls] (S) || [%[w]++] = %[v] || NOP;"
+                     : [lev] "+d"(level), [acc] "+a"(acc), [w] "+a"(w), [a] "=&d"(a), [v] "=&d"(v)
+                     : [ls] "d"(ls), [n] "a"(OPZ_BLOCK_FRAMES)
+                     : "memory", "LC0", "LT0", "LB0");
     return level;
 }
 #else
-ALWAYS_INLINE int32_t pass_lin(fract32 *out, int32_t level, int32_t ls)
+ALWAYS_INLINE int32_t pass_lin(fract32 *x, int32_t level, int32_t ls)
 {
     const int32_t *acc = s_acc;
     for (int i = 0; i < OPZ_BLOCK_FRAMES; i++) {
-        fract32 v = mul_hh(acc[i], level);
-        out[2 * i] = opz_add_q31(out[2 * i], v);
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], v);
+        x[i] = mul_hh(acc[i], level);
         level = opz_add_q31(level, ls);
     }
     return level;
@@ -477,7 +499,7 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
     State *s = state;
     int32_t stage = OPZ_ADSR_STAGE(env);
     if (stage == 0) return;
-    if (s->phase == PH_OFF || (stage >= 5 && s->phase == PH_STRIKE)) {   /* over, or stolen before it sounded */
+    if (s->phase == PH_OFF || ((stage == 5 || stage == 6) && s->phase == PH_STRIKE)) {   /* over, or stolen before it sounded */
         end_hit(s, env);
         return;
     }
@@ -487,15 +509,18 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
         s->p1 = (uint16_t)(p1 > 65535 ? 65535 : p1);                     /* the host's words are below 2^31 */
         s->p2 = (uint16_t)(p2 > 65535 ? 65535 : p2);
         strike(s);
+        opz_drumenv_start(&s->denv, ring_frames(s), params);             /* at the hit, from the same knobs */
         s->phase = PH_DECAY;
     } else if (s->phase == PH_DECAY) {
         decays(s);
         s->phase = PH_RING;
     }
 
+    if (!opz_drumenv_block(&s->denv, s_cb, env, OPZ_Q31_ONE)) { s->phase = PH_OFF; return; }   /* the page ended it */
+
     /* The OS wants this voice for a new note (voice steal, stage 5/6) and starts it when we reach stage 0: fade out
      * linearly over two blocks (2.9 ms) instead of ringing on. */
-    if (stage >= 5 && !s->fade) {
+    if (OPZ_DRUMENV_STOLEN(&s->denv, env) && !s->fade) {
         s->fade = (s->gain >> 7) + 1;
         s->ck_env = 0;
     }
@@ -529,7 +554,13 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
         int32_t g1 = opz_add_q31(g, s->gain_inc);
         ls = (g1 - g) >> 6;
     }
-    s->gain = pass_lin(out, g, ls);
+    /* times the envelope page's ramp (exactly the hit's own level while the page holds), into the mono buffer;
+     * opz_mix_mono then adds it into out with the track's level and pan */
+    int32_t gend = g + (ls << 6), e0 = opz__drumenv_mul(g, s->denv.g0), e1 = opz__drumenv_mul(gend, s->denv.g1);
+    fract32 mono[OPZ_BLOCK_FRAMES];                                      /* the voice, before level and pan */
+    pass_lin(mono, e0, (e1 - e0) >> 6);
+    s->gain = gend;
+    opz_mix_mono(out, mono, &s->mix, params ? params : k_mix_unity);     /* level and pan, added into out */
 
     if ((s->fade && s->gain < 64) || (sum < END_SUM && !s->ck_env)) end_hit(s, env);
 }

@@ -19,8 +19,8 @@ them on the website's synth lab; build your own with the [SDK quickstart](../sdk
 | [`fmperc`](fmperc/) | drum | 61021 | 80 | Two-operator FM percussion for the kick, snare, perc and sample tracks — no samples. One sine modulator (with feedback) phase-modulates… |
 | [`glue`](glue/) | fx | 61004 | 84 | Stereo bus compressor and soft clipper for **FX1 and FX2**: send tracks to it to glue them together. One knob sets how much it squeezes,… |
 | [`harmonizer`](harmonizer/) | fx | 61104 | 35 | Two pitch-shifted voices over a short, moving delay network for FX1 and FX2 (X-11): a slow detune shimmer at the centre of P1,… |
-| [`hats`](hats/) | drum | 61023 | 76 | Metallic hi-hats and cymbals for the kick, snare, perc and sample tracks, synthesized the TR-808 way: six detuned square waves plus a… |
-| [`kit`](kit/) | drum | 61020 | 54 | Synthesized drum kit for the kick, snare, perc and sample tracks — no samples. Each of the 24 keys plays its own model, so one plug… |
+| [`hats`](hats/) | drum | 61023 | 32 | Metallic hi-hats and cymbals for the kick, snare, perc and sample tracks, synthesized the TR-808 way: six detuned square waves plus a… |
+| [`kit`](kit/) | drum | 61020 | 3 | Synthesized drum kit for the kick, snare, perc and sample tracks — no samples. Each of the 24 keys plays its own model, so one plug… |
 | [`lofi`](lofi/) | fx | 61102 | 37 | Worn tape and cheap converters for FX1 and FX2 (X-12): wow and flutter, a narrowing band, saturation, hiss and crackle, then bit and… |
 | [`mallet`](mallet/) | drum | 61022 | 39 | Modal percussion for the kick, snare, perc and sample tracks: marimba, xylophone, vibes, glockenspiel, steel drum, bells, gongs, glass… |
 | [`modal`](modal/) | synth | 61017 | 52 | Struck and bowed resonating bodies for the bass, lead, arp and chord tracks: mallets, bars, bells, glass, drums and bowed metal. Each… |
@@ -31,7 +31,7 @@ them on the website's synth lab; build your own with the [SDK quickstart](../sdk
 | [`resonator`](resonator/) | fx | 61003 | 53 | Tuned string resonator for FX1 and FX2. Whatever is sent to the FX track excites up to four strings: drums ring at the strings' pitch,… |
 | [`shift`](shift/) | fx | 61103 | 36 | Ring modulator and frequency shifter in one knob for FX1 and FX2 (X-10); keys on the FX track tune the carrier. |
 | [`shimmer`](shimmer/) | fx | 61008 | 44 | A lush stereo reverb with a **pitch shifter inside its loop**, the Eventide/Strymon "shimmer" sound, for **FX1 and FX2**. Every time the… |
-| [`snap`](snap/) | drum | 61025 | 74 | Noise-burst percussion for the kick, snare, perc and sample tracks — claps, finger snaps, rimshots, sticks, clave, woodblock, shakers,… |
+| [`snap`](snap/) | drum | 61025 | 33 | Noise-burst percussion for the kick, snare, perc and sample tracks — claps, finger snaps, rimshots, sticks, clave, woodblock, shakers,… |
 | [`spring`](spring/) | fx | 61101 | 38 | Dispersive spring reverb for FX1 and FX2 (X-08): two springs whose echoes chirp — the descending "drip" of a spring tank — and a tank… |
 | [`super`](super/) | synth | 61015 | 49 | JP-8000-style supersaw for the bass, lead, arp and chord tracks: seven band-limited saws detuned on the Roland JP-8000's non-linear… |
 | [`swarm`](swarm/) | synth | 61202 | 40 | Tonal noise and oscillator swarms for the bass, lead, arp and chord tracks. One knob (P1, **density**) goes from a few sparse particles… |

@@ -76,7 +76,7 @@ python3 tools/opz.py new wobble --kind synth
 |---|---|---|
 | `synth` | bass, lead, arp, chord | a sine → saw oscillator with a sub-octave, on the host's ADSR envelope |
 | `drum` | kick, snare, perc, sample | 24 pitched hits (sine with a pitch drop → noise), on the host's drum envelope |
-| `fx` | FX1, FX2 | drive into a soft clipper and a tone control, with TE's dry/wet and level conventions |
+| `fx` | FX1, FX2 | drive into a soft clipper and a tone control, with the SDK's dry/wet law, level and output limiter |
 
 The command creates `engines/wobble/`:
 
@@ -172,6 +172,9 @@ The simulator checks most of these and fails the test when one breaks; the full 
 - **Accept any parameter word** 0…0x7FFFFFFF and any `pitch`, in any order: derive indices with shifts or clamps.
 - **Saturate, never wrap**, and keep `onNoteOn`/`onNoteOff` short and safe to interrupt.
 - Peak level per voice at full velocity: **−12 dBFS** (`OPZ_VOICE_PEAK`).
+- **Apply the track's level and pan yourself** (instruments): the OS doesn't, and its FX sends are taken after the
+  engine. The templates do it with `opz_mix.h` (`opz_mix_start` in `onNoteOn`, `opz_mix_mono` at the end of `render`);
+  keep it, or the level and pan dials do nothing ([engine-abi.md §4](engine-abi.md#level-pan-and-the-sends)).
 
 ## 4. Build for the device
 

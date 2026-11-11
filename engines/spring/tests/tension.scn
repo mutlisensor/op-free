@@ -1,11 +1,11 @@
-# A guitar-like saw pluck pattern with P1 swept loose -> tight -> loose (the length glides) at 50/50.
+# A guitar-like saw pluck pattern with P1 swept loose -> tight -> loose (the length glides) with dry and springs at -3 dB each (pan 64).
 tempo 110
 steps 48
 tail 2
 track fx1
 input saw 165 0.4
 param p2 160
-param pan 128
+param pan 64
 param level 255
 gain 1
 sweep p1 0 255 0 24

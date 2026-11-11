@@ -59,12 +59,22 @@ exponentials per block, ramped over its 64 samples.
 Between the marks P1 moves the ratio linearly (0 → 128, then 128 → 255), passing through the ratios in between;
 P2 scales the sweep depth linearly (×P2/128) and the decay times exponentially (×2^(−2 … 0) below 128, ×2^(0 …
 1.5) above). The pitch-sweep time does not change with P2. filter, resonance: not used: they are the OS's own track
-filter, which runs after the engine. Presets leave it neutral (128, 0).
+filter, which runs after the engine. Presets leave it neutral (128, 0). pan, level: the track's pan and level
+(yellow and red dial, orange page), applied by the engine as TE's engines do (`opz_mix.h`): level is linear (128 =
+−6 dB, 0 = silent), pan a balance (centre: both sides full; hard left: right silent). The FX1/FX2 sends are taken
+after them. They follow the LFO (targets pan and volume) without zipping.
 
 **Velocity**: level (linear, like kit) and the index and feedback ×0.3 (softest) … ×1 (127): harder hits are
 brighter, soft hats and snares are tonal rather than noisy.
 
-Each hit ends itself at −72 dBFS and frees its voice; the OP-Z envelope is not used. A stolen voice (the host's
+**Envelope page** (green: attack, decay, sustain, release) and **note style**:
+
+| Control | Function |
+|---|---|
+| attack, decay, sustain, release | the OP-Z's drum envelope over each hit, as on TE's sample kits ([engine-abi.md](../../sdk/docs/engine-abi.md#the-drum-envelope-updateparametersahd), `opz_drumenv` in `opz_adsr.h`), read at the hit. **attack** moves the envelope's start into the hit: the hit gets shorter in proportion (on a sample it skips the start; a synthesized strike stays). **decay** fades the hit in, up to half its length (a swell: the peak drops as the natural decay runs underneath). **sustain** is how long it holds at full level: 255 the whole hit, 128 about half, 32 an eighth, 0 a click (12 ms). **release** fades it after the hold: below 128 the fade's length (0 a cut), from 128 the full length with the curve bending from a straight line to "hold, then drop". The presets' 0 / 0 / 255 / 0 leave every hit exactly as designed |
+| note style | **gate**: releasing the key fades the hit out in ~20 ms (the step length on a sequenced note); retrig, mono and loop play one-shots |
+
+Each hit ends itself at −72 dBFS and frees its voice, or when the envelope page ends it first. A stolen voice (the host's
 stage 5/6) fades out within one block (1.45 ms); a closed or pedal hat chokes an open hat or cymbal on the same
 track in ~30 ms.
 
@@ -108,15 +118,19 @@ Blackfin cycles in the GNU simulator (`tools/opz_cycles.py engines/fmperc`, [cyc
 | 8 hits in one block (8 keys / 8 open hats / octaves −2 … +2) | 72.6–86.9 | 86.9 |
 | knobs moving every block, period 8 / 40, 4 voices | 74.3 / 74.8 | 86.9 |
 
+The table is v2. **v3** applies the track's level and pan (`opz_mix.h`) and adds the envelope page and gate style
+(`opz_drumenv`): means 74–76 cycles/sample, worst block 96, note-on up to ~1,130 (`opz_cycles.py engines/fmperc`, the
+host's `updateParametersAHD` counted inside render as on the device).
+
 Every block of a hit costs the same: render does no per-hit setup, so the first block (and a retrigger's) is no
 dearer than the rest. Far under the 218/sample 19-voice budget (and under the ABI's 150 target). Note-on 600–820
 cycles. initModule 21.
 
 ## Size
 
-3,186 of 5,120 bytes in memory slot 80 (5 KB class): code, the 24 recipes (384 B), a 257-entry Q15 sine table
-(514 B, linearly interpolated: within −82 dB of a sine) and 144 B of `.bss` (the modulator block buffer, the choke
-counters). Voice state 60 B of 280. No 64-bit maths, division or float anywhere; `onNoteOn` at `-Os`.
+Plug 61021, version 3 (plug and engine) (applies the track's level and pan, `opz_mix.h`, and gains the envelope page and gate style, `opz_drumenv`). 4,564 of 5,120 bytes in memory slot 80 (5 KB class): code, the 24 recipes (384 B), a 257-entry Q15 sine table
+(514 B, linearly interpolated: within −82 dB of a sine) and 148 B of `.bss` (the modulator block buffer, the choke
+counters). Voice state 104 B of 280 (40 of them the envelope page). No 64-bit maths, division or float anywhere; `onNoteOn` at `-Os`.
 
 ## Checks
 

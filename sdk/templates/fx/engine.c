@@ -3,11 +3,12 @@
  *
  *   P1     drive   1x (0) -> 16x (255) into a soft clipper (1.5x - 0.5x^3)
  *   P2     tone    dark (0) -> open (255): a one-pole low-pass after the clipper
- *   pan    dry / wet, TE's balance law: wet = min(2p, 1), dry = min(2(1 - p), 1); the centre is both at full
+ *   pan    dry / wet, the SDK's FX law: 128 .. 255 the effect only (the OS's own dry level decides the dry, so a
+ *          track sent at 100 % passes fully through the effect), 0 .. 127 blends the dry in, 0 = dry only
  *   level  output level, times the FX track's mixer level and mute (`gain`)
  *
  * The template is the smallest complete effect: per-block parameter maths, a per-sample loop over interleaved
- * stereo, state that carries over between blocks, and the pan/level conventions of TE's effects. Rules:
+ * stereo, state that carries over between blocks, the SDK's dry/wet law and output limiter. Rules:
  * sdk/docs/engine-abi.md (§3 renderFX, §6 rules for engine authors).
  *
  * Ground rules: integers only (Q31 audio, 0x7fffffff = +1.0), opz_mul_q31 / opz_add_q31 in the loop, no division
@@ -15,7 +16,7 @@
  * needs more (a delay line) asks for a buffer with *memRequest and gets it as `mem` in init(); see engines/swirl for that pattern.
  * MIT licence, see CONTRIBUTING.md.
  */
-#include "opz_dsp.h"    /* opz_clip, opz_pq31, opz_p16, ... */
+#include "opz_dsp.h"    /* opz_clip, opz_pq31, opz_p16, opz_fx_wet_linear, opz_fx_out, ... */
 #include "opz_engine.h" /* the ABI */
 
 /* ---- per-FX-track state: OPZ_FX_STATE_BYTES (200), one per track the effect runs on ------------------------ */
@@ -72,11 +73,12 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
     fract32 p2 = opz_pq31(params[OPZ_P_P2]);
     fract32 a = opz_mul_q31(p2, p2);
     if (a < 0x00800000) a = 0x00800000;
-    /* dry/wet from pan, TE's law; output level from level x gain */
-    fract32 pan = opz_pq31(params[OPZ_P_PAN]);
-    fract32 wet = opz_shl_q31(pan, 1);                       /* min(2p, 1): the shift saturates */
-    fract32 dry = opz_shl_q31(0x7fffffff - pan, 1);          /* min(2(1 - p), 1) */
+    /* dry/wet from pan, the SDK's law. This wet is the input reshaped, so the linear form (opz_fx_wet_linear); an
+     * effect whose wet is unrelated to the input (reverb, delay, pitch) takes the equal-power opz_fx_drywet. The
+     * gains carry the output level (level x gain) and are halved: opz_fx_out sums at half scale and limits */
+    fract32 wet = opz_fx_wet_linear(params[OPZ_P_PAN]), dry = 0x7fffffff - wet;
     fract32 out_gain = opz_mul_q31(opz_pq31(params[OPZ_P_LEVEL]), gain);
+    fract32 dg2 = opz_mul_q31(dry, out_gain) >> 1, wg2 = opz_mul_q31(wet, out_gain) >> 1;
 
     /* ---- per sample ---- */
     for (int i = 0; i < OPZ_BLOCK_FRAMES; i++) {
@@ -84,8 +86,7 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
             fract32 x = in[2 * i + c];
             fract32 y = opz_clip(opz_shl_q31(opz_mul_q31(x, drive), 4));   /* x * gain, saturated, soft-clipped */
             s->lp[c] = opz_add_q31(s->lp[c], opz_mul_q31(a, opz_sub_q31(y, s->lp[c])));
-            fract32 mix = opz_add_q31(opz_mul_q31(dry, x), opz_mul_q31(wet, s->lp[c]));
-            out[2 * i + c] = opz_mul_q31(mix, out_gain);
+            out[2 * i + c] = opz_fx_out(x, s->lp[c], dg2, wg2);    /* never a hard clip above 0 dBFS */
         }
     }
 }

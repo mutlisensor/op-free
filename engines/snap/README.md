@@ -47,7 +47,8 @@ Knobs are read when a hit starts (like kit): turning them changes the next hit, 
 | velocity | — | — | level (linear); softer hits are up to ½ octave darker and their bursts quieter against the tail (×0.5 at velocity 0) |
 | octave buttons | | | each press moves the noise filter and the bodies by one octave (−2 … +2 presses; filter 30 Hz … 7.2 kHz, bodies up to 16 kHz) |
 | filter, resonance | not used: the OS's own track filter runs after the engine. Presets leave it neutral (128, 0) | | |
-| attack, decay, sustain, release | not used: every hit has its own envelopes | | |
+| pan, level | the track's pan and level (yellow and red dial, orange page), applied by the engine as TE's engines do (`opz_mix.h`, on the hit's stereo image): level is linear (128 = −6 dB, 0 = silent), pan a balance (centre: both sides full, the bursts' own spread intact; hard left: right silent). The FX1/FX2 sends are taken after them. They follow the LFO (targets pan and volume) without zipping | | |
+| attack, decay, sustain, release | not used: every hit has its own envelopes. The other drum engines got the envelope page in 2026-11 (`opz_drumenv`); snap was left out for want of room in its old 5 KB slot. Since v3 it sits in 10 KB slot 33, which has room for the helper (~0.6 KB): not done yet (drum-machines.md) | | |
 
 In detail, P1 changes the burst count by −2 (P1 0–51), −1 (52–102), 0 (103–153), +1 (154–204) or +2 (205–255); the
 spacing by 2^((P1 − 128) / 128); and the jitter to the model's jitter × P1 / 128 plus (P1 / 255)² × 0.375, which sets
@@ -102,11 +103,11 @@ models without a body (or once it has died away) run a cheaper loop.
 
 | | |
 |---|---|
-| Plug | 61025 v2 (engine v2), `trackmask` 0x0F (kick, snare, perc, sample), flags 24: P1 and P2 bipolar, a centre-detent cue at 128 ([host-tables-flags.md](../../research/host-tables-flags.md#recommended-flags-for-our-engines)) |
-| Memory slot | 74 (5 KB class): **5,016 of 5,120 bytes** on Blackfin (code and constants, no `.bss`; `onNoteOn` and the per-burst code at `-Os`) |
-| State | 152 B of the 280 B usable per voice; no globals but the callback pointer |
+| Plug | 61025 v3 (engine v3; v3: applies the track's level and pan), `trackmask` 0x0F (kick, snare, perc, sample), flags 24: P1 and P2 bipolar, a centre-detent cue at 128 ([host-tables-flags.md](../../research/host-tables-flags.md#recommended-flags-for-our-engines)) |
+| Memory slot | 33 (10 KB class), 5,644 bytes on Blackfin (code and constants, no `.bss`; `onNoteOn` and the per-burst code at `-Os`). v3 moved from 5 KB slot 74: the track's level and pan (`opz_mix.h`) took it 304 B past 5,120 |
+| State | 156 B of the 280 B usable per voice; no globals but the callback pointer |
 | Level | opzsim, velocity 120, P1/P2 128: every hit peaks at −12.0 dBFS or below; loudest 50 ms RMS: claps −19 … −23 dBFS (kit's clap −20.3), rim 909 −20.0 and rim 808 −24.5 (kit's rim −19.6), clave −18.6 (kit −16.7), shaker −20.5 (kit −20.0) |
-| CPU | Blackfin simulator (`opz_cycles.py engines/snap`), per voice: **noise-only models 93–102 cycles/sample** (claps, crowd, shakers, tambourines, guiro, brush swish); **models with bodies 153–163** (rims, sticks, clave, woodblock, slap; snaps and brush hit 105–153 as their body dies away first); worst block 169 (a burst with bodies). 24 voices at once (every key, P1/P2 255): 121 mean, 169 worst; retriggering 4 sounding voices every block: 111 mean. Knobs moving every block: 104–106. Note-on 2,100–3,300 cycles. All within the 218/sample 19-voice budget |
+| CPU | Blackfin simulator (`opz_cycles.py engines/snap`), per voice, v3: **noise-only models 98–107 cycles/sample** (claps, crowd, shakers, tambourines, guiro, brush swish); **models with bodies 159–168** (rims, sticks, clave, woodblock, slap; snaps and brush hit 110–159 as their body dies away first); worst block 174 (a burst with bodies). The track's level and pan (stereo) cost ~5 of them with the hand-scheduled `opz_mix.h` loops (~14 with the C loops; v2: 93–102 and 153–163, worst 169). 24 voices at once (every key, P1/P2 255): 126 mean, 174 worst; retriggering 4 sounding voices every block: 116 mean. Knobs moving every block: 110–111. Note-on 2,140–3,300 cycles. All within the 218/sample 19-voice budget |
 | Checks | 6 golden scenarios (all24, spread, decay, octaves, knobs, steal); `tests/fuzz.c` under UBSan + bounds: 10⁶ blocks × 8 voices of random hits, retriggers, NULL params, out-of-range notes, velocities and knob words, host fades and stage jumps, plus a P1 × P2 × note grid (11.3 M blocks): no report, no sample above −12 dBFS, every hit ends (≤ 4,500 blocks at P2 255, ≤ 12 blocks after a fade) |
 
 ## Credits

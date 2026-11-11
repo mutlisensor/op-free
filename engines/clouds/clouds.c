@@ -10,7 +10,8 @@
  *                              exponentially to 5 s (the grains pick their start anywhere in that stretch of the
  *                              past); the stereo spread grows to full width at 128. From 128 to 255 the cloud feeds
  *                              back into the ring (0 -> 0.8) and each grain is detuned at random (0 -> +-40 cents)
- *   pan       dry / wet        0 dry, rising linearly to fully wet at 128; 128 .. 255 stay fully wet (as plate)
+ *   pan       dry / wet        the SDK's FX law: 128 .. 255 the cloud only (the OS's dry level keeps the source);
+ *                              below 128 the dry blends in at equal power, 0 = dry only
  *   level     output level (x gain)
  *   pitch bend                 transposes new grains, +-2 semitones at full scale
  *   notes on the FX track      a note sets the pitch of every new grain relative to C4 (C3 = -1 octave, C5 = +1
@@ -34,10 +35,20 @@
  * between together with the grain's pan gain, so a grain costs one interpolated read and two multiply-adds per sample.
  * Grain onsets are sample-accurate, with random intervals of 0.5 .. 1.5 x the mean.
  *
+ * Time lock: while the sequencer plays, the onsets follow its clock instead (OpzClock, sdk/include/opz_tempo.h):
+ * one grain on every point of a grid of 1/64, 1/32, 1/16, 1/8, 1/4, 1/2 note or a bar, the one nearest P1's mean
+ * interval (at 120 BPM: P1 0..8 -> 1/2 notes, ..37 -> 1/4, ..66 -> 1/8, ..95 -> 1/16, ..124 -> 1/32, ..153 -> 1/64;
+ * slower tempos shift it towards shorter notes, faster ones reach a bar), so the cloud pulses with the pattern; grain
+ * length, reach, spread and pitch stay P1's, P2's and the notes'. Denser than 1/64 (P1 above 153 at 120 BPM) the cloud
+ * is a haze and stays free, as it does whenever the sequencer is stopped. The grid is
+ * aligned to the pattern start, and its points sit on sequencer ticks, so they land on a block start or inside a
+ * block the clock interpolates (block accuracy, 1.45 ms). Two divisions when the tempo changes, none per block.
+ *
  * Record path: input / 2 + feedback (the last block's wet sum, high-passed at 50 Hz, low-passed at 5 kHz, x P2's
  * feedback gain) -> soft saturator (unity when quiet, at most 0 dBFS) -> ring. Output: grain sum, one block late,
  * x a limiter that looks one block ahead (gain = knee / peak, ramped between block ends, ~90 ms release, so dense
- * coherent clouds and runaway feedback stay at or below -1 dBFS without a gain step) -> dry / wet mix.
+ * coherent clouds and runaway feedback stay at or below -1 dBFS without a gain step) -> dry / wet mix at half scale
+ * -> the SDK's output limiter (opz_limit_half: unity below -3 dBFS, a soft knee to 0 dBFS, never a hard clip).
  *
  * Freezing and unfreezing take 8 blocks (12 ms): grains that would read across the seam (freezing) or audio about to
  * be overwritten (unfreezing) fade out meanwhile, the recording fades out (or, after a thaw, in) so that the ring has
@@ -49,11 +60,13 @@
  * The filter and resonance knobs are the OS's own track filter (also on FX tracks); clouds never reads them.
  *
  * Clean-room design after the ideas of granular processors such as Mutable Instruments Clouds and Beads (MIT); no
- * code from either. Q15 ring, Q31 signals, no floating point, no libc, no 64-bit maths and no division (per-block
- * reciprocals by table and Newton steps). MIT licence, see CONTRIBUTING.md.
+ * code from either. Q15 ring, Q31 signals, no floating point, no libc, no 64-bit maths, and no division but the time
+ * lock's two 32-bit ones when the tempo changes (per-block reciprocals by table and Newton steps). MIT licence, see
+ * CONTRIBUTING.md.
  */
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_tempo.h"
 
 #define BLK             OPZ_BLOCK_FRAMES
 #define Q31_ONE         0x7fffffff
@@ -141,6 +154,10 @@ typedef struct State {
     uint8_t fb;                                 /* 32 - log2(len): fraction bits of a read position */
     uint8_t frozen, pend, started, nheld, ab;   /* ab: the grain sum being made */
     uint8_t held[HELD_MAX];
+    OpzClock clk;                               /* the sequencer's position, for the time lock */
+    uint32_t step_smp;                          /* samples per sixteenth at clk.bpm */
+    uint32_t smp_q16;                           /* samples per Q20 step of the position, Q16 (64 / clk.inc) */
+    int16_t lock_bpm;                           /* the tempo step_smp and smp_q16 were computed for */
 } State;
 
 _Static_assert(sizeof(State) <= OPZ_FX_STATE_BYTES, "FX state must fit in 200 bytes");
@@ -171,6 +188,7 @@ void init(void *state, uint32_t track, uint32_t arg2, void *mem, void *scratch)
     s->fb = (uint8_t)(32 - bits);
     s->seed = 0x2545f491u;
     s->lim = s->need = Q31_ONE;
+    opz_clock_init(&s->clk);
 }
 
 static int fold(int note)
@@ -465,10 +483,10 @@ static void record(State *s, const fract32 *in, int32_t g0, int32_t g1, int32_t 
     }
 }
 
-/* Output: dry x in + wet x the (limited) grain sum acc; the wet sum before level and pan is the next block's
+/* Output: wet x the (limited) grain sum acc, at half scale (the dry is added after); the wet sum before level and pan is the next block's
  * feedback. */
-ALWAYS_INLINE void output_run(Mem *m, const int32_t *acc, const fract32 *in, fract32 *out, int32_t lim, int32_t linc,
-                              int32_t dg, int32_t dinc, int32_t wg, int32_t winc, int limiting)
+ALWAYS_INLINE void output_run(Mem *m, const int32_t *acc, fract32 *out, int32_t lim, int32_t linc,
+                              int32_t wg, int32_t winc, int limiting)
 {
     for (int i = 0; i < BLK; i++) {
         int32_t l = acc[2 * i], r = acc[2 * i + 1];
@@ -480,19 +498,18 @@ ALWAYS_INLINE void output_run(Mem *m, const int32_t *acc, const fract32 *in, fra
         l = opz_shl_q31(l, 2);                                 /* Q29 -> Q31, saturating */
         r = opz_shl_q31(r, 2);
         m->fbk[i] = (l >> 1) + (r >> 1);
-        int32_t d16 = dg >> 16, w16 = wg >> 16;
-        out[2 * i] = opz_add_q31(opz_mul_q31_q15(in[2 * i], d16), opz_mul_q31_q15(l, w16));
-        out[2 * i + 1] = opz_add_q31(opz_mul_q31_q15(in[2 * i + 1], d16), opz_mul_q31_q15(r, w16));
-        dg += dinc;
+        int32_t w16 = wg >> 16;                                /* the cloud at half scale; renderFX adds the */
+        out[2 * i] = opz_mul_q31_q15(l, w16);                  /* dry and limits */
+        out[2 * i + 1] = opz_mul_q31_q15(r, w16);
         wg += winc;
     }
 }
 
-static void output(Mem *m, const int32_t *acc, const fract32 *in, fract32 *out, int32_t lim, int32_t linc,
-                   int32_t dg, int32_t dinc, int32_t wg, int32_t winc)
+static void output(Mem *m, const int32_t *acc, fract32 *out, int32_t lim, int32_t linc,
+                   int32_t wg, int32_t winc)
 {
-    if (lim == Q31_ONE && linc == 0) output_run(m, acc, in, out, lim, linc, dg, dinc, wg, winc, 0);
-    else output_run(m, acc, in, out, lim, linc, dg, dinc, wg, winc, 1);
+    if (lim == Q31_ONE && linc == 0) output_run(m, acc, out, lim, linc, wg, winc, 0);
+    else output_run(m, acc, out, lim, linc, wg, winc, 1);
 }
 
 /* This block's grain sum, and the limiter gain to reach by the end of the block that plays now (the last one's sum,
@@ -528,11 +545,12 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
     State *s = state;
     Mem *m = s->m;
 
-    /* dry / wet (0 dry .. 128 wet, then wet) and level, ramped over the block */
-    int32_t pan = opz_pq31(params[OPZ_P_PAN]);
-    int32_t wet = pan >= 0x40000000 ? Q31_ONE : pan * 2;
+    /* dry / wet (the SDK's FX law: 128 .. 255 the cloud only, below it the dry blends in at equal power) and
+     * level, at half scale for the output limiter, ramped over the block */
+    int32_t dry, wet;
+    opz_fx_drywet(params[OPZ_P_PAN], &dry, &wet);
     int32_t og = opz_mul_q31(opz_pq31(params[OPZ_P_LEVEL]), gain);
-    int32_t dg1 = opz_mul_q31(Q31_ONE - wet, og), wg1 = opz_mul_q31(wet, og);
+    int32_t dg1 = opz_mul_q31(dry, og) >> 1, wg1 = opz_mul_q31(wet, og) >> 1;
     int32_t dinc = (dg1 - s->dg) >> 6, winc = (wg1 - s->wg) >> 6;
 
     if (!m || !s->started || s->cleared < (s->len + GUARD) / 2) {  /* no buffer, or still clearing it: dry only */
@@ -551,8 +569,8 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
         }
         int32_t dg = s->dg;
         for (int i = 0; i < BLK; i++) {
-            out[2 * i] = opz_mul_q31(in[2 * i], dg);
-            out[2 * i + 1] = opz_mul_q31(in[2 * i + 1], dg);
+            out[2 * i] = opz_limit_half(opz_mul_q31(in[2 * i], dg));
+            out[2 * i + 1] = opz_limit_half(opz_mul_q31(in[2 * i + 1], dg));
             dg += dinc;
         }
         s->dg = dg1;
@@ -610,19 +628,49 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
     } else s->rec = 0;
     s->gfb = gfb1;
 
-    /* grain onsets: random intervals of 0.5 .. 1.5 x the mean; a long wait shortens when P1 asks for more */
-    if (s->next > mean + (mean >> 1)) s->next = mean + (mean >> 1);
-    int spawned = 0;
-    while (s->next < BLK) {
-        if (spawned < MAX_SPAWN) spawn(s, &p, s->next, want);
-        spawned++;
-        s->next += (mean >> 1) + (int32_t)opz_mul_u32_shr16((uint32_t)mean, rnd(s));
+    /* grain onsets. Time lock: while the sequencer plays, one on every point of the tempo grid nearest the mean
+     * interval (n = log2 of the grid in sixteenths, -2 .. 4) */
+    int n = -3;                                                /* -3: free */
+    if (s_cb) {
+        opz_clock_block(&s->clk, s_cb);
+        if (s->clk.bpm != s->lock_bpm) {                       /* the two divisions, only on a tempo change */
+            s->lock_bpm = s->clk.bpm;
+            s->step_smp = opz_samples_per_step(s->clk.bpm);
+            s->smp_q16 = ((uint32_t)BLK << 16) / (s->clk.inc ? s->clk.inc : 1);
+        }
+        if (s->clk.playing) {
+            uint32_t r2 = (s->step_smp * 46341u) >> 16;        /* a sixteenth / sqrt 2: the 1/16 grid's lower edge */
+            uint32_t mn = (uint32_t)mean;
+            if (mn >= r2 >> 2)
+                for (n = 4; n > -2 && mn < (n >= 0 ? r2 << n : r2 >> -n); n--) {}
+        }
     }
-    s->next -= BLK;
+    int spawned = 0;
+    if (n > -3) {
+        uint32_t sh = (uint32_t)(20 + n), pos = s->clk.pos, inc = s->clk.inc;
+        uint32_t g = (pos + (1u << sh) - 1u) & ~((1u << sh) - 1u);   /* the first grid point at or after pos */
+        for (; g - pos < inc; g += 1u << sh) {
+            int32_t at = (int32_t)(((g - pos) * s->smp_q16) >> 16);
+            if (at > BLK - 1) at = BLK - 1;
+            if (spawned < MAX_SPAWN) spawn(s, &p, at, want);
+            spawned++;
+        }
+        s->next = mean >> 1;                                   /* unlocking: the free onsets start soon */
+    } else {
+        /* free: random intervals of 0.5 .. 1.5 x the mean; a long wait shortens when P1 asks for more */
+        if (s->next > mean + (mean >> 1)) s->next = mean + (mean >> 1);
+        while (s->next < BLK) {
+            if (spawned < MAX_SPAWN) spawn(s, &p, s->next, want);
+            spawned++;
+            s->next += (mean >> 1) + (int32_t)opz_mul_u32_shr16((uint32_t)mean, rnd(s));
+        }
+        s->next -= BLK;
+    }
 
     /* the grains, one after the other, then the limiter and the output */
     int32_t lim1 = grains(s);
-    output(m, m->acc[s->ab ^ 1], in, out, s->lim, (lim1 - s->lim) >> 6, s->dg, dinc, s->wg, winc);
+    output(m, m->acc[s->ab ^ 1], out, s->lim, (lim1 - s->lim) >> 6, s->wg, winc);
+    opz_fx_finish(out, in, s->dg, dg1);                        /* + the dry, through the SDK's limiter */
     s->ab ^= 1;
     s->lim = lim1;
     s->dg = dg1;

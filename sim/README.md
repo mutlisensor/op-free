@@ -54,7 +54,7 @@ Exit codes: `0` ok, `1` usage or I/O, `2` engine refused (missing export, both o
 | Effects: `renderFX` in place on stereo buffers; `pitchBend` = cents / 200 in Q31; `gain` from the scenario | in place [code, app]; bend scale [idea] |
 | FX `mem`: the engine's `memRequest`, capped at the track's pool (FX1 2 MB, FX2 256 KB, tape 2 MB, master 16 KB, from `opz_engine.h`). It starts filled with `0x5a`, not zeros: the pool is reused between plugs | pool sizes [code, device]; fill [idea] |
 | Events are applied at the first block boundary at or after their time | [idea] |
-| The instrument mix is not panned or levelled; LFO, portamento and vibrato are not modelled. The OS smooths only params 0–11 (with its own rounding), lets 12–17 jump, latches all 18 at every note-on and passes 1024 on drum tracks: opzsim differs in all four ([param-paths.md](../research/param-paths.md); the cycle driver's streams, `tools/opz_params.py`, model them) | — |
+| The host applies no level or pan to an instrument track, as the OS doesn't: the engine applies `params[11]`/`[10]` itself (`opz_mix.h`; golden.py checks every instrument engine: level 128 = half, pan 0/255 = one side silent, level 0 = silent) [code, app + device; engine-abi.md §4]. The mixer's track and group gains are not modelled, and `--fx` feeds the effect the whole instrument mix (a 100 % send, no dry path). LFO, portamento and vibrato are not modelled. The OS smooths only params 0–11 (with its own rounding), lets 12–17 jump, latches all 18 at every note-on and passes 1024 on drum tracks: opzsim differs in all four ([param-paths.md](../research/param-paths.md); the cycle driver's streams, `tools/opz_params.py`, model them) | — |
 
 ### Fake `ModuleCallbackInterface`
 
@@ -160,20 +160,25 @@ the model of the ABI document's "Sequencer keys" block for block through play, s
 
 ## Web simulator
 
-`sim/web` plays engines in the browser with this host, in three sections: a **synth** (an instrument on its track)
-and an **effect on FX1** and one **on FX2**, each with its engine (or none), presets and knobs (P1/P2 with the plug's
-names); an effect section lists only the effects whose trackmask has its track. The keyboard (computer keys,
-on-screen, Web MIDI) plays the synth; the synth track's FX1 send (byte 6) and FX2 send (byte 7) feed the two
-effects, shown as each effect section's *Send* knob next to that effect's *Dry level* (byte 12). An effect can run
-on a generator instead (saw, sine, noise, sweep, impulses), as both do with no synth. Below: scope and meter, the host checks per section,
-and each engine's scenarios. Setup:
+`sim/web` plays engines in the browser with this host: **eight instrument tracks** (kick … chord, OP-Z tracks 1–8,
+each its own engine or none) and an **effect on FX1** and one **on FX2**, each with presets and knobs (P1/P2 with the
+plug's names); a section lists only the engines whose trackmask has its track. A strip of track tabs shows each
+track's engine, MIDI channel, activity and level; the keyboard (computer keys, on-screen) plays the selected track.
+**Web MIDI plays every track on its own channel** (OP-Z default: track + 1), so an OP-Z drives the page
+multitimbrally, and its dial CCs move the matching knobs (`sim/web/src/midimap.ts`; MIDI learn for any other
+control; a virtual OP-Z for trying it offline; evidence and the device check in
+opz-as-controller.md). Each track's FX1 send (byte 6) and FX2 send (byte 7)
+feed the two effects, shown as each effect section's *Send* knob (the selected track's) next to that effect's *Dry
+level* (byte 12). An effect can run on a generator instead (saw, sine, noise, sweep, impulses), as both do with no
+instrument. Below: scope and meter, the host checks for the selected track and the effects, and their scenarios.
+Setup:
 [QUICKSTART.md](../sdk/docs/QUICKSTART.md#play-it-in-the-browser).
 
 ```bash
 make -C sim wasm                      # sim/build/wasm/engines/NAME.wasm, templates/{synth,drum,fx}.wasm
 npm --prefix sim/web run dev          # http://localhost:5174 (the `websim` entry in .claude/launch.json)
 npm --prefix sim/web test             # every scenario in wasm against the golden hashes, live = scenario
-npm --prefix sim/web run test:e2e     # headless Chrome: templates, swirl, fm2, kit by keyboard; synth through FX1/FX2
+npm --prefix sim/web run test:e2e     # headless Chrome: templates, swirl, fm2, kit by keyboard; tracks through FX1/FX2; MIDI routing and learn
 ```
 
 How it is built:
@@ -191,8 +196,9 @@ How it is built:
   `host_event` / `host_set_param` (a preset loads unsmoothed, a knob is smoothed per block), and each block runs
   `host_block` with the add check and the state guards on. `sim/web/test/live.test.ts` replays scenarios through
   this path and gets the same samples as the scenario render.
-- **Synth through FX1 and FX2**: up to three modules, each with its own host. Per block the synth renders; each
-  send feeds its effect's input (`IN_EXTERNAL`), in parallel, and the dry path is added to both returns
+- **Tracks through FX1 and FX2**: up to ten modules, each with its own host. Per block every instrument track
+  renders; each track's sends are summed into each effect's input (`IN_EXTERNAL`), in parallel, and the tracks' dry
+  paths are added to both returns
   (`sim/web/src/mixer.ts`). The mixer is the web simulator's model, not opzsim's: a send **crossfades** (raising it
   moves the synth from the dry path into that effect [proven, engine-abi.md]), an effect's byte 12 at 255 keeps the
   dry path (send/return) [code, app; plug-format.md], the returns get no pan or level [code, app]; the curves are
@@ -210,8 +216,8 @@ Differences from the CLI:
 | Static size check | Mach-O estimate | not measured (prints so); `tools/opz_build.py` measures the device build |
 | Host CPU | `clock_gettime` | WASI clock: `performance.now()` on the page; Chrome's AudioWorklet has only `Date.now()`, so live figures are averages since load. Neither is Blackfin cycles (`tools/opz_cycles.py`) |
 | `input sweep` (live) | once over the scenario | repeats every 4 s |
-| Engines per run | `-e` plus `--fx` (the instrument mix straight into the effect) | one per module; live, a synth and effects on FX1 and FX2 through the send model above (`--fx` scenarios are not run in the page; none of the goldens use it) |
-| Tracks (live) | every track a scenario names | the synth's track, FX1 and FX2 |
+| Engines per run | `-e` plus `--fx` (the instrument mix straight into the effect) | one per module; live, up to eight instruments and effects on FX1 and FX2 through the send model above (`--fx` scenarios are not run in the page; none of the goldens use it) |
+| Tracks (live) | every track a scenario names | tracks 1–8 (one engine each), FX1 and FX2 |
 
 ## Adding an engine
 

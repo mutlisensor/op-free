@@ -14,6 +14,7 @@ A synth for the bass, lead, arp and chord tracks: one oscillator from sine to sa
 | P2 **sub** | sine one octave below: off (0) → as loud as the main oscillator (255) |
 | Envelope | the host's ADSR (attack, decay, sustain, release knobs) |
 | Filter / resonance | the OP-Z's own track filter (the engine doesn't read them) |
+| Pan / level | the track's pan and level dials, applied by the engine at the end of each block (`opz_mix.h`; the OS does not apply them, and the FX sends are taken after them) |
 | Level | −12 dBFS per voice at velocity 127 with the sub off, up to −6 dBFS with it full |
 | State | 12 of 280 bytes per voice |
 | CPU | fill in from `python3 tools/opz_cycles.py engines/my_engine` (cycles per sample per voice; budget ~167) |

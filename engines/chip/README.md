@@ -16,6 +16,7 @@ the top octave of high notes. The OP-Z's own track filter (the filter and resona
 | velocity | the console's 4-bit volume: 16 linear steps (127 → 15/15, 64 → 8/15, the softest notes 1/15) |
 | attack … release | the OP-Z envelope |
 | filter, resonance | not used: they are the OS's own track filter, which runs after the engine. Presets leave it neutral (128, 0) |
+| pan, level | the track's pan and level (yellow and red dial, orange page), applied by the engine as TE's engines do (`opz_mix.h`): level is linear (128 = −6 dB, 0 = silent), pan a balance (centre: both sides full; hard left: right silent). The FX1/FX2 sends are taken after them. They follow the LFO (targets pan and volume) without zipping |
 
 ### P1 wave
 
@@ -144,10 +145,10 @@ shape 0). Chord presets sit lower in level because four voices add up. Names fit
 
 | | |
 |---|---|
-| Plug | 61203, `trackmask` 0xF0 (bass, lead, arp, chord), version 1, engine version 1 |
-| Memory slot | 81 (5 KB class): **3,392 of 5,120 bytes** on Blackfin (3,040 B code, tables and data, 352 B `.bss`: the 171 running-integral entries, built in `initModule`) |
-| State | 32 B of the 280 B the OS leaves per voice; `memRequest` 0, no libgcc, no 64-bit maths, division or float |
-| CPU | Blackfin simulator ([cycle-model.md](../../research/cycle-model.md), `tools/opz_cycles.py engines/chip`): **61–62 cycles/sample/voice** (3,900–4,000 per block) for every table wave, arpeggio, vibrato and sweep, with 4 or 19 voices, with P1/P2 moving every block, in release; noise 37–45. Worst: noise on C7–C8 with an octave arpeggio (an LFSR step every sample), 81 mean, 83 worst block. 19 voices ≈ 76,000 cycles per block against the OS's 265,000. Note-on 68 cycles. A stolen voice's fade (a few blocks) steps the envelope exactly per sample, as in `vowel` (not in the cases) |
+| Plug | 61203, `trackmask` 0xF0 (bass, lead, arp, chord), version 2, engine version 2 (v2: applies the track's level and pan) |
+| Memory slot | 81 (5 KB class): **3,956 of 5,120 bytes** on Blackfin (3,604 B code, tables and data, 352 B `.bss`: the 171 running-integral entries, built in `initModule`) |
+| State | 36 B of the 280 B the OS leaves per voice; `memRequest` 0, no libgcc, no 64-bit maths, division or float |
+| CPU | Blackfin simulator ([cycle-model.md](../../research/cycle-model.md), `tools/opz_cycles.py engines/chip`): **59–62 cycles/sample/voice** (3,820–3,980 per block) for every table wave, arpeggio, vibrato and sweep, with 4 or 19 voices, with P1/P2 moving every block, in release; noise 40–42. Level and pan cost nothing net with the hand-scheduled `opz_mix.h` loops, which are ~2 cheaper than v1's own output loop (with the C loops they cost ~6–9; v1: 61–62, noise 37–45). Worst: noise on C7–C8 with an octave arpeggio (an LFSR step every sample), 79 mean, 81 worst block. 19 voices ≈ 75,600 cycles per block against the OS's 265,000. Note-on 88 cycles. A stolen voice's fade (a few blocks) steps the envelope exactly per sample, as in `vowel` (not in the cases) |
 
 Checks: `tests/fuzz.c` (UBSan with bounds: tables zero-sum and in range, the averaging exact against a double
 reference over 200,000 random intervals, 300,000 fuzz blocks with random notes, velocity 0–255, `params` NULL in

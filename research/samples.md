@@ -151,7 +151,9 @@ under both rounding and truncation). It reads TE's `UserSampler.aif` cleanly (24
 - **Storage**: content mode sums the files in `samplepacks/user/` ("Calculating used sample memory") and refuses an
   import past 24 MB (`0x1800000`, "Can't import %s, sample memory full"); the sampler checks `used + 1 MB < 24 MB`
   before recording (`FUN_8003377c`) [code]. Factory packs are not counted. **The file service's `write` checks
-  nothing** — our tools must keep count. The NAND's real free space is unknown.
+  nothing** — our tools must keep count. The NAND is not the limit: 512 MB, of which 55.3 MB were used on the user's
+  unit on 2026-11-02 (270 files: factory packs 18.8 MB, user samples 7.8 MB, every engine file together 298 KB)
+  [proven: H-U1 listing, `dumps/os-read-20261102/listing.txt`, and statistics in update-console.md §8].
 - **Transfer**: a 12-s pack is 1 MB = ~5,300 file-service parts of 200 bytes; the part index is 16-bit (13 MB max).
 
 ## 5. From plug to sound (Q-27)
@@ -204,6 +206,63 @@ the plug and its sample" now has its mechanism.
 unassigned user sample"); then a walk of `samplepacks/user/` with `FUN_800364c4` deletes every file no plug names
 ("Remove unused sample pack") [code]. Plugs with flags 0 (TE's and ours) are not dropped, and a file named by any
 plug stays. Normal boots don't run it (the only callers are in content mode).
+
+### The content-mode import, slot by slot (Q-53, 2026-11-11)
+
+What the OP-Z does with a backup of its disk copied back on, from `opz.ldr` 1.2.45 (offline; much of this code was
+never disassembled in the saved Ghidra project, so callers were found by decoding `CALL`s in the LDR blocks). What a
+user sees and how to restore without a factory reset: docs/roadmap/restore-space.md.
+
+**What content mode puts on the disk** (`0x8003760c` → `0x800365c8`) [code]: a fresh FAT of `0x2100000` bytes (33 MB)
+in RAM; per slot folder `samplepacks/<n>-<track>/<NN>/` a **full copy** of the pack when its plug id is above 199
+(the user's samples, our `opzk_` packs), a **0-byte `~<basename>`** for TE's factory packs and repeats, and a
+**0-byte `~<id>.engine`** for a plug with no pack (any engine, TE's and ours). The placeholder name goes through a
+12-byte buffer (`0x800360a8`), so ours read `~61020.engi` [proven: the user's `import.log`]. Also `projects/` (342,848
+bytes each [proven]), `config/` (`json|dat`), `bounces/`, `rejected/`, the readmes and `import.log`. **Our engines
+take no room on the disk and none of the 24 MB** [code]. A write failure during this export only prints to the
+console (`0x8002e934`) [code].
+
+**The eject** (`0x80038cd8`) [code]: **pass 1** (`0x80038174(1)`) assigns `.engine` placeholders and clears every slot
+whose folder no longer matches; then the cleanup above (`0x800ffc88`, delete walk `0x800364c4`) and, if anything was
+deleted, a recount of `samplepacks/user/` (`0x80039154` → `0x80037bc0`); "Calculating used sample space…"; **pass 0**
+(`0x80038174(0)`) imports and assigns; the folder syncs; "Rebuilding plug definitions"; cleanup and delete walk again.
+Every boot also recounts the used space (`0x8002d240` → `0x80037bc0`).
+
+**Per slot folder** (`0x80038174`; files filtered `wav|aif|aiff|engine`, names starting with `.` skipped) [code]:
+
+| Folder holds | Result |
+|---|---|
+| a file (any `~` stripped) named like the slot's pack now, or, for a TE plug with no pack (id ≤ 200), its `~<id>.engine` | **unchanged**: nothing else in the folder is looked at, no log line (`0x80036108`, `0x80036298`). `0x80036298` returns 0 at once for ids above 200, so a slot holding one of **our** plugs is never "unchanged" and is re-assigned twice per eject (each pass rewrites the slot map) |
+| `~<id>.engine` | "assigning …" in both passes; the id is **not checked** against the installed plugs (`0x80036014`), so a placeholder for a plug that is gone puts a dangling id in the slot [code; silent slot inferred] |
+| a sample file whose name (`~` stripped) an installed plug's `samples` names (`samplepacks/<name>` or `samplepacks/user/<name>`, `0x800fd798`) | "assigning …", no space added; **but the 24 MB check runs first, at the disk file's full size** |
+| any other sample file | "importing …": `0x80037df4` writes `samplepacks/user/<stem>.aif` and `addUserPlug` makes a flag-2 plug; the used space grows by the **disk file's** size (more than stored for WAV, stereo or 24-bit) |
+| nothing handled, folder present | "clearing …": the slot is emptied (a plug of flags 0 stays installed) |
+| folder missing | "not found, ignoring" (pass 1): slot unchanged |
+
+The first sample that imports or assigns ends the folder; a failed one moves on to the next file. A pack placed next
+to our placeholder wins if it imports; if it fails, our engine stays (pass 1 assigned it) [code; listing order
+inferred].
+
+**Three limits, all silent on the device:**
+
+- **Sample memory, 24 MB** (`0x1800000`): `used + file size > limit` logs "Can't import %s, sample memory full" and
+  ends that folder; the file is **not** moved to `rejected/`, the slot stays as pass 1 left it [code]. `used` counts
+  every user sample still in a slot the restore leaves alone. The packs a restore replaces are dropped and recounted
+  before pass 0, so they are not counted twice [code].
+- **Plug definitions, 200** (`0x80045ac8`, stride `0x7ac`): `addUserPlug` (`0x800ff9e8`) logs "plug count full" to
+  the system log only and returns; `0x80037df4` still reports success (`0x80037fc4`–`0x80037fd8`), so `import.log`
+  says "SUCCESS. New used space", and the next delete walk removes the file: **the sample is gone and the slot is
+  empty** [code]. TE's plugs, ours and the user's samples share the table; the user's unit had 76 (49 TE, 18 ours, 9
+  samples) on 2026-11-01 [proven].
+- **The disk, 33 MB**: it already holds the device's own user samples (full copies), the projects and `config/`
+  before anything is copied on. Whether Finder needs room for the whole copy before it replaces files, and whether
+  deleted files stay in `.Trashes` on the volume, is host behaviour: hardware check H-RS3 in
+  restore-space.md.
+
+**`import.log`**: the lines go to `/yaffs2/logs/import01–09.log` (1 KB each, rotated; `0x80129808`); content mode
+joins them into the disk's `import.log` at the **next** entry (`0x801295a4`, `0x8003760c`) [code; proven: the file
+in `backups/20261101T162735Z-contentmode`]. Its oldest lines can come from the previous OS: "Copying file … New used
+space" is not in 1.2.45 [code].
 
 ### Route B: `opz.py samples` (implemented, `--fake` tested)
 

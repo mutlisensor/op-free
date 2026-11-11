@@ -154,8 +154,9 @@ What an instrument's `render` does, from `Fm::render` in the app [code]:
 1. If `env->stage == 0` (offset `+16`), return at once: the voice is idle.
 2. Once per block, call `cb->updateParametersADSR(env, params[2], params[3], params[4], params[5])` (attack,
    decay, sustain, release). It moves the envelope between stages and sets its per-sample coefficients.
-3. For each of the 64 frames: compute the sample, multiply by `env->level` (`+4`, Q31), add into `out[i]` with
-   saturation, advance the phase by `pitch` (+ `pitchSlope`), and step the envelope (below).
+3. For each of the 64 frames: compute the sample, multiply by `env->level` (`+4`, Q31) and by the track's level and
+   pan gains (§4, [Level, pan and the sends](#level-pan-and-the-sends): the OS does not apply them), add into
+   `out[i]` with saturation, advance the phase by `pitch` (+ `pitchSlope`), and step the envelope (below).
 4. **The host frees the voice when `env->stage` reaches 0** (`Voice::renderVoice` checks it after every
    `render`). An engine that never lets its envelope finish holds the voice forever.
 
@@ -228,6 +229,14 @@ frames), [5] = decay: below 50 % its length grows to the rest of the sound with 
 length is full, `coef = 1` and `shape = 2·p − 1` bends the line into "hold, then drop". A synthesized drum engine
 picks a length, keeps a position counter and gets the same knobs and voice freeing as TE's drum tracks.
 
+**`opz_drumenv`** (`opz_adsr.h`) packages this for a synthesized one-shot whose own decays end it: the engine passes
+its hit's natural length at note-on, calls `opz_drumenv_block` once per block and multiplies its output by the
+returned gain ramp (exactly 1.0, or the engine's own gain, while the envelope holds, so the presets' 0 / 0 / 255 / 0
+change nothing). Gate style (`params[17] >> 29 == 2`) fades the hit on key release through stage 5, as TE's drum
+player does. The hold is **stage 7**: an engine that treats every stage ≥ 5 as a voice steal must test for 5 or 6
+(`OPZ_DRUMENV_STOLEN`). Used by `kit`, `hats`, `fmperc`, `8bit` and `mallet`; what each knob then does to a
+synthesized hit is measured in drum-machines.md [sim; device check Q-85].
+
 ### `renderFX` — effects, once per FX track per block
 
 ```c
@@ -256,12 +265,36 @@ its 5th argument; **proven on hardware 2026-10-17**: a passthrough that left `ou
 - The OP-Z's track sends crossfade: raising a track's FX send moves its signal from the dry path into the FX
   track, so an effect returning silence makes the sound fade out as the send goes up [proven].
 - `gain`: the FX track's mixer level × mute (Q31; `0x7fffffff` on master) [code, device `0x801196ce`]. An engine
-  that ignores it ignores the mixer's level and mute for its track. `crush` multiplies `params[11]` (level) by it for the output level, and uses
-  `params[10]` (the "pan" slot) as a **dry/wet balance**: wet = `min(2·p, 1)`, dry = `min(2·(1 − p), 1)`.
-  New effects should follow the same convention so the FX track's pan/level knobs behave like TE's. **[manual p.6, 21]:** 1.2.26
-  added a "dry mix" setting to all FX plugs (our pan = dry/wet), but the manual's parameter chart draws only one page
-  (P1, P2, filter, resonance) for FX tracks even though the text gives them an LFO and send editing: which page holds pan and
-  level on an FX track is a hardware check ([manual-notes.md §3](../../research/manual-notes.md#3-parameter-pages-and-the-18-parameters)).
+  that ignores it ignores the mixer's level and mute for its track. TE's `crush` multiplies `params[11]` (level) by
+  it for the output level, and uses `params[10]` (the "pan" slot) as a **dry/wet balance**: wet = `min(2·p, 1)`,
+  dry = `min(2·(1 − p), 1)`, both at full in the centre [code, app].
+- **Dry/wet law for our effects (2026-11-11, replaces "follow crush"):** pan 128 … 255 returns **the effect only**,
+  0 … 127 blends the engine's own dry in, 0 = dry only (`opz_fx_drywet` in `opz_dsp.h`: equal power, for a wet
+  signal unrelated to the dry; `opz_fx_wet_linear`: the same end points as a linear crossfade, for a wet that is the
+  input reshaped — filter, compressor, phaser, stutter). Why: the OS already has a dry control, the FX track's dry
+  level (byte 12, the manual's "dry mix" [manual p.6]), applied to every sending track as `1 − (1 − dry)·send`
+  [code, app; routing.md §1], and a preset never sets pan [code, app `applyPreset`; presets.md], so pan sits where it
+  was. On the device nothing reaches an FX track's pan at all (no dial page, app control or mixer column), and it
+  reads 127 [proven, H-FX1 2026-11-11]: the centre is what every player hears, and under our law it is the effect
+  only (byte 127 leaves the dry 44 dB down equal-power, 48 dB linear). With
+  crush's law a centred pan adds a second, full dry signal to the return: in send/return use (dry level 255) the
+  source doubles (+6 dB with `echo`; likely the clipping testers heard [inferred]), and at a full send with dry
+  level 0 the dry level control does nothing [measured in opzsim, 2026-11-11: fx-usability.md]. With ours the
+  centre is the full effect and the dry level alone decides the dry. `swirl` keeps a 50/50 centre, since a phaser's
+  sound *is* dry plus all-passes; 255 there is the all-passes alone.
+- **Output headroom:** `out` is Q31, so a sum above full scale is a hard clip. Sum dry and wet at half scale and
+  pass the result through `opz_limit_half` (unity below −3 dBFS, a soft knee to 0 dBFS reached at +2.2 dBFS);
+  `opz_fx_out(x, y, dry/2, wet/2)` does both per sample; `opz_fx_finish(out, in, dry0/2, dry1/2)` does it for the
+  block after the sample loop has written the wet at half scale (cheaper: the dry is skipped at pan 128–255). Keep
+  internal feedback paths and all-pass chains below full scale for the loudest input they can get (a full-scale
+  send, or several tracks' sends summed) [measured: fx-usability.md §2].
+- **[manual p.6, 21]:** 1.2.26 added a "dry mix" setting to all FX plugs; the manual's parameter chart draws only
+  one page (P1, P2, filter, resonance) for FX tracks even though the text gives them an LFO and send editing.
+  **On the device** [proven, H-FX1 2026-11-11, fx-usability.md §6]: an FX track has two dial pages, P1 · P2 ·
+  filter · resonance and the LFO's depth · speed · target · shape; **the dry level is hold the FX track's key + red
+  dial** (byte 12, the synth tracks' portamento gesture; TE's app shows it as "dry level"); no control reaches pan
+  or level. So the dry level is the player's dry/wet control, and an engine's pan law matters only for tools that
+  set pan.
 
 ## 4. Parameters
 
@@ -299,11 +332,76 @@ Engines own **only P1 and P2**. The filter knob is the OS's own bipolar track fi
 low-pass one way, high-pass the other, cutting to silence at the ends — on instrument **and FX** tracks; resonance
 belongs to it too [proven: FX1 with `swirl`, and the test sine]. Don't reuse `params[8]`/`[9]`. **The OS filters every instrument track itself after the engine** (`trackFilterProcess`
 and a DC blocker in the app; on hardware the filter knob changed our test sine, which ignores it) [code, proven], and
-it also runs the envelope stages, LFO, sends, pan and level (see
-[02 — The sound engine host](../../research/architecture/02-sound-engine-host.md#parameters)). An engine that also filters on
+it also runs the envelope stages and the LFO and takes the FX sends from the track buffer after the engine (see
+[02 — The sound engine host](../../research/architecture/02-sound-engine-host.md#parameters)). **Level and pan are not the
+OS's**: the engine applies them ([below](#level-pan-and-the-sends)). An engine that also filters on
 `params[8]`/`[9]` filters twice — unless its plug sets **flag `0x04`**, which turns the OS filter off for that
 track so the knobs are the engine's (TE's `analoga`; [plug-format.md](plug-format.md#plug-fields)). The OS filter is
 an RBJ biquad from the `rFilterCoeffs` tables (§5); `opz_host_rf_lookup_os` gives an engine the same response. The LFO can target P1/P2 (fastest: 8 blocks per cycle, depth up to 95 % of the range), so these two should respond smoothly at block rate.
+
+### Level, pan and the sends
+
+Found 2026-11-11 from tester reports ("level does nothing", "I can't turn the volume down", "the send knob does
+nothing" on our synths). Found offline; on the device, level, pan and an LFO on volume work on `modal` v2 as
+described here, and the FX sends follow the level dial [proven, by ear, H-M1 steps 5–8, 2026-11-11].
+
+**The OS does not apply an instrument track's `params[11]` (level) or `params[10]` (pan). Every TE instrument applies
+both itself in `render`**, so an engine that ignores them has dead level and pan dials:
+
+- *TE's engines read them* [code]: on the device every local instrument loads `params + 0x28` (pan) and
+  `params + 0x2c` (level) at the top of `render` (`params` = `[FP + 0x18]`): `analoga` at `0x81b93cc4`/`0x81b93cd6`,
+  `ep` at `0x81b3252a`/`0x81b3256e`, `organ` at `0x81b7d1de`/`0x81b7d1e6`, `cluster` at `0x81c006a0`/`0x81c006ae`,
+  `synthsampler` at `0x81bed9e0`/`0x81bed9ee` and the drum engine `sampleplayergain` at `0x81b692c0`/`0x81b692d0`.
+  In the app, every synth's `render` does the same (one `ldpsw [params, #40]`: `Fm` `0x7400`, `Fm003b`, `Volt`,
+  `Chord`, `Organ`, `AnalogA` `0x1b518`, `Digital`, `Saw013a`, `Electric`, `MiniStringShort`, `SynthSampler`).
+- *The OS's track loop has no level or pan* [code, app `Synth::render` `0x52ce4`, [routing.md §1](../../research/routing.md#instrument-tracks-code-app-synthrender-0x52ce4)].
+  The gain it does apply after the engine is the **mixer's** track gain (`Synth::setMasterGain`, fed by
+  `Sequencer::updateTrackGain` `0x48ca8` from a per-track gain array of its own, not from `params[11]`), the drum or
+  synth group level and the mute [code, app]. So the level dial and the mixer are two different gains, and only the
+  mixer works on an engine that ignores `params[11]`.
+- *TE's law* [code, app `Fm::render` `0x7400`–`0x74dc`, `AnalogA::render` `0x1b518`–`0x1b5a8`]: with `level` and
+  `pan` the Q31 words, `G = velocity × level` (linear: 255 = 1, 128 ≈ 0.5, 0 = silent), and
+  **`gain_L = G·min(2·(1 − pan), 1)`, `gain_R = G·min(2·pan, 1)`**: a balance law, both sides at full gain in the
+  middle, the far side fading to 0 at either end. `Fm` builds the same two gains from four products. Both smooth the
+  gains in render (the step towards the new value is a fraction of the difference every sample) [code, app].
+  No pan byte is the exact centre: 127 (`0x3fbfbfbf`) gives L 1, R 0.996; 128 (`0x40404040`) the reverse.
+- **The FX sends are taken after the engine** [code, app; routing.md §1]: the OS filters the track buffer
+  (`params[8]`/`[9]`), DC-blocks it, scales it by the mixer gain, then feeds FX1 with `x·s₁` (`s₁²` for plug 34 or
+  flag `0x20`), FX2 with `x·s₂·(1 − (1 − dry₁)·s₁)`, tape with `x` if the track is marked, and the dry bus with
+  `x·(1 − (1 − dry₁)·s₁)·(1 − (1 − dry₂)·s₂)·…·mute` (`s` = `params[6]`/`[7]` of the track, `dry` = byte 12 of the
+  FX track). Because the engine applies level and pan, **the sends are post-level and post-pan**: turning the level
+  down turns the sends down too, and a hard-left track sends only to the left of the effect (**Q-29 answered**:
+  pan comes before the sends, applied by the engine). The manual agrees: "track gain is applied before the FX
+  sends" (1.2.5, p.7) [manual]. An engine that ignores level sends at full level whatever the dial says.
+- *Mute* is the OS's, on the dry bus only: a muted track still feeds FX and tape (manual p.34).
+- *There is no "master send" dial on a track* [manual p.21; code]: a track reaches master through the dry bus, so its
+  level dial is what sets how much of it reaches the master mix [inferred: what the tester called the master bus send].
+
+**What an instrument engine does** (`sdk/include/opz_mix.h`): `opz_mix_start(&s->mix, params)` in `onNoteOn`; in
+`render`, write the voice's 64 samples into a local buffer and call `opz_mix_mono(out, buf, &s->mix, params)`
+(`opz_mix_stereo` for a stereo voice: `gain_L` on L, `gain_R` on R [idea: TE's instruments are mono]). It applies
+TE's law without the velocity term (our engines scale by velocity themselves), ramps the gains linearly across each
+block from the last block's values (an LFO on pan or volume, or a dial move, never zips), and costs at most 6
+(typically ~5) cycles/sample/voice on the Blackfin (fm2: 97 → 102; dx 173 → 178) with its hand-scheduled dual-MAC
+loops [proven in the simulator: `opz_cycles.py`, cycle-model.md], bit-identical to the C loops opzsim runs [proven:
+`tools/cycles/sdk_check.c`, and a 0-sample `--compare` of every engine's dump]. GCC's C loops cost 10–15 (fm2 111,
+dx 186) and pushed the 19-voice worst cases of `dx`, `swarm` and `modal` past the 265,000 line; with the hand-written
+loops `swarm`'s and `modal`'s come back under it in the simulator, `dx`'s 19 six-operator voices stay over the share
+the OS leaves (each engine's README has its figures). Since 2026-11-11 every instrument and template of ours does
+this, and opzsim checks it for every instrument engine (`sim/tests/golden.py`: level 128 = half, pan 0/255 = one side
+silent, level 0 = silent). opzsim, like the OS, applies neither.
+
+**What this means for effects** (FX1, FX2, tape): `in` is the sum of the sends, already levelled and panned by each
+sending track's engine. The FX track's own `params[11]`/`[10]` are again the engine's to apply (see `renderFX` §3,
+"Dry/wet law for our effects"), and the OS applies no pan or level to the return. `gain` is the FX track's mixer
+gain × mute.
+
+**Hardware check H-M1** (steps: [routing.md §6b](../../research/routing.md#6b-hardware-check-h-m1-level-pan-and-sends-on-a-synth-of-ours-not-run); one device session, each write approved): install one converted
+synth (e.g. `fm2` v2) on project 9's lead track, play a held note and record over USB: level 255 → 128 must drop
+6 dB, level 0 silent; pan 0 / 255 must silence the right / left channel; with FX1 send up and `opz_test_passthrough`
+on FX1 (dry level 0), turning the level down must turn the FX1 return down by the same amount; an LFO on volume must
+not zip. Compare with TE's saw at the same knobs to recheck rule 11's calibration (it was made while our engines
+ignored the level dial). Rollback: the previous plug version.
 
 ## 5. Callback table (`ModuleCallbackInterface`)
 
@@ -451,8 +549,10 @@ formulas ([`opz_tables_gen.h`](../include/opz_tables_gen.h), [`tools/opz_tables.
 8. Keep `onNoteOn`/`onNoteOff` cheap; the sequencer calls them from its own timing.
 9. **Instruments add into `out`** and must let `env->stage` reach 0 so the voice is freed.
 10. Assume **44.1 kHz**, **64-frame** blocks and a **400 MHz** CPU (confirmed in app and device code).
-11. **Peak level per voice: `OPZ_VOICE_PEAK` = −12 dBFS** at full velocity. Calibrated on hardware: the test sine at
-    this level matches TE's saw at the same note and knob settings.
+11. **Peak level per voice: `OPZ_VOICE_PEAK` = −12 dBFS** at full velocity and level 255; the level and pan dials
+    scale it (§4, `opz_mix.h`). Calibrated on hardware: the test sine at this level matches TE's saw at the same note
+    and knob settings — measured while our engines still ignored the level dial, so at level 200 ours now plays ~2 dB
+    below TE's saw; H-M1 rechecks it [inferred].
 12. **Honour the host's fade (stage 5/6).** When a new note needs a busy voice, the OS sets that voice's stage to 5 and
     starts the new note only when the stage reaches 0. Engines that follow the host envelope fade automatically;
     engines with their own envelopes (drums) must fade out within a few milliseconds and set stage 0, or new notes

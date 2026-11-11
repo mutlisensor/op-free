@@ -87,6 +87,8 @@ static int check_grid(void)
     long n = 0;
     initModule(0, &g_cb, &(uint32_t){ 0 });
     for (int i = 0; i < OPZ_NUM_PARAMS; i++) params[i] = opz_param_from_byte(0);
+    params[OPZ_P_PAN] = opz_param_from_byte(128);           /* the track's level and pan: full, centre */
+    params[OPZ_P_LEVEL] = opz_param_from_byte(255);
     for (int p1 = 0; p1 < 256; p1++)
         for (int p2 = 0; p2 < 256; p2 += 3) {
             int note = (p1 * 7 + p2) % 128, vel = (p1 + p2 * 3) % 128;

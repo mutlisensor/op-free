@@ -9,5 +9,6 @@ input impulse 2 0.9
 preset 200 0 0 0 255 0 0 0 128 0 128 255 0 0 0 0 0 0
 sweep p2 0 255 0 64
 gain 1
+transport 0 stop                 # sequencer stopped: the free cloud (sync.scn has the time lock)
 expect sound 2 96
 expect peak_below 0

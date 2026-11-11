@@ -5,11 +5,14 @@
  *   P2        character   one macro over mode, depth and feedback:
  *                           0 .. 111    6-stage phaser, depth 25 % -> 100 %, feedback 0 -> 0.7
  *                           112 .. 143  crossfade to the flanger, depth and feedback easing back down
- *                           144 .. 255  flanger, depth 25 % -> 100 %, feedback 0.1 -> 0.9
+ *                           144 .. 255  flanger, depth 25 % -> 100 %, feedback 0.1 -> 0.9 (its input turned down
+ *                                       as the feedback rises, ~sqrt(1 - fb^2), so the comb keeps its loudness)
  *                         depth is the sweep width: up to +/-1.5 octaves (phaser), up to the full base delay
  *                         (flanger). Piecewise linear, so an LFO on P2 glides through the modes without steps.
  *   pan       dry / wet   TE's balance law (wet = min(2p, 1), dry = min(2(1-p), 1)), normalised by dry + wet so
- *                         the centre is the classic 50/50 phaser mix at unity gain
+ *                         the centre is the classic 50/50 phaser mix at unity gain: as the SDK's FX law, the centre
+ *                         is the full effect (a phaser *is* the dry plus the all-passes), 0 = dry only; 255 = the
+ *                         all-passes alone (vibrato). Output through the SDK's limiter
  *   level     output level (x gain)
  *   note on the FX track  sweep centre = the note's pitch; the flanger delay becomes one period of it (a comb
  *                         tuned to the note, with the modulation narrowed so it stays in tune); the LFO restarts.
@@ -143,7 +146,9 @@ void onNoteOff(int note, void *state)
 
 /* Everything renderFX's sample loop needs, set up once per block. */
 typedef struct Block {
-    int32_t fbk, morph, wet, dry, out_gain;
+    int32_t fbk, morph, wet, dry;               /* wet and dry with the level in them, for a half-scale sum */
+    int32_t fl_in;                              /* flanger input gain: ~sqrt(1 - fbk^2), so feedback keeps the
+                                                   comb's loudness instead of raising it by up to 7 dB */
 } Block;
 
 /* One frame of channel c. */
@@ -151,7 +156,8 @@ ALWAYS_INLINE fract32 run_channel(State *s, const Block *b, int32_t x, int c, in
                           int flanger)
 {
     /* phaser: STAGES first-order all-passes, y = x1 + a (y1 - x), with feedback */
-    int32_t v = opz_add_q31(x >> 1, opz_mul_q31(s->fb_ph[c], b->fbk));
+    int32_t v = opz_add_q31(x >> 2, opz_mul_q31(s->fb_ph[c], b->fbk));   /* the loops run at x / 4: the feedback's
+                                                                             resonance (up to +20 dB) has room */
     int32_t *z = s->z[c], x1 = z[0];
     for (int k = 0; k < STAGES; k++) {
         int32_t y1 = z[k + 1];
@@ -171,14 +177,13 @@ ALWAYS_INLINE fract32 run_channel(State *s, const Block *b, int32_t x, int c, in
         int32_t s0 = (int32_t)buf[(s->write - di) & DELAY_MASK] << 16;
         int32_t s1 = (int32_t)buf[(s->write - di - 1) & DELAY_MASK] << 16;
         int32_t fl = opz_add_q31(s0, opz_mul_q31(frac, opz_sub_q31(s1, s0)));
-        buf[s->write] = to16(opz_add_q31(x >> 1, opz_mul_q31(s->fb_fl[c], b->fbk)));
+        buf[s->write] = to16(opz_add_q31(opz_mul_q31(x >> 2, b->fl_in), opz_mul_q31(s->fb_fl[c], b->fbk)));
         s->fb_fl[c] = soft(fl);
         effect = opz_add_q31(effect, opz_mul_q31(b->morph, opz_sub_q31(fl, effect)));
     }
 
-    /* dry * x + wet * 2 effect: two products rounded down on their own (within an LSB of one 64-bit sum) */
-    int32_t mix = opz_add_q31(opz_mul_q31(b->dry, x), opz_mul_q31(b->wet, opz_shl_q31(effect, 1)));
-    return opz_mul_q31(mix, b->out_gain);
+    /* wet 4 effect at half scale (wet holds the level and the halving); renderFX adds the dry and limits */
+    return opz_mul_q31(b->wet, opz_shl_q31(effect, 1));
 }
 
 /* SUB frames of both channels with fixed coefficients a[c] and delays d_q16[c]. flanger is a compile-time
@@ -226,13 +231,15 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
     if (pan != s->pan) {                                       /* two 64-bit divisions: only when pan moves */
         int32_t wet = opz_sat32((int64_t)pan * 2), dry = opz_sat32(((int64_t)Q31_ONE - (int32_t)pan) * 2);
         uint32_t sum = (uint32_t)wet + (uint32_t)dry;                          /* 1..2 in Q31 */
-        s->wet = (int32_t)opz_udiv64_32((uint64_t)wet << 31, sum);             /* 2^31 at pan 255: -1, as before */
-        s->dry = (int32_t)opz_udiv64_32((uint64_t)dry << 31, sum);
+        uint32_t qw = (uint32_t)opz_udiv64_32((uint64_t)wet << 31, sum);      /* 2^31 at pan 255 (and the dry at */
+        uint32_t qd = (uint32_t)opz_udiv64_32((uint64_t)dry << 31, sum);      /* pan 0): capped, it was -1 */
+        s->wet = qw > Q31_ONE ? Q31_ONE : (int32_t)qw;
+        s->dry = qd > Q31_ONE ? Q31_ONE : (int32_t)qd;
         s->pan = pan;
     }
-    b.wet = s->wet;
-    b.dry = s->dry;
-    b.out_gain = opz_mul_q31((int32_t)(params[OPZ_P_LEVEL] & Q31_ONE), gain);
+    int32_t out_gain = opz_mul_q31((int32_t)(params[OPZ_P_LEVEL] & Q31_ONE), gain);
+    b.wet = opz_mul_q31(s->wet, out_gain);                     /* x 4 effect / 2 */
+    b.dry = opz_mul_q31(s->dry, out_gain) >> 1;                /* x / 2 */
     /* On a note the flanger delay swings +-1.5 % around one period, so the comb stays tuned to it */
     int32_t fl_depth = s->note_held ? depth >> 5 : depth;
     int32_t fl_offset = s->note_held ? 0 : 65536;
@@ -249,6 +256,8 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
         }
     }
     if (!flanger_ready) { b.morph = 0; b.fbk = fb_ph; }
+    int32_t f2 = opz_mul_q31(b.fbk, b.fbk);                    /* 1 - f2 / 2 - f2^2 / 8 ~ sqrt(1 - f2) */
+    b.fl_in = Q31_ONE - (f2 >> 1) - (opz_mul_q31(f2, f2) >> 3);
 
     for (int sub = 0; sub < OPZ_BLOCK_FRAMES; sub += SUB) {
         int32_t a[2], d_q16[2];
@@ -265,6 +274,7 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
         if (b.morph) run_sub(s, &b, in, out, sub, a, d_q16, dl, lfo_inc, 1);
         else run_sub(s, &b, in, out, sub, a, d_q16, dl, lfo_inc, 0);
     }
+    opz_fx_finish(out, in, b.dry, b.dry);                      /* + the dry, through the SDK's limiter */
 }
 
 OPZ_EXPORTS_FX();

@@ -12,11 +12,15 @@
  *                         tail (15 %); 192 the octave as loud as the tail (56 %), which climbs on; 255 nearly all of
  *                         it moves up each lap (94 %): a rising cascade that thins out into the highs. The shifted
  *                         path darkens a little as P2 rises (8 -> 5.7 kHz), so the cascade stays smooth
- *   pan       dry / wet   0 dry .. 128 fully wet; 128 .. 255 stay fully wet (as plate)
+ *   pan       dry / wet   the SDK's FX law: 128 .. 255 the reverb only (the OS's dry level keeps the source);
+ *                         below 128 the dry blends in at equal power, 0 = dry only. Output through opz_limit_half
  *   level     output level (x gain)
  *   notes     on the FX track: the shift interval, the key's distance from C3: C4 = +12 (an octave, the default),
- *             G3 = +7 (a fifth), F3 = +5, C5 = +24, G4 = +19, C3 = 0 (shimmer off: a plain reverb), keys below C3
- *             shift down (C2 = -12). Clamped to -12 .. +24. The newest note wins and the interval stays after the
+ *             G3 = +7 (a fifth), F3 = +5, F4 = +17, G4 = +19, C5 = +24, C3 = 0 (shimmer off: a plain reverb), keys
+ *             below C3 shift down (G2 = -5, F2 = -7, C2 = -12). Clamped to -12 .. +24, and every other key snaps to
+ *             the nearest of those intervals (a lap repeats the shift, so only octaves, fifths and fourths stack
+ *             into chords: on the default octave F3 .. E5 the keys give +5, +7, +12, +17, +19, +24 from left to
+ *             right). The newest note wins and the interval stays after the
  *             release (it's a setting, not a gate). Velocity doesn't matter; note 255 (plug selected) and the OS's
  *             velocity-0 re-send of a held note (params NULL) are handled
  *
@@ -145,6 +149,15 @@ static const uint16_t k_dif_reg[2 * ND] = { R_DL0, R_DL1, R_DL2, R_DR0, R_DR1, R
 #define SEMI_MIN        (-12)
 #define SEMI_MAX        24
 #define NOTE_ZERO       48                      /* C3: unison */
+
+/* A key's distance from C3 (-12 .. +24) snapped to the nearest interval a shimmer is played with: octaves, fifths
+ * and fourths (-12, -7, -5, 0, +5, +7, +12, +17, +19, +24; a tie goes to the fifth or the twelfth). Every lap shifts
+ * the tail again, so a second, a third or a tritone would pile up into a cluster; these stack into chords. The keys
+ * on the intervals themselves (C4, G3, F3, G4, C5, C3, C2) play what they always did. */
+static const int8_t k_snap[SEMI_MAX - SEMI_MIN + 1] = {
+    -12, -12, -12, -7, -7, -7, -7, -5, -5, -5, 0, 0, 0, 0, 0, 5, 5, 5, 7, 7, 7, 7, 12, 12, 12, 12, 12, 17, 17, 17,
+    19, 19, 19, 19, 24, 24, 24
+};
 
 typedef struct Mem {
     int32_t cur[NL];                            /* tank lengths, Q16 samples */
@@ -418,7 +431,8 @@ void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
     State *s = state;
     if (note < 0 || note > 127) return;                        /* 255: plug selected, no note */
     int semi = note - NOTE_ZERO;
-    s->semi = (int8_t)(semi < SEMI_MIN ? SEMI_MIN : semi > SEMI_MAX ? SEMI_MAX : semi);
+    semi = semi < SEMI_MIN ? SEMI_MIN : semi > SEMI_MAX ? SEMI_MAX : semi;
+    s->semi = k_snap[semi - SEMI_MIN];
 }
 
 void onNoteOff(int note, void *state)
@@ -432,10 +446,10 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
     State *s = state;
     Mem *m = s->mem;
 
-    int32_t pan = opz_pq31(params[OPZ_P_PAN]);
-    int32_t wet = pan >= 0x40000000 ? OPZ_Q31_ONE : pan * 2;
+    int32_t dry, wet;                                           /* the SDK's FX law; dry at half scale */
+    opz_fx_drywet(params[OPZ_P_PAN], &dry, &wet);
     int32_t og = opz_mul_q31(opz_pq31(params[OPZ_P_LEVEL]), gain);
-    int32_t dog = opz_mul_q31(OPZ_Q31_ONE - wet, og);
+    int32_t dog = opz_mul_q31(dry, og) >> 1;
     int32_t wog = opz_mul_q31(opz_mul_q31(wet, og), WET_K);
 
     if (!m || s->cleared < RING + SB_N) {                       /* no buffer, or still clearing it: dry only */
@@ -445,7 +459,7 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
             for (int i = 0; i < n; i++) zp[i] = 0;
             s->cleared += n;
         }
-        for (int j = 0; j < 2 * BLK; j++) out[j] = opz_mul_q31(in[j], dog);
+        for (int j = 0; j < 2 * BLK; j++) out[j] = opz_limit_half(opz_mul_q31(in[j], dog));
         s->dog = dog;
         return;
     }
@@ -616,7 +630,7 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
         s->ts = sz;
         s->xf = XF;
     }
-    int32_t wg_inc = (wog - s->wog) >> 6, dg_inc = (dog - s->dog) >> 6;
+    int32_t wg_inc = (wog - s->wog) >> 6;
     int32_t pk = 0;
     for (int c = 0; c < 2; c++) {
         int32_t *y = m->u;
@@ -633,18 +647,17 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
                 y[i] = MQ(y[i], gn >> 16) + MQ(yo[i], go >> 16);
             }
         }
-        const fract32 *xi = in + c;
         fract32 *o = out + c;
-        int32_t wg = s->wog, dg = s->dog;
+        int32_t wg = s->wog;
         for (int i = 0; i < BLK; i++) {
             wg += wg_inc;
-            dg += dg_inc;
             int32_t y0 = y[i];
-            o[2 * i] = opz_add_q31(MQ(xi[2 * i], dg >> 16), opz_shl_q31(MQ(y0, wg >> 16), WET_SHIFT));
+            o[2 * i] = opz_shl_q31(MQ(y0, wg >> 16), WET_SHIFT - 1);   /* the wet at half scale */
             y0 = opz_abs32(y0);
             pk = y0 > pk ? y0 : pk;
         }
     }
+    opz_fx_finish(out, in, s->dog, dog);                        /* + the dry, through the SDK's limiter */
     if (s->xf) s->xf--;
     s->wog = wog;
     s->dog = dog;

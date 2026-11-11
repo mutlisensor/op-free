@@ -1,8 +1,8 @@
 {
   "engine": "table",
   "memoryslot": 5,
-  "engine_version": 1,
-  "plug": { "id": 61016, "version": 1, "name": "table", "trackmask": 240, "flags": 0,
+  "engine_version": 2,
+  "plug": { "id": 61016, "version": 2, "name": "table", "trackmask": 240, "flags": 0,
             "parameter_names": ["position", "bank"] },
   "presets": "presets.json"
 }

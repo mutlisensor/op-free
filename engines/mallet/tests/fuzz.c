@@ -107,6 +107,7 @@ int main(int argc, char **argv)
     if (!initModule(0, &s_fake, &mem) || mem) return 1;
     for (int v = 0; v < VOICES; v++) init(&s_states[v], (uint32_t)(v / 2), 0, 0, 0);
     for (int i = 0; i < OPZ_NUM_PARAMS; i++) s_params[i] = opz_param_from_byte(128);
+    s_params[OPZ_P_LEVEL] = opz_param_from_byte(255);                    /* the track's level: full */
 
     /* tuning */
     for (int n = 0; n < 128; n++) {

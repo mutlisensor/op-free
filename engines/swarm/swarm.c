@@ -45,6 +45,7 @@
 #include "opz_adsr.h"
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_mix.h"
 #include "swarm_tables.h"
 
 #define N OPZ_BLOCK_FRAMES
@@ -75,6 +76,7 @@ typedef struct State {
     uint32_t rb[NS];        /* and 2^47 / ib (0: not computed yet) */
     uint32_t key_inc;       /* the pitch, spread and inharmonic share ib was computed for */
     int32_t key_sp, key_ih;
+    OpzMix mix;             /* the track's level and pan (opz_mix.h) */
     uint8_t nb;             /* how many of ib are valid */
     uint8_t fresh;
 } State;
@@ -325,10 +327,10 @@ static int32_t env_block(int32_t level, int32_t c, int32_t s)
 }
 
 /* One channel: integrate slope + events (e, left zeroed), plus the particle groups (own side a, the other side b
- * a quarter), times the envelope (a ramp from lv by dl per sample), added into out (every second value). One
- * channel at a time keeps everything in registers. On the Blackfin the loops are scheduled by hand (5 and 9
- * instructions per sample, loads and stores in parallel with arithmetic); the C below is the same arithmetic, bit
- * for bit. */
+ * a quarter), times the envelope (a ramp from lv by dl per sample), written to out (every second value: one
+ * channel of the interleaved block buffer that opz_mix_stereo adds into the track's). One channel at a time keeps
+ * everything in registers. On the Blackfin the loops are scheduled by hand (4 and 8 instructions per sample, loads
+ * and stores in parallel with arithmetic); the C below is the same arithmetic, bit for bit. */
 #if defined(__bfin__) && !defined(SWARM_C_LOOP)
 __attribute__((noinline)) static void pass_out(fract32 *out, uint32_t *e, uint32_t y, uint32_t dy, int32_t lv,
                                                int32_t dl, const int32_t *a, const int32_t *b, int parts)
@@ -343,10 +345,9 @@ __attribute__((noinline)) static void pass_out(fract32 *out, uint32_t *e, uint32
                          "%[t1] >>>= 2;\n\t"
                          "%[t0] = [%[a]++];\n\t"
                          "%[t1] = %[t1] + %[t0] (NS);\n\t"
-                         "%[t0] = %[y] + %[t1] (S) || %[t1] = [I0] || NOP;\n\t"
-                         "%[t0] = %[t0].H * %[lv].H || [%[e]++] = %[z] || NOP;\n\t"
-                         "%[t1] = %[t1] + %[t0] (S);\n"
-                         "2: %[lv] = %[lv] + %[dl] (NS) || [I0 ++ M0] = %[t1] || NOP;"
+                         "%[t0] = %[y] + %[t1] (S);\n\t"
+                         "%[t0] = %[t0].H * %[lv].H || [%[e]++] = %[z] || NOP;\n"
+                         "2: %[lv] = %[lv] + %[dl] (NS) || [I0 ++ M0] = %[t0] || NOP;"
                          : [y] "+d"(y), [lv] "+d"(lv), [e] "+a"(e), [a] "+a"(a), [b] "+a"(b), [t0] "=&d"(t0),
                            [t1] "=&d"(t1)
                          : [dy] "d"(dy), [dl] "d"(dl), [z] "d"(z), [out] "a"(out), [n] "a"(N)
@@ -356,11 +357,10 @@ __attribute__((noinline)) static void pass_out(fract32 *out, uint32_t *e, uint32
                          "M0 = 8 (X);\n\t"
                          "LSETUP (1f, 2f) LC0 = %[n];\n"
                          "1: %[y] = %[y] + %[dy] (NS) || %[t0] = [%[e]] || NOP;\n\t"
-                         "%[y] = %[y] + %[t0] (NS) || %[t1] = [I0] || NOP;\n\t"
-                         "%[t0] = %[y].H * %[lv].H || [%[e]++] = %[z] || NOP;\n\t"
-                         "%[t1] = %[t1] + %[t0] (S);\n"
-                         "2: %[lv] = %[lv] + %[dl] (NS) || [I0 ++ M0] = %[t1] || NOP;"
-                         : [y] "+d"(y), [lv] "+d"(lv), [e] "+a"(e), [t0] "=&d"(t0), [t1] "=&d"(t1)
+                         "%[y] = %[y] + %[t0] (NS);\n\t"
+                         "%[t0] = %[y].H * %[lv].H || [%[e]++] = %[z] || NOP;\n"
+                         "2: %[lv] = %[lv] + %[dl] (NS) || [I0 ++ M0] = %[t0] || NOP;"
+                         : [y] "+d"(y), [lv] "+d"(lv), [e] "+a"(e), [t0] "=&d"(t0)
                          : [dy] "d"(dy), [dl] "d"(dl), [z] "d"(z), [out] "a"(out), [n] "a"(N)
                          : "memory", "I0", "M0", "LC0", "LT0", "LB0");
 }
@@ -373,7 +373,7 @@ ALWAYS_INLINE void pass_body(fract32 *out, uint32_t *e, uint32_t y, uint32_t dy,
         e[i] = 0;
         fract32 v = (fract32)y;
         if (parts) v = opz_add_q31(v, a[i] + (b[i] >> 2));
-        out[2 * i] = opz_add_q31(out[2 * i], mul_hh(v, lv));
+        out[2 * i] = mul_hh(v, lv);
         lv += dl;
     }
 }
@@ -405,7 +405,7 @@ void init(void *state, uint32_t track, uint32_t arg2, void *mem, void *scratch)
 
 void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
 {
-    (void)note; (void)params;                                            /* may be NULL (engine-abi.md §3); not needed */
+    (void)note;
     State *s = state;
     for (int k = 0; k < NS; k++) s->ph[k] = rnd();           /* free-running oscillators: any phase at note-on */
     for (int r = 0; r < NP; r++) {
@@ -421,6 +421,7 @@ void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
     s->vel = v * 258;                                        /* Q15, 32766 at 127 */
     s->hard = v < 24 ? 0 : (v * v * 39) >> 6;                /* (v / 127)^2 x 0.3, Q15; none below 24 */
     s->fresh = 1;
+    if (params) opz_mix_start(&s->mix, params);              /* NULL (engine-abi.md §3): ramps in at render */
 }
 
 void onNoteOff(int note, void *state)
@@ -646,8 +647,10 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
     acr -= dcr;
     int32_t l0 = OPZ_ADSR_LEVEL(env);
     int32_t l1 = env_block(l0, OPZ_ADSR_COEF(env), OPZ_ADSR_STEP(env));
-    pass_out(out, s_el, acl, dcl, l0, (l1 - l0) >> 6, s_pa, s_pb, parts);
-    pass_out(out + 1, s_er, acr, dcr, l0, (l1 - l0) >> 6, s_pb, s_pa, parts);
+    fract32 st[2 * N];                                       /* the voice, interleaved L R, before level and pan */
+    pass_out(st, s_el, acl, dcl, l0, (l1 - l0) >> 6, s_pa, s_pb, parts);
+    pass_out(st + 1, s_er, acr, dcr, l0, (l1 - l0) >> 6, s_pb, s_pa, parts);
+    opz_mix_stereo(out, st, &s->mix, params);               /* level and pan, added into interleaved out */
     OPZ_ADSR_LEVEL(env) = l1;
 }
 

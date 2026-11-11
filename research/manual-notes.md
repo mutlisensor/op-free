@@ -168,7 +168,10 @@ Fm, Swirl) appears, consistent with them being unreleased ([Q-11](OPEN_QUESTIONS
   hold **shift**, press the source track's button — a tap toggles the send on/off, a one-second hold lets you set the
   level with the green dial (p.39). Changelog: track gain is applied before the FX sends (1.2.5, p.7); muting a track's
   *audio only* keeps it going to the effects and tape (p.34, 1.1.12 p.8); a pop with full FX send was fixed (1.2.38, p.5).
-- FX plugs have a **dry mix** setting since 1.2.26 (p.6). We already reproduce it as pan = dry/wet.
+- FX plugs have a **dry mix** setting since 1.2.26 (p.6). It is most likely the FX track's dry level, byte 12, which the
+  OS applies to every sending track ([host-tables-flags.md](host-tables-flags.md#the-bits)) [inferred: the name]; an
+  engine's own pan-as-dry/wet comes on top of it, so ours return the effect only at pan 128–255
+  (fx-usability.md, Q-84).
 - `delay`, `reverb`, `dist`, `crush` etc. are what the manual shows; no one-page description of user plugs.
 
 ### Tape — p.40, p.43

@@ -10,13 +10,14 @@ tank — and a tank you can kick from the FX track's keys.
 | Plug id | 61101 |
 | P1 **tension** | loose (0) → tight (255): spring A's round trip 75 → 25 ms (spring B 12.7 % longer); late decay (T60, measured) ~3.1 s → ~2.5 s. Turning P1 glides the length (1/8 sample per sample), so the tail bends like a stretched spring instead of clicking |
 | P2 **drip** | how much each pass disperses and how bright it stays: chirp coefficient 0.35 → 0.82 (the low end of an echo trails the top by 1.7 → 11 ms per pass, more with every pass) and the loop damping 2.5 → 6.5 kHz. 0 = smooth and dark; 255 = the surf-guitar "pew" on every hit |
-| pan | dry/wet, TE's balance law normalised to unity (centre = half and half). The preset is wet only, as a send |
-| level | output level, times the FX track's mixer level and mute |
+| pan | not reachable on the OP-Z: an FX track has no pan dial, app control or mixer column [proven, H-FX1], and presets can't set it, so it stays where the OS leaves it (127 on the unit checked), which this effect treats as **the springs only** (the dry about 44 dB down). The law below the centre, for anything that does set pan: the dry blends in at equal power: 64 = dry and the springs at −3 dB each, 0 = dry only. |
+| dry level (hold the FX track's key + **red dial**) | the OS's own dry level (byte 12; TE's app shows it as "dry level" on the FX page): how much of each sending track's own sound stays in the mix. 255 = send/return (the source plays on and the effect adds to it), 0 = insert (a track sent at 100 % is heard only through the effect). This is the dry/wet control on the OP-Z [proven, H-FX1 2026-11-11] |
+| level | output level, times the FX track's mixer level and mute (nothing on the OP-Z reaches an FX track's level, neither a dial nor the mixer page [proven, H-FX1], so the preset's value holds) |
 | Filter / resonance | the OP-Z's own track filter, also on FX tracks |
 | **Notes on the FX track** | **kick the tank**: a noise burst (20 ms decay) into both springs, low-passed at 8× the note's frequency (C2 a thud, C6 a bright crash), as loud as the velocity. Note off does nothing; the OS's velocity-0 re-send of a held note is ignored |
 | Memory request | 41 KB (two 4,096-sample delay lines, the all-pass memories, four diffusers), cleared over the first 6 blocks (dry meanwhile) |
 | State | 84 of 200 bytes (device) |
-| CPU | Blackfin simulator (`tools/opz_cycles.py engines/spring`): **550 cycles/frame** steady at any knob setting, **589 worst block** (kicks arriving with knobs moving), against the ≤ 600 effect target. The simulator does not model DDR wait states, and the delay lines live in the FX pool in DDR: this is the engine of the batch to watch for `cpu overload` on the device |
+| CPU | **v2 (2026-11-11): 569 cycles per stereo frame in its worst case, worst block 597** (fx-usability.md §4a). Earlier figures: Blackfin simulator (`tools/opz_cycles.py engines/spring`): **550 cycles/frame** steady at any knob setting, **589 worst block** (kicks arriving with knobs moving), against the ≤ 600 effect target. The simulator does not model DDR wait states, and the delay lines live in the FX pool in DDR: this is the engine of the batch to watch for `cpu overload` on the device |
 
 Not for master: the OS passes `out = NULL` there ([engine-abi.md](../../sdk/docs/engine-abi.md) §3).
 
@@ -58,6 +59,18 @@ byte 12 (FX dry level) 255 so the sending track keeps its dry sound. Settings to
 [tests/](tests/): `hits` (clicks through every P2 and a P1 jump), `kick` (keys C2–C6 at several velocities, no input),
 `tension` (P1 swept both ways on a saw at 50/50), `extremes`. Measured from the renders (noise at −20 dBFS RMS, wet
 only): wet −17.8 … −15.4 dBFS RMS, peak below −2.5 dBFS; late T60 3.0–3.2 s at P1 0, 2.5 s at P1 255.
+
+## Version 2 (2026-11-11): what changed, what to listen for
+
+Testers found our effects hard to use: the mix knob seemed not to work, some effects seemed not to pass the sound, and
+loud material clipped. Measured in the simulator (fx-usability.md). spring used
+TE's balance law normalised to unity, so pan's centre returned half dry: with the preset's dry level 255 the source
+came through 1.5× (+3.5 dB) and the springs at half level, 9.5 dB under it. Worse, the springs' output was scaled up
+into a saturating shift that **hard-clipped at −2.5 dBFS**: at P1 and P2 255 a −6 dBFS saw had 22 % of its samples
+flat at that ceiling. Now the springs come out at half scale into the SDK's output limiter (a soft knee from −3 dBFS
+to 0 dBFS; 1.3 % of the samples at the soft ceiling in that worst case; ~20 cycles a frame cheaper at pan's centre)
+and pan follows the SDK's law (centre = the springs only). On the device: a loud guitar-like pluck at 100 % send, P1
+and P2 at 255: a resonant spring with no fizzy clipping on the hits.
 
 ## Credits
 

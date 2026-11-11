@@ -76,20 +76,21 @@ take no row in this table.
 
 | Slot | Engine | Plug id | Status |
 |---|---|---|---|
-| 87 | `opz_test_passthrough` (P3 proof) | 60900 | planned |
+| 87 | `opz_test_passthrough` (P3 proof; 240 B) | 60900 | built; on the user's OP-Z since 2026-11-11 (FX2 slot 6) |
 | 86 | `filter` (3.2 KB) | 61002 | built |
 | 85 | `opz_test_gain` (P3 proof) | 60902 | planned |
 | 84 | `glue` (3.1 KB; no buffer: FX1, FX2) | 61004 | built |
 | 57 | `opz_test_sine` (P3 proof) | 60901 | planned |
 | 56 | `swirl` (4.7 KB at `-O2`, incl. libgcc division) | 61001 | built |
 | 55 | `macro` (6.5 KB) | 61010 | built |
-| 54 | `kit` (7.9 KB) | 61020 | built |
+| 54 | free again: `kit` v1–v5 were linked here. A unit that installed them keeps nothing here once v6 replaces the definition | — | free |
 | 53 | `resonator` (6.4 KB; asks for 66 KB of FX buffer: FX1, FX2) | 61003 | built |
 | 49 | `super` (5.0 KB) | 61015 | built |
 | 48 | `echo` (8.2 KB; asks for 1 MB of FX buffer: FX1) | 61005 | built |
 | 47 | `plate` (8.0 KB; asks for 224 KB of FX buffer: FX1, FX2) | 61006 | built |
 | 51 | `fm2` (4.0 KB) | 61011 | built |
 | 50 | `fold` (3.4 KB) | 61012 | built |
+| 3 | `kit` v6 (10.5 KB: 24 synthesized drum models; moved from 10 KB slot 54 on 2026-11-11 when level and pan, `opz_mix.h`, and the envelope page, `opz_drumenv`, together took it 472 B past 10,240; trimming its specialised noise loops instead cost hats and cymbals 48 cycles/sample. A size trim could bring it back to a 10 KB slot) | 61020 | built |
 | 7 | `dx` (23.7 KB: 8 KB sine table, 4 KB DX7-format patch bank) | 61013 | built |
 | 6 | `pluck` (42.5 KB: 14.9 KB code and data, 27.6 KB `.bss` with the string pool of 13 × 2 KB lines; a 10 KB window would leave ~6 KB of lines, too short for the bass range) | 61014 | built |
 | 5 | `table` (46.7 KB: 40 KB of wave tables, 42 waves × 4 mip levels, and 1.2 KB of harmonic coefficients; 3.4 KB code; 1.6 KB `.bss`) | 61016 | built |
@@ -102,11 +103,13 @@ take no row in this table.
 | 41 | `ensemble` (5.2 KB: S-13 string machine; no voice pool: the ensemble is four phases of each voice's oscillator, 76 B of state) — engine batch 3 | 61201 | built |
 | 40 | `swarm` (9.1 KB: S-15 oscillator/particle swarm; 8.3 KB code and tables, 1.0 KB `.bss` block buffers) — engine batch 3 | 61202 | built |
 | 81 | `chip` (3.4 KB: 3.0 KB code and data, 0.35 KB `.bss` wave tables; S-14 8-bit voice) — engine batch 3 | 61203 | built |
-| 80 | `fmperc` (3.2 KB: D-02 2-op FM drums, 24 recipes, 514 B sine table; 5 KB class) — engine batch 4 | 61021 | built |
-| 39 | `mallet` (D-03 modal percussion, 6.3 KB) — engine batch 4 | 61022 | built |
-| 76 | `hats` (4.2 KB: D-04 metallic hats and cymbals, 380 B `.bss`) — engine batch 4 | 61023 | built |
-| 75 | `8bit` (3.4 KB: D-05 chip drums; no voice pool, 40 B of state) — engine batch 4 | 61024 | built |
-| 74 | `snap` (4.9 KB: D-06 claps, rims, shakers; 5,016 of 5,120 B, no `.bss`) — engine batch 4 | 61025 | built |
+| 80 | `fmperc` (4.5 KB since v3: D-02 2-op FM drums, 24 recipes, 514 B sine table; 5 KB class) — engine batch 4 | 61021 | built |
+| 39 | `mallet` (D-03 modal percussion, 7.6 KB since v3) — engine batch 4 | 61022 | built |
+| 76 | free again: `hats` v1–v2 (4.9 KB) were linked here. A unit that installed them keeps nothing here once v3 replaces the definition | — | free |
+| 32 | `hats` v3 (5.6 KB: D-04 metallic hats and cymbals, 336 B `.bss`; moved from 5 KB slot 76 on 2026-11-11 when level and pan and the envelope page together took it 648 B past 5,120) — engine batch 4 | 61023 | built |
+| 75 | `8bit` (4.8 KB since v3: D-05 chip drums; no voice pool, 88 B of state) — engine batch 4 | 61024 | built |
+| 74 | free again: `snap` v1–v2 (5,016 of 5,120 B) were linked here; never installed on the user's OP-Z. A unit that installed v1/v2 keeps nothing here once v3 replaces the definition | — | free |
+| 33 | `snap` v3 (5.4 KB: D-06 claps, rims, shakers; moved from 5 KB slot 74 on 2026-11-11 when the track's level and pan, `opz_mix.h`, took it 304 B past 5,120) — engine batch 4 | 61025 | built |
 | 73 | `opz_test_tempo` (hardware check H-7, Q-18 sequencer keys; 1.4 KB) | 60903 | built |
 | 72 | `opz_test_sampler` (hardware check H-S2, Q-27 samples: plays `getSample`'s slices; 1.0 KB; its plug names `samplepacks/opzk_testkit.aif`) | 60905 | built |
 | 71 | `repeat` (1.8 KB: X-04 beat repeat; asks for 240 KB of FX buffer: FX1, FX2; 64 B of state) — engine batch 5 | 61100 | built |

@@ -35,6 +35,8 @@ int main(int argc, char **argv)
     for (long it = 0; it < iters; it++) {
         uint32_t r = rnd();
         for (int k = 0; k < 18; k++) params[k] = opz_param_from_byte(128);
+        params[OPZ_P_PAN] = 0x40000000u;     /* the track's level and pan: full, exact centre (L == R; opz_mix.h) */
+        params[OPZ_P_LEVEL] = 0x7fffffffu;
         switch (r % 4) {             /* knob words: in range, jumping, wild */
         case 0: break;
         case 1: params[0] = opz_param_from_byte(rnd() & 255); params[1] = opz_param_from_byte(rnd() & 255); break;

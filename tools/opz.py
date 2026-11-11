@@ -78,6 +78,7 @@ from opz_session import FileSession, MidoTransport, SessionError, StateSession  
 import opz_userpresets as userpresets  # noqa: E402
 import opz_samples as smp  # noqa: E402
 import opz_project as proj  # noqa: E402
+import opz_restorecheck as rcheck  # noqa: E402
 import opz_new  # noqa: E402
 
 PLUGS = "settings/plugs.json"
@@ -151,6 +152,49 @@ def load_engine(engine_dir: str, engine_file: str | None = None) -> dict:
         engine["data"] = f.read()
     engine["file"] = path
     return engine
+
+
+def newest_settings(root: str) -> str | None:
+    """The newest backup folder under root that holds both settings files."""
+    dirs = sorted((d for d in os.listdir(root) if os.path.isfile(os.path.join(root, d, PLUGS))
+                   and os.path.isfile(os.path.join(root, d, SLOTS))), reverse=True) if os.path.isdir(root) else []
+    return os.path.join(root, dirs[0]) if dirs else None
+
+
+def restore_check(a) -> int:
+    """opz.py restore-check: offline, reads names and sizes only."""
+    source = a.source or newest_settings(os.path.join(ROOT, "backups"))
+    device = None
+    if source:
+        with open(os.path.join(source, PLUGS)) as f1, open(os.path.join(source, SLOTS)) as f2:
+            device = {"plugs": json.load(f1), "slots": json.load(f2)}
+        print("settings: %s" % source)
+    else:
+        print("settings: none (no backup in backups/): no prediction about plug definitions or matches")
+    r = rcheck.check(rcheck.list_folder(a.backup), device, rcheck.list_folder(a.disk) if a.disk else None)
+    for line in rcheck.describe(r):
+        print(line)
+    if a.log:
+        with open(a.log, errors="replace") as f:
+            log = rcheck.parse_import_log(f.read())
+        print("import.log: last count %s; %d imported, %d refused for memory, %d failed" % (
+            log["used"] or "none", log["imports"], len(log["memory_full"]), len(log["failed"])))
+        for n in log["memory_full"]:
+            print("  sample memory full: " + n)
+        for line in log["failed"]:
+            print("  " + line)
+    return 1 if r["problems"] else 0
+
+
+def engine_sizes(build: str | None = None) -> dict:
+    """Device path -> size in bytes of every engine built here (build/bfin/NAME/NAME.engine), for space_report."""
+    build = build or os.path.join(ROOT, "build", "bfin")
+    out = {}
+    for name in (sorted(os.listdir(build)) if os.path.isdir(build) else []):
+        f = os.path.join(build, name, name + ".engine")
+        if os.path.isfile(f):
+            out["engines/%s.engine" % name] = os.path.getsize(f)
+    return out
 
 
 def device_presets(presets: list) -> list:
@@ -549,6 +593,115 @@ def describe(plugs: dict, slots: dict) -> str:
 
 
 # ---------------------------------------------------------------------------------------------------------------
+# Room on the OP-Z, and taking every plug of ours off it (pure). docs/roadmap/restore-space.md
+# ---------------------------------------------------------------------------------------------------------------
+
+OUR_PLUG_MIN = 60900        # test plugs 60900-60999, released from 61000, our sample plugs 61400-61499
+OUR_PLUG_MAX = 61999        # (sdk/docs/memory-slots.md); 60000-60899 are other people's user plugs
+PLUG_LIMIT = 200            # plug definitions the OS keeps (FUN_800ff9e8: "plug count full" past 200) [code]
+SAMPLE_LIMIT = 24 * 1024 * 1024   # content mode's sample memory, samplepacks/user/ only (FUN_8003377c) [code]
+
+
+ROOM_LOW = 60               # free plug definitions below which our tools warn before an install [inferred: a
+ROOM_TIGHT = 30             # typical 24 MB of user samples is 25-60 packs], and below which they call it full
+
+
+def room_level(free: int) -> str:
+    return "full" if free < ROOM_TIGHT else "low" if free < ROOM_LOW else "ok"
+
+
+def install_room(plugs: dict, plug_id: int) -> str | None:
+    """The warning when an install leaves too few plug definitions for a content-mode restore of the user's own
+    samples (each needs one; a full table drops the sample silently, docs/roadmap/restore-space.md), or None."""
+    added = 0 if any(p["id"] == plug_id for p in plugs.get("plugs", [])) else 1
+    free = PLUG_LIMIT - len(plugs.get("plugs", [])) - added
+    level = room_level(free)
+    if level == "ok":
+        return None
+    return ("room: %d of %d plug definitions free after this install; a content-mode restore of your own samples needs "
+            "one per sample (%s). opz.py remove --all-ours frees them again"
+            % (max(free, 0), PLUG_LIMIT, "too few for a typical backup" if level == "full" else "fewer than %d left" % ROOM_LOW))
+
+
+def is_our_plug(plug: dict) -> bool:
+    """A plug this project made: its id is in our range and it is not one of the user's samples (whose ids are
+    crc32 of their path and can land anywhere)."""
+    return OUR_PLUG_MIN <= int(plug["id"]) <= OUR_PLUG_MAX and not smp.is_user_sample(plug)
+
+
+def space_report(plugs: dict, slots: dict, engine_sizes: dict | None = None) -> dict:
+    """What the OP-Z holds that a restore needs room for, from the two settings files (what the file service can
+    read; it lists no file sizes and no free space). engine_sizes maps an engine path to its size in bytes, for the
+    engines whose build we have."""
+    every = plugs.get("plugs", [])
+    ours = [p for p in every if is_our_plug(p)]
+    user = [p for p in every if smp.is_user_sample(p)]
+    # engines our plugs use and orphans (left by removals), except TE's own (our sample plugs play on TE's)
+    used = {p["engine"] for p in ours} | set(orphan_engines(plugs))
+    our_engines = sorted(e["path"] for e in plugs.get("engines", []) if e["path"] in used
+                         and e["path"].split("/")[-1].replace(".engine", "") not in TE_ENGINES)
+    sizes = engine_sizes or {}
+    known = [sizes[p] for p in our_engines if p in sizes]
+    in_slots = {p["id"] for t in slots.get("tracks", []) for p in t.get("packs", [])}
+    return {
+        "plugs": len(every), "limit": PLUG_LIMIT, "free": PLUG_LIMIT - len(every),
+        "ours": [p["id"] for p in ours], "user_samples": len(user),
+        "te": len(every) - len(ours) - len(user),
+        "our_engine_files": our_engines, "our_engine_bytes": sum(known), "unsized": len(our_engines) - len(known),
+        "displaced_te": sorted(p["id"] for p in every if p["id"] < USER_PLUG_MIN and p["id"] not in in_slots),
+        "loose_user_samples": [p["id"] for p in smp.unassigned_user_samples(plugs, slots)],
+    }
+
+
+def describe_space(r: dict) -> str:
+    lines = ["plug definitions: %d of %d (%d free): %d of ours, %d user samples, %d TE"
+             % (r["plugs"], r["limit"], r["free"], len(r["ours"]), r["user_samples"], r["te"])]
+    size = "%d KB" % -(-r["our_engine_bytes"] // 1024) + (" + %d not built here" % r["unsized"] if r["unsized"] else "")
+    lines.append("our engine files: %d (%s), on the OP-Z's 512 MB flash; content mode shows none of them"
+                 % (len(r["our_engine_files"]), size))
+    if r["displaced_te"]:
+        lines.append("TE plugs in no slot (displaced; a restore or remove --all-ours --put-back brings them back): "
+                     + ", ".join(str(i) for i in r["displaced_te"]))
+    if r["loose_user_samples"]:
+        lines.append("WARNING: user samples in no slot (content mode deletes them): "
+                     + ", ".join(str(i) for i in r["loose_user_samples"]))
+    return "\n".join(lines)
+
+
+def plan_remove_ours(plugs: dict, slots: dict, put_back: dict | None = None) -> dict:
+    """Every plug of ours off the OP-Z: which plugs go, which cells empty, and (with put_back, the slot map of an
+    earlier backup) which installed non-ours plug goes back into a cell we empty. Plugs whose removal would delete
+    a file we did not write (removal_block) stay, with the reason."""
+    ids, kept = [], []
+    for p in plugs.get("plugs", []):
+        if not is_our_plug(p):
+            continue
+        why = smp.removal_block(p, plugs)
+        if why:
+            kept.append((p["id"], why))
+        else:
+            ids.append(p["id"])
+    gone = set(ids)
+    doc = json.loads(json.dumps(slots))
+    cleared = [(t["index"], q["slot"], q["id"]) for t in doc.get("tracks", []) for q in t.get("packs", [])
+               if q["id"] in gone]
+    for pid in ids:
+        doc = unassign(doc, pid)
+    refilled = []
+    if put_back is not None:
+        installed = {p["id"] for p in plugs.get("plugs", [])}
+        old = {(t["index"], q["slot"]): q["id"] for t in put_back.get("tracks", []) for q in t.get("packs", [])}
+        for t, s, _ in cleared:
+            q = old.get((t, s))
+            if q is None or q in gone or q not in installed:
+                continue
+            doc = assign(doc, t, s, q)
+            refilled.append((t, s, q))
+    return {"ids": ids, "kept": kept, "cleared": cleared, "refilled": refilled, "slot_map": doc,
+            "errors": orphan_errors(plugs, slots, doc)}
+
+
+# ---------------------------------------------------------------------------------------------------------------
 # Sample packs (pure): plan, patch, listing. research/samples.md
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -788,6 +941,9 @@ class Opz:
         self.log("plan: %s (%d bytes) as plug %d -> %s" % (
             engine["device_path"], len(engine["data"]), engine["manifest"]["plug"]["id"],
             ", ".join("%s slot %d" % (TRACK_NAMES[t], s) for t, s in plan["assign"]) or "no track"))
+        room = install_room(plugs, engine["manifest"]["plug"]["id"])
+        if room:
+            self.log("warning: " + room)
         if dry_run:
             self.log("dry run: nothing written. patch.json:\n" + files[1][1].decode())
             return True
@@ -919,6 +1075,61 @@ class Opz:
             self.log("verify:  plug %d still present" % plug_id)
             return False
         self.log("removed plug %d. orphan engine files (no known delete): %s" % (plug_id, orphan_engines(plugs2) or "none"))
+        return True
+
+    def remove_ours(self, put_back_dir: str | None = None, dry_run: bool = False, yes: bool = False) -> bool:
+        """Take every plug of ours off the OP-Z in three verified writes, one confirm: an empty boot file first (a
+        stale one would bring removed plugs back at the next start, research/presets.md), the slot map without
+        them (with put_back_dir: TE's plugs back in the cells they had in that backup), then one sync job of remove
+        operations. The user's samples are never touched. Engine files stay (no normal-mode delete is known); they
+        are a few KB each and content mode never shows them."""
+        bdir, plugs, slots = self.backup("remove-ours")
+        put_back = None
+        if put_back_dir:
+            with open(os.path.join(put_back_dir, SLOTS)) as f:
+                put_back = json.load(f)
+        plan = plan_remove_ours(plugs, slots, put_back)
+        for pid, why in plan["kept"]:
+            self.log("warning: plug %d stays: %s" % (pid, why))
+        for e in plan["errors"]:
+            self.log("error:   " + e)
+        if plan["errors"]:
+            self.log("nothing written.")
+            return False
+        if not plan["ids"]:
+            self.log("no plugs of ours on the OP-Z: nothing to remove.")
+            return True
+        self.log("plan: remove %d plug%s of ours: %s" % (len(plan["ids"]), "s" if len(plan["ids"]) > 1 else "",
+                                                       ", ".join(str(i) for i in plan["ids"])))
+        refilled = {(t, s) for t, s, _ in plan["refilled"]}
+        emptied = ["%s %d" % (TRACK_NAMES.get(t, t), s) for t, s, _ in plan["cleared"] if (t, s) not in refilled]
+        if emptied:
+            self.log("plan: empty %s" % ", ".join(emptied))
+        if plan["refilled"]:
+            self.log("plan: put back %s" % ", ".join("%s %d = %d" % (TRACK_NAMES.get(t, t), s, q)
+                                                      for t, s, q in plan["refilled"]))
+        self.log("plan: empty boot file %s; the engine files stay (no known delete)" % BOOT_PATCH)
+        if dry_run:
+            self.log("dry run: nothing written.")
+            return True
+        if not yes and not self.confirm("Remove %s of ours?" % ("all %d plugs" % len(plan["ids"]) if len(plan["ids"]) > 1 else "the 1 plug")):
+            self.log("cancelled.")
+            return False
+        self.push([(BOOT_PATCH, build_boot_patch([]))])
+        if plan["slot_map"] != slots:
+            self.push([(SLOTS, json.dumps(plan["slot_map"], separators=(",", ":")).encode())])
+            if json.loads(self.read_settings()[1]) != plan["slot_map"]:
+                self.log("verify:  slot map differs; restoring the slot map from %s; no plug removed" % bdir)
+                self.restore(bdir, yes=True)
+                return False
+        self.push([], remove=plan["ids"])
+        plugs2, slots2 = (json.loads(x) for x in self.read_settings())
+        left = [p["id"] for p in plugs2.get("plugs", []) if p["id"] in set(plan["ids"])]
+        if left:
+            self.log("verify:  still present: %s (run it again)" % ", ".join(str(i) for i in left))
+            return False
+        self.log("removed %d plug%s of ours and verified. The user's samples and TE's plugs are untouched.\n%s"
+                 % (len(plan["ids"]), "s" if len(plan["ids"]) > 1 else "", describe_space(space_report(plugs2, slots2))))
         return True
 
     def restore(self, backup_dir: str, yes: bool = False, touch: bool = False) -> bool:
@@ -1565,8 +1776,19 @@ def main(argv=None) -> int:
     asg.add_argument("--replace", action="store_true")
     asg.add_argument("--dry-run", action="store_true")
     asg.add_argument("--yes", action="store_true")
+    rc = sub.add_parser("restore-check", help="offline: will the OP-Z take this backup of its disk in content mode?")
+    rc.add_argument("backup", help="the folder you copied off the OP-Z disk (samplepacks/, projects/, ...)")
+    rc.add_argument("--disk", help="the OP-Z disk as it is now (content mode), e.g. /Volumes/OP-Z")
+    rc.add_argument("--source", help="an opz.py backup folder with the OP-Z's settings (default: the newest in backups/)")
+    rc.add_argument("--log", help="the disk's import.log: what the last ejects refused")
+    sp_ = sub.add_parser("space", help="plug definitions and our engine files (read-only)")
+    sp_.add_argument("--source", help="a backup folder instead of the OP-Z")
     r = sub.add_parser("remove")
-    r.add_argument("plug_id", type=int)
+    r.add_argument("plug_id", type=int, nargs="?")
+    r.add_argument("--all-ours", action="store_true",
+                   help="every plug of ours (60900-61999), the user's samples and TE's plugs untouched")
+    r.add_argument("--put-back", metavar="BACKUP_DIR",
+                   help="with --all-ours: TE's plugs back into the cells they had in this backup")
     r.add_argument("--unassign", action="store_true")
     r.add_argument("--no-boot", action="store_true", help="don't write the boot file again without this plug")
     r.add_argument("--dry-run", action="store_true")
@@ -1689,6 +1911,18 @@ def main(argv=None) -> int:
             with open(os.path.join(a.source, PLUGS)) as f1, open(os.path.join(a.source, SLOTS)) as f2:
                 print(describe(json.load(f1), json.load(f2)))
             return 0
+        if a.cmd == "restore-check":
+            return restore_check(a)
+        if a.cmd == "space" and a.source:
+            with open(os.path.join(a.source, PLUGS)) as f1, open(os.path.join(a.source, SLOTS)) as f2:
+                print(describe_space(space_report(json.load(f1), json.load(f2), engine_sizes())))
+            return 0
+        if a.cmd == "remove" and (a.plug_id is None) != bool(a.all_ours):
+            print("error: give a plug id or --all-ours (not both)", file=sys.stderr)
+            return 2
+        if a.cmd == "remove" and a.put_back and not a.all_ours:
+            print("error: --put-back goes with --all-ours", file=sys.stderr)
+            return 2
         if a.cmd in ("samples", "sample") and a.scmd == "build":
             sounds, notes = samples_from_args(a)
             name = a.name or os.path.splitext(os.path.basename(a.out))[0]
@@ -1750,6 +1984,12 @@ def main(argv=None) -> int:
             if a.cmd == "assign":
                 return 0 if opz.assign(a.plug_id, a.track, a.slot, a.replace, a.dry_run, a.yes,
                                          catalogue() if max(a.track) >= FX_TRACK_MIN else None) else 1
+            if a.cmd == "space":
+                plugs, slots = (json.loads(x) for x in opz.read_settings())
+                print(describe_space(space_report(plugs, slots, engine_sizes())))
+                return 0
+            if a.cmd == "remove" and a.all_ours:
+                return 0 if opz.remove_ours(a.put_back, a.dry_run, a.yes) else 1
             if a.cmd == "remove":
                 if not opz.remove(a.plug_id, a.unassign, a.dry_run, a.yes):
                     return 1

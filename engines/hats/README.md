@@ -50,7 +50,10 @@ squares and the band by ⅓ octave per press (two presses each way; note numbers
 | P2 **decay** | the length, and with it how open a hat sounds. Each sound has two decay stages (a first rate down to a knee, then a second): P2 scales the first stage ×¼ at 0 → ×1 at 128 → ×4 at 255 and the second ×½ → ×1 → ×2 (both exponential), so low P2 gives a tight, choked ending and high P2 a loose hat and long cymbal washes. On the swell and pedal hat it also scales the rise ×¼ … ×4 |
 | velocity | level (linear: 64 is −6 dB) and brightness: the band moves down by up to ¾ octave on soft hits (closed hat centroid 10.0 kHz at 127, 8.6 kHz at 60, 8.1 kHz at 30) |
 | filter, resonance | not used: they are the OS's own track filter, which runs after the engine. Presets leave it neutral (128, 0) |
-| attack … release, LFO | not used by the engine (the presets turn the LFO off: depth 128) |
+| pan, level | the track's pan and level (yellow and red dial, orange page), applied by the engine as TE's engines do (`opz_mix.h`): level is linear (128 = −6 dB, 0 = silent), pan a balance (centre: both sides full; hard left: right silent). The FX1/FX2 sends are taken after them. They follow the LFO (targets pan and volume) without zipping |
+| attack, decay, sustain, release (the green page) | the OP-Z's drum envelope over each hit, as on TE's sample kits ([engine-abi.md](../../sdk/docs/engine-abi.md#the-drum-envelope-updateparametersahd), `opz_drumenv` in `opz_adsr.h`), read at the hit. **attack** moves the envelope's start into the hit: the hit gets shorter in proportion (on a sample it skips the start; a synthesized strike stays). **decay** fades the hit in, up to half its length (a swell: the peak drops as the natural decay runs underneath). **sustain** is how long it holds at full level: 255 the whole hit, 128 about half, 32 an eighth, 0 a click (12 ms). **release** fades it after the hold: below 128 the fade's length (0 a cut), from 128 the full length with the curve bending from a straight line to "hold, then drop". The presets' 0 / 0 / 255 / 0 leave every hit exactly as designed |
+| note style | **gate**: releasing the key fades the hit out in ~20 ms (the step length on a sequenced note); retrig, mono and loop play one-shots |
+| LFO | the OS's; the presets turn it off (depth 128) |
 
 Knobs are read when a hit starts, as in `kit`: turning P1 or P2 changes the next hits, not the one ringing.
 
@@ -131,10 +134,14 @@ cycles per sample per sounding voice, mean (worst block):
 | choke (open hat cut by a closed hat) | 119 | 122 |
 | knobs moving every block (`knob_cases`, period 8 / 40) | 119 / 119 | 122 |
 
-Every case within the 218/sample budget (19 voices); a hit's first block costs the same as the others (all per-hit
-work is in `onNoteOn`). Note-on ~5,000 cycles (~2,450 when the filter setting is cached). 4,316 of 5,120 bytes in
-slot 76 (380 B `.bss`: the 66-word difference buffer, the filter cache, the choke counters); 144 of 280 B of voice
-state; libgcc's `__muldi3` only (per note). No division, float or 64-bit math in `render`.
+The table is v2. **v3** applies the track's level and pan (`opz_mix.h`) and adds the envelope page and gate style
+(`opz_drumenv`): means 128–165 cycles/sample, worst block 186 (`opz_cycles.py engines/hats`, the host's
+`updateParametersAHD` counted inside render as on the device). Every case within the 218/sample budget (19 voices); a
+hit's first block costs the same as the others (all per-hit work is in `onNoteOn`). Note-on up to ~5,500 cycles
+(~2,450 when the filter setting is cached). **Slot 32 (10 KB class) since v3**: 5,768 of 10,240 bytes (336 B `.bss`:
+the 66-word difference buffer, a 2-entry filter cache, the choke counters). Level and pan with the envelope page took
+it 648 B past its old 5 KB slot 76. 188 of 280 B of voice state (40 of them the envelope page). Plug 61023, version 3
+(plug and engine). libgcc's `__muldi3` only (per note). No division, float or 64-bit math in `render`.
 
 ## Checks
 

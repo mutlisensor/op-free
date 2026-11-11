@@ -34,6 +34,7 @@
 #include "opz_adsr.h"
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_mix.h"
 
 #define N OPZ_BLOCK_FRAMES
 #define ALWAYS_INLINE static inline __attribute__((always_inline))
@@ -47,6 +48,7 @@ typedef struct State {
     uint32_t vib;                   /* vibrato phase, Q32 turns */
     int32_t sweep;                  /* pitch sweep, Q16 octaves */
     int32_t vol;                    /* velocity as the 4-bit volume, Q31 */
+    OpzMix mix;                     /* the track's level and pan (opz_mix.h) */
     uint16_t lfsr;                  /* 15-bit shift register, never 0 */
     uint16_t frames;                /* frames since the note-on (saturating) */
     uint8_t arp, tick;              /* arpeggio step, frames into it */
@@ -156,8 +158,8 @@ ALWAYS_INLINE uint32_t integral(const int16_t *c, uint32_t n, uint32_t ph)
 }
 
 /* A table wave: the average over each sample (integral difference x 2^sh), then the output stage's 2-tap average
- * with weight b (Q15, 32767 = a 2-sample box), x g, added into out. d and the last d are below 2^31 in magnitude, and
- * their mix is too. */
+ * with weight b (Q15, 32767 = a 2-sample box), x g, into the mono buffer out. d and the last d are below 2^31 in
+ * magnitude, and their mix is too. */
 __attribute__((noinline)) static uint32_t pass_table(fract32 *out, const int16_t *c, uint32_t n, uint32_t ph,
                                                      uint32_t inc, int sh, int32_t b, int32_t g, int32_t dg)
 {
@@ -172,8 +174,7 @@ __attribute__((noinline)) static uint32_t pass_table(fract32 *out, const int16_t
         dp = d;
         fract32 y = opz_mul_q31_q15(dm, g >> 16);
         g += dg;
-        out[2 * i] = opz_add_q31(out[2 * i], y);                 /* interleaved stereo */
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], y);
+        out[i] = y;
     }
     return ph;
 }
@@ -198,8 +199,7 @@ __attribute__((noinline)) static void pass_noise(fract32 *out, State *s, uint32_
         }
         y = opz_mul_q31_q15(y, g >> 16);
         g += dg;
-        out[2 * i] = opz_add_q31(out[2 * i], y);
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], y);
+        out[i] = y;
     }
     s->nq = nq;
     s->lfsr = (uint16_t)lf;
@@ -233,8 +233,10 @@ void init(void *state, uint32_t track, uint32_t arg2, void *mem, void *scratch)
 
 void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
 {
-    (void)note; (void)params;                                  /* params may be NULL (engine-abi.md §3) */
+    (void)note;
     State *s = state;
+    if (params) opz_mix_start(&s->mix, params);                /* params may be NULL (engine-abi.md §3) */
+    else s->mix.l = s->mix.r = OPZ_MIX_UNITY;
     uint32_t v = velocity > 127 ? 127 : velocity;
     uint32_t vol = (v * 15 + 64) >> 7;                         /* 4-bit volume, 1 .. 15 */
     if (vol < 1) vol = 1;
@@ -316,11 +318,13 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
     int32_t l1 = env_block(l0, OPZ_ADSR_COEF(env), OPZ_ADSR_STEP(env));
     OPZ_ADSR_LEVEL(env) = l1;
 
+    fract32 mono[N];                                               /* the voice; opz_mix_mono adds it into out */
     if (w == W_NOISE) {
         uint32_t qinc = inc >= 0x10000000u ? 0xffffffffu : inc << 4;   /* 16 steps per note period */
         int32_t gv = opz_mul_q31(NOISE_GAIN, s->vol);
         int32_t g0 = opz_mul_q31(gv, l0), g1 = opz_mul_q31(gv, l1);
-        pass_noise(out, s, qinc, g0, (g1 >> 6) - (g0 >> 6));
+        pass_noise(mono, s, qinc, g0, (g1 >> 6) - (g0 >> 6));
+        opz_mix_mono(out, mono, &s->mix, params);                  /* level and pan, into interleaved out */
         return;
     }
     if (w == W_METAL && inc > INC_METAL) inc = INC_METAL;
@@ -336,7 +340,8 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
     /* the output stage: no extra smoothing up to C5, rising linearly in frequency to a 2-sample box at C7 */
     int32_t b = inc <= INC_C5 ? 0 : (int32_t)((((inc - INC_C5) >> 12) * 28767u) >> 15);
     if (b > 32767) b = 32767;
-    s->ph = pass_table(out, s_c + k_off[w], n, s->ph, inc, nn - 4, b, g0, (g1 >> 6) - (g0 >> 6));
+    s->ph = pass_table(mono, s_c + k_off[w], n, s->ph, inc, nn - 4, b, g0, (g1 >> 6) - (g0 >> 6));
+    opz_mix_mono(out, mono, &s->mix, params);                      /* level and pan, into interleaved out */
 }
 
 OPZ_EXPORTS_INSTRUMENT();

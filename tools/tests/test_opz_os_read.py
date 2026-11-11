@@ -55,6 +55,7 @@ class FakeConsole:
         self.clock, self.files, self.eat_first, self.chunk = clock, files, eat_first, chunk
         self.stall_after = stall_after
         self.written, self.queue, self.sent = [], bytearray(), 0
+        self.asked = []             # (bytes asked for, bytes waiting) for every read()
 
     def write(self, frame):
         self.written.append(frame)
@@ -84,7 +85,15 @@ class FakeConsole:
     def flush(self):
         pass
 
+    @property
+    def in_waiting(self):
+        k = min(self.chunk, len(self.queue))
+        if self.stall_after is not None:
+            k = min(k, max(0, self.stall_after - self.sent))
+        return k
+
     def read(self, n):
+        self.asked.append((n, self.in_waiting))
         if self.stall_after is not None and self.sent >= self.stall_after:
             self.clock.t += 0.5
             return b''
@@ -208,6 +217,16 @@ class Commands(unittest.TestCase):
         self.assertTrue(any('MATCH' in l and 'DIFFERENT' not in l for l in lines))
         self.assertTrue(all(f in osr.ALLOWED_FRAMES for f in console.written))
         self.assertEqual(console.written, [osr.PING, osr.PING, osr.READ['os.ldr']])
+
+    def test_reads_only_what_is_waiting(self):
+        """collect() asks for the bytes waiting, or 1 when none are, never a big block (PR 2)."""
+        data = os.urandom(5000)
+        code, err, _, console, saved = self.run_cmd(['read', 'os.ldr'], {'os.ldr': data}, chunk=300)
+        self.assertEqual(saved['os.ldr'], data)
+        self.assertTrue(console.asked)
+        for n, waiting in console.asked:
+            self.assertEqual(n, waiting or 1)
+        self.assertIn((1, 0), console.asked)                                # the idle case waits for one byte
 
     def test_read_os_ldr_different(self):
         code, err, lines, _, saved = self.run_cmd(['read', 'os.ldr'], {'os.ldr': b'not the os'})

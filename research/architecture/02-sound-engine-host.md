@@ -112,9 +112,9 @@ format and matches the parameter-lock order [notes, proven]:
 | 0 | **P1** (engine-defined, e.g. "tone") | sound | engine |
 | 1 | **P2** (engine-defined, e.g. "digital") | sound | engine |
 | 2–5 | attack, decay, sustain, release | envelope | host ADSR (engines may read them) |
-| 6, 7 | FX1 send, FX2 send | FX | host mixer |
+| 6, 7 | FX1 send, FX2 send | FX | host mixer, taken from what the engine wrote (after its level and pan) [code, app] |
 | 8, 9 | filter, resonance | sound | **host track filter**, after the engine [code, proven] |
-| 10, 11 | pan, level | FX | host mixer |
+| 10, 11 | pan, level | FX | **the engine**: every TE instrument applies them in `render`; the OS does not [code, app + device; [engine-abi.md §4](../../sdk/docs/engine-abi.md#level-pan-and-the-sends)] |
 | 12 | portamento | — | host |
 | 13–16 | LFO depth, speed, target, shape | LFO | host `Lfo` |
 | 17 | note style | — | host |
@@ -123,7 +123,9 @@ On the way to the engine each byte `b` becomes `b·0x808080 + (b >> 1)` — a Q3
 smoothed every block with a 1/64 one-pole (`Synth::setTargetParameters` / `interpolateParameters`). [code]
 
 **What this means for engine design:** an engine gets two dedicated knobs (P1, P2) — not the filter and
-resonance knobs, which drive the OS's own track filter on instrument and FX tracks [proven]. The envelope, LFO, sends, pan and level are already handled. A plug's
+resonance knobs, which drive the OS's own track filter on instrument and FX tracks [proven]. The envelope stages, LFO and
+sends are handled by the OS; **level and pan are not**: the engine applies them (`sdk/include/opz_mix.h`), as TE's own
+engines do, or the dials do nothing (found 2026-11-11 from tester reports). A plug's
 `parameter_names` labels P1 and P2 in the app.
 
 For an **effect**, the 18 parameters are those of the FX track. TE's FX use P1 and P2 ("feedback / lp filter",

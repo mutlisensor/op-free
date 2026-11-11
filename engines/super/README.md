@@ -12,6 +12,7 @@ P2. The OP-Z's own track filter (the filter and resonance knobs) shapes the tone
 | velocity | level (linear), and a little brightness: a gentle one-pole low-pass (6 dB/octave) at 3 kHz for velocity 0, ~7.4 kHz at 64 and 18 kHz at 127 (at C4), with half key tracking (½ octave per octave), capped at 18 kHz |
 | attack … release | the OP-Z envelope |
 | filter, resonance | not used: they are the OS's own track filter, which runs after the engine. Presets leave it neutral (128, 0) |
+| pan, level | the track's pan and level (yellow and red dial, orange page), applied by the engine as TE's engines do (`opz_mix.h`): level is linear (128 = −6 dB, 0 = silent), pan a balance on the stereo voice (centre: both channels full, the whole width; hard left: only the left channel, the right silent). The FX1/FX2 sends are taken after them. They follow the LFO (targets pan and volume) without zipping |
 
 **Stereo.** The centre saw sits in the middle. The six side saws are three pairs, one saw of each pair on each side,
 with the flatter and sharper saws alternating between the sides so neither side sounds flat or sharp: outer pair
@@ -66,12 +67,12 @@ device.
 
 | | |
 |---|---|
-| Plug | 61015, `trackmask` 0xF0 (bass, lead, arp, chord), version 1 |
-| Memory slot | 49 (10 KB class), 4,976 of 10,240 bytes used on Blackfin (incl. 524 bytes of `.bss`: the shared event buffers) |
-| State | 52 B of 280 per voice; `memRequest` 0 |
+| Plug | 61015, `trackmask` 0xF0 (bass, lead, arp, chord), version 2 (v2: applies the track's level and pan) |
+| Memory slot | 49 (10 KB class), 5,632 of 10,240 bytes used on Blackfin (incl. 524 bytes of `.bss`: the shared event buffers) |
+| State | 56 B of 280 per voice; `memRequest` 0 |
 | Saws | 7 at every polyphony (centre + 3 stereo pairs), plus the triangle sub on P2 192–255 |
-| CPU | Blackfin simulator ([cycle-model.md](../../research/cycle-model.md), `tools/opz_cycles.py`), 4-note chord C3 G3 C4 E4: **7,415 cycles/block/voice (116 per sample) with P2 ≤ 192, 8,580 (134) with the sub**; worst block 9,684 (151). P1 doesn't change the cost. High notes cost more (more wraps per block): C6 G6 C7 E7 with the sub, 10,990 mean (172), worst 13,065 (204). **19 voices** (notes 36–72, P2 255): 7,724 per voice (121), ~146,800 cycles per block in all (worst block per voice 9,831), against the OS's 265,000 before its own share, so 19 voices of super fit with ~45 % to spare. Note-on 422 cycles |
-| Level | per channel ~−20.5 dBFS RMS at velocity 127 (a single saw at the ABI's −12 dBFS peak is −16.8), peaks around −8 dBFS once the side saws are in (the supersaw's crest factor), −14 dBFS at P2 0. A 4-note chord at full velocity peaks at −1 dBFS in the track buffer without clipping |
+| CPU | Blackfin simulator ([cycle-model.md](../../research/cycle-model.md), `tools/opz_cycles.py`), 4-note chord C3 G3 C4 E4: **7,565 cycles/block/voice (118 per sample) with P2 ≤ 160, 8,650 (135) with the sub**; worst block 9,736 (152). P1 doesn't change the cost. High notes cost more (more wraps per block): C6 G6 C7 E7 with the sub, 11,087 mean (173), worst 13,147 (205). **The track's level and pan (`opz_mix.h`) are ~2 of these per sample** with the hand-scheduled `opz_mix.h` loops (~10 with the C loops; v1: 116 / 134). **19 voices** (P1 128, P2 255): 7,823 per voice (122), ~148,600 cycles per block in all (worst block 174,700), against the OS's 265,000 before its own share. Note-on 452 cycles |
+| Level | at track level 255 (the level dial scales it linearly, 128 = −6 dB): per channel ~−20.5 dBFS RMS at velocity 127 (a single saw at the ABI's −12 dBFS peak is −16.8), peaks around −8 dBFS once the side saws are in (the supersaw's crest factor), −14 dBFS at P2 0. A 4-note chord at full velocity peaks at −1 dBFS in the track buffer without clipping |
 
 Simulator checks (opzsim, one voice, A3 unless noted): the level per channel stays within −20.2…−21.1 dBFS RMS for P2
 0…255 at P1 128; L/R correlation 0.99 at P2 0 (mono), 0.5–0.6 with the sides in; at P1 0 the output is mono; on an

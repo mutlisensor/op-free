@@ -9,8 +9,9 @@ to **freeze** the tail.
 |---|---|
 | P1 **size** | one macro over **size, decay and pre-delay** (table below). 0 = a small, short room (T60 0.3 s, pre-delay 3 ms). Turning it up makes the room bigger (delays ×5 from 0 to 255) and the decay longer (×2 every ~37 steps), up to a huge plate at 240 (T60 ~20 s, pre-delay 40 ms). **240–255: the decay runs on towards endless**; at 255 the tail never dies. A limiter stops it from building up: however much goes in, the wet signal settles with its peaks around −1 to −3 dBFS. Size changes **glide** (~1.5 s from end to end, at most 1/8 sample per sample), so turning P1 bends the tail's pitch a little, like tape, instead of clicking. An LFO on P1 gives a slow, warping tail |
 | P2 **tone** | **dark and warm → bright and shimmering**, in one sweep: the input's band limit opens from 2 to 18 kHz, the damping inside the tank from 1.4 to 14 kHz (how fast highs die compared to lows), and the chorus in the tail gets deeper and a little faster (all-pass excursion 4 → 32 samples, LFO 0.5 → 1 Hz). Table below. Continuous, so an LFO on P2 glides through it |
-| pan | dry/wet, as on `filter` and `glue`: 0 dry, rising linearly to fully wet at the centre (128); 128–255 stay fully wet. See *sends* below |
-| level | output level (255 = unity) |
+| pan | not reachable on the OP-Z: an FX track has no pan dial, app control or mixer column [proven, H-FX1], and presets can't set it, so it stays where the OS leaves it (127 on the unit checked), which this effect treats as **the reverb only** (the dry about 44 dB down). The law below the centre, for anything that does set pan: the dry blends in at equal power: 64 = dry and the reverb at −3 dB each, 0 = dry only. |
+| dry level (hold the FX track's key + **red dial**) | the OS's own dry level (byte 12; TE's app shows it as "dry level" on the FX page): how much of each sending track's own sound stays in the mix. 255 = send/return (the source plays on and the effect adds to it), 0 = insert (a track sent at 100 % is heard only through the effect). This is the dry/wet control on the OP-Z [proven, H-FX1 2026-11-11] |
+| level | output level (255 = unity) (nothing on the OP-Z reaches an FX track's level, neither a dial nor the mixer page [proven, H-FX1], so the preset's value holds) |
 | filter, resonance | not used: they are the OS's own track filter, also on FX tracks. Presets leave it neutral (128, 0). The track filter after the reverb is handy for thinning the tail (a little high-pass) |
 | **notes on its track** | **freeze**: while any note is held, the input is shut out of the tank (faded over ~12 ms) and the tank's decay and damping open up. What was ringing hangs as a pad; it fades only 0.2–0.5 dB a second, losing its top end first. New sound sent to the track doesn't get in, but the dry part (pan below 128) still passes. When the last note is released, the tail decays at P1's rate again and new sound enters. Note number and velocity don't matter. Sequence a long note at the end of a phrase to hold its tail, or tap a key live |
 | **no notes** | a plain reverb |
@@ -51,7 +52,7 @@ track's dry level lets it*: FX parameter byte 12 (portamento on instrument track
 earlier preset had) a full send leaves only the effect; the preset now ships **255**, so the sending track keeps its
 dry sound at any send, the classic send/return setup [code, app; to confirm on the device,
 [host-tables-flags.md](../../research/host-tables-flags.md#the-bits)]. Pan still sets the dry/wet balance inside
-the effect (64 = half dry, half wet; 128 = all reverb).
+the effect (64 = dry and reverb at −3 dB each; 128 = all reverb).
 
 ## Preset
 
@@ -72,7 +73,7 @@ this one preset (slot 0, index 0). A draft: tune it by ear on the device.
 | shimmer | 210 | 255 | 128 | huge, bright, deep chorus in a ~15 s tail. Sparse melodies, vocals through the mic input |
 | endless | 255 | 120 | 128 | the tail never dies: feed it a chord, stop sending, and it drones on (the limiter holds the level) |
 | freeze pad | 180 | 180 | 128 | sequence a long note on the FX track over the last bar: that bar's tail hangs, then lets go |
-| half wet | 128 | 128 | 64 | dry and wet at half each, for a full send |
+| half wet | 128 | 128 | 64 | dry and reverb at −3 dB each, for a full send with FX dry level 0 |
 
 All at level 255, filter 128 / resonance 0.
 
@@ -80,11 +81,11 @@ All at level 255, filter 128 / resonance 0.
 
 | | |
 |---|---|
-| Plug | 61006, version 1, `trackmask` 0x300 (FX1, FX2); preset byte 12 (the FX **dry level**) 255: the sending track keeps its dry signal, classic send/return ([host-tables-flags.md](../../research/host-tables-flags.md#the-bits)) |
+| Plug | 61006, version 2, `trackmask` 0x300 (FX1, FX2); preset byte 12 (the FX **dry level**) 255: the sending track keeps its dry signal, classic send/return ([host-tables-flags.md](../../research/host-tables-flags.md#the-bits)) |
 | Memory slot | 47 (10 KB class), 8.0 KB of 10 KB used (Blackfin build, `-O2`) |
 | Memory request | **229,592 bytes (224 KB)**: fits FX2's 256 KB pool and FX1's 2 MB. The ring of 32-bit delay lines is 219 KB (56,186 samples), the rest is work buffers. Not the master track (16 KB, and not an effect slot anyway) |
 | State | 104 B of 200 |
-| CPU (Blackfin simulator, `tools/opz_cycles.py`) | **~420 cycles per stereo frame** (26,900 per block, worst block 438/frame) at every P1/P2 and while frozen, 4.6 % of the 580,499-cycle block. **~580 per frame (worst 620) while P1 moves** (a knob turn or the LFO on P1): the tank lines then interpolate as they glide. Note-on 41 cycles. For comparison, `swirl` is 414 |
+| CPU (Blackfin simulator, `tools/opz_cycles.py`) | **v2 (2026-11-11): 578 cycles per stereo frame in its worst case, worst block 620** (fx-usability.md §4a). Earlier figures: **~420 cycles per stereo frame** (26,900 per block, worst block 438/frame) at every P1/P2 and while frozen, 4.6 % of the 580,499-cycle block. **~580 per frame (worst 620) while P1 moves** (a knob turn or the LFO on P1): the tank lines then interpolate as they glide. Note-on 41 cycles. For comparison, `swirl` is 414 |
 | Start-up | the first ~14 blocks (20 ms) after selecting the plug pass the dry sound only, while the 224 KB buffer is cleared (`init` runs with interrupts masked, so it can't clear it at once) |
 | Latency | none on the dry path; the reverb starts after its pre-delay (3–45 ms) |
 
@@ -159,6 +160,15 @@ no floating point.
 8. Turn P1 to 255 with a loud pad sent: the output must not clip, and the level should settle within a second.
    CPU: with P1 moving all the time (LFO on P1) plate costs ~6.5 % of a block instead of 4.6 %; check for crackles
    in a busy pattern.
+
+## Version 2 (2026-11-11): what changed, what to listen for
+
+Testers found our effects hard to use: the mix knob seemed not to work, some effects seemed not to pass the sound, and
+loud material clipped. Measured in the simulator (fx-usability.md). plate's
+centre was already the reverb alone; its lower half was a linear crossfade (64 = −6 dB each, a dip in loudness) and
+dry + reverb could sum past full scale. Now the lower half is equal power (the SDK's law) and the sum passes the SDK's
+output limiter. The reverb itself is unchanged. In opzsim (no control on the OP-Z reaches an FX track's pan): pan from 0 to 128 on a full send with the dry level
+0: the sound moves from dry to reverb without getting quieter in the middle.
 
 ## Credits
 

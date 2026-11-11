@@ -258,7 +258,7 @@ bit, so the next save keeps the new values.
 #### The route: edit `userPresets.dat` on the content disk
 
 1. Content mode (hold **track** at power-on). The disk's `config/` has `userPresets.dat` once at least one preset was
-   stored by hand (store any one first if it is missing).
+   stored by hand (store any one first if it is missing; the site's loader instead makes the file, H-9b, not yet run).
 2. On the Mac, `opz.py presets bake [ENGINE_DIR ...] --disk /Volumes/OP-Z` (offline, no MIDI;
    `tools/opz_userpresets.py`) checks the file strictly (351,202 bytes, version 1, no plug id twice, no mask bit past
    index 13, parse → write gives the same bytes), copies it to `backups/<time>-userpresets/`, and writes our presets
@@ -402,6 +402,7 @@ contradict this page.
 | H-2b | Store a preset on our plug (track + white key, 2 s), restart, hold track and look at the white keys | the stored key is still lit (user presets persist via `config/userPresets.dat`) | **passed 2026-10-19** (user): a hand-stored preset on our plug survives a restart |
 | H-8 | After H-2b's store: content mode, look in the disk's `config/` (read only, change nothing), eject | `userPresets.dat` is there, 351,202 bytes | **passed 2026-10-19** (user, `presets bake --show`): 351,202 bytes, every strict check passed, 76 plug records; hand-stored presets on plug 10 and on table (bass keys 1 and 4), all with empty names |
 | H-9 | Bake `table` into `userPresets.dat` in content mode, eject, restart with nothing connected (steps below) | white keys 1–5 lit **solid** on table's tracks after every restart; the hand-stored one still there | **passed 2026-10-19** (user): `--overwrite-user` bake (18 new, 2 replaced), eject; white keys 1–5 solid and still there after restarts, nothing connected. Those presets still had LFO depth 0 (the branch predated the fix): re-bake updates them |
+| H-9b | On an OP-Z with **no** `config/userPresets.dat` (never a hand-stored preset, e.g. after a format): the site's loader makes the file in content mode (an empty store, version 1, 200 records, with only our presets and their user bits), eject (steps in `OP-FREE/site/src/loader/README.md`) | the OP-Z imports it (the config callback takes `userPresets.dat` even when the device has none [code, device `0x80034d68`]): our presets on solid white keys after every restart; the next content mode exports the OP-Z's own copy | not run; the loader's create path is offline-tested only (2026-11-05). Why it matters: friends without hand-stored presets hit "userPresets.dat not found" |
 | H-4 | `opz.py presets audition engines/macro --track lead --slot 1 --index 0` (macro selected on lead) | sound changes while held; after Enter the original values come back | if the restore record is missing the tool refuses to write (no burst seen) |
 | H-5 | After H-4, `opz.py backup` and a project save/reload on the device | project's lead sound unchanged | `$0E` restore failed: re-run `preset set` with the logged original values |
 

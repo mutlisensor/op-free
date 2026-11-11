@@ -7,8 +7,9 @@ track.
 |---|---|
 | P1 **cutoff** | 30 Hz–18 kHz, exponential (0.43 semitone per step; 128 ≈ 745 Hz). Steps 242–254 fade the filter out towards the dry sound; **255 is fully open** (the input passes unchanged) |
 | P2 **character** | one macro over resonance, shape and movement (table below) |
-| pan | dry/wet: 0 dry, rising to fully filtered at the centre (128); 128–255 stay fully filtered. Unlike TE's effects the centre is all wet, because a half-dry filter barely filters |
-| level | output level |
+| pan | not reachable on the OP-Z: an FX track has no pan dial, app control or mixer column [proven, H-FX1], and presets can't set it, so it stays where the OS leaves it (127 on the unit checked): **(almost) fully filtered**. The law, for anything that does set pan: 0 dry, rising to fully filtered at the centre (128); 128–255 stay fully filtered. Unlike TE's effects the centre is all wet, because a half-dry filter barely filters |
+| dry level (hold the FX track's key + **red dial**) | the OS's own dry level (byte 12; TE's app shows it as "dry level" on the FX page): how much of each sending track's own sound stays in the mix. 255 = send/return (the source plays on and the effect adds to it), 0 = insert (a track sent at 100 % is heard only through the effect). This is the dry/wet control on the OP-Z [proven, H-FX1 2026-11-11] |
+| level | output level (nothing on the OP-Z reaches an FX track's level, neither a dial nor the mixer page [proven, H-FX1], so the preset's value holds) |
 | filter, resonance | not used: they are the OS's own track filter, also on FX tracks. Presets leave it neutral (128, 0) |
 | **notes on the FX track** | the cutoff moves to the **note's pitch** and P1 shifts it from there: P1 128 puts it exactly on the note, each step away moves it 0.43 semitone. Each note also **sweeps the cutoff up** 2–4 octaves (more with higher velocity) and lets it fall back: ~250 ms while the note is held, ~60 ms after note off, so short steps pluck and long notes sweep. With resonance up, sequencing notes plays the filter's ringing in tune |
 | **no note held** | the filter sits at P1 (the note offset glides back in ~40 ms) |

@@ -6,8 +6,8 @@
  *                     next repeat (no new capture), so a sweep rolls 1/4 -> 1/64 over the same slice
  *   P2     decay      level of each repeat against the one before: 0 = all at full level, 128 = -3 dB, 255 = -12 dB
  *                     (-12 u^2 dB per repeat)
- *   pan    dry / wet  TE's balance law normalised to unity (centre = half and half); the preset is wet only, an
- *                     insert: the stutter replaces the sound
+ *   pan    dry / wet  the SDK's FX law: 128 .. 255 the stutter replaces the sound (the OS's dry level can keep the
+ *                     source under it), below 128 the dry blends in (linear), 0 = dry only
  *   level  output level (x gain)
  *   notes  on the FX track: a held key repeats for as long as it is held, whatever P1 says, and every new note
  *          starts a new capture. The 24 keys from F3 pick the division, long (left) to short (right): 1/4, 1/4T,
@@ -53,8 +53,6 @@ typedef struct State {
     uint32_t len_key;                           /* (den << 16) | bpm that target was computed for */
     int32_t lap_gain;                           /* level of this pass, Q31 */
     int32_t mix;                                /* 0 live .. 32768 repeat, Q15 */
-    int32_t wet, dry;                           /* normalised dry/wet gains, Q31 */
-    uint32_t pan;                               /* the pan word they were computed for (bit 31: none yet) */
     uint16_t laps;                              /* passes completed (saturates) */
     uint8_t capturing;                          /* a repeat is running */
     uint8_t leaving;                            /* fading to live: 1 stop, 2 then start a new capture */
@@ -90,7 +88,6 @@ void init(void *state, uint32_t track, uint32_t arg2, void *mem, void *scratch)
     for (unsigned i = 0; i < sizeof(State); i++) p[i] = 0;
     /* FX1 and FX2 pools hold the buffer; anywhere else (master: 16 KB) repeat passes the input through */
     s->buf = (track == OPZ_TRACK_FX1 || track == OPZ_TRACK_FX2) ? (uint32_t *)mem : (uint32_t *)0;
-    s->pan = 0x80000000u;
     s->lap_gain = OPZ_Q31_ONE;
 }
 
@@ -173,16 +170,8 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
     int32_t g16 = opz_exp2_q16(-(int32_t)((opz_mul_u16(u, u) >> 16) << 1));
     int32_t decay = g16 >= 65536 ? OPZ_Q31_ONE : g16 << 15;
 
-    uint32_t pan = params[OPZ_P_PAN] & OPZ_Q31_ONE;
-    if (pan != s->pan) {                                       /* TE's law, then / (dry + wet): no division */
-        int32_t w = opz_shl_q31((int32_t)pan, 1), d = opz_shl_q31(OPZ_Q31_ONE - (int32_t)pan, 1);
-        uint32_t half = ((uint32_t)w + (uint32_t)d) >> 1;      /* (dry + wet) / 2: 0.5 .. 1 */
-        fract32 h = opz_recip_q31(half > OPZ_Q31_ONE ? OPZ_Q31_ONE : (int32_t)half);
-        s->wet = opz_mul_q31(w, h);
-        s->dry = opz_mul_q31(d, h);
-        s->pan = pan;
-    }
-    int32_t wet = s->wet, dry = s->dry;
+    /* the SDK's FX law, linear: between repeats the wet is the input itself, so dry + wet must stay at unity */
+    int32_t wet = opz_fx_wet_linear(params[OPZ_P_PAN]), dry = OPZ_Q31_ONE - wet;
     int32_t out_gain = opz_mul_q31((int32_t)(params[OPZ_P_LEVEL] & OPZ_Q31_ONE), gain);
 
     /* ---- per sample -------------------------------------------------------------------------------------- */

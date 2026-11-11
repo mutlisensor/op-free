@@ -49,7 +49,7 @@ shape (same call order, buffers and parameter offsets checked below), so app det
 ```mermaid
 flowchart LR
   subgraph INST["instrument tracks 1–8 (per block)"]
-    E["engine render → track buffer"] --> TF["OS track filter p8/p9 + DC block"]
+    E["engine render × level p11, pan p10 (the engine's job) → track buffer"] --> TF["OS track filter p8/p9 + DC block"]
     TF --> G["× mixer level (Synth +0x50c8/+0x5108)"]
   end
   G -->|"dry × (1−(1−dry₁)s₁)(1−(1−dry₂)s₂)(1−duck·tape?) × mute"| BUS["drum bus 1–4 / synth bus 5–8<br/>× group level"]
@@ -102,9 +102,14 @@ OS track filter runs unless the plug has flag `0x04` (`trackFilterProcess` `0x51
 | tape input | `t·(1 − m)` | full level, not a send amount |
 | module output | `m` | the module/I-O track's per-track send, when a module is fitted |
 
-The two buses are summed and soft-clipped (`y = x + (x − x³)/2`) into the main mix. **Where the OS applies an
-instrument track's pan was not found**: not in this loop, not in `Voice::renderVoice` (`0x70dd0`) or the DC
-blocker. So whether pan comes before or after the sends is open (Q-29). The FX dry level and the `1 − dry` form are
+The two buses are summed and soft-clipped (`y = x + (x − x³)/2`) into the main mix. **The OS applies an instrument
+track's pan and level nowhere: the engine does** (answered 2026-11-11, Q-29). Every TE instrument reads
+`params[10]`/`[11]` in its own `render` and scales its output by `velocity × level × min(2(1 − pan), 1)` (L) and
+`… × min(2·pan, 1)` (R) [code, device `analoga`, `ep`, `organ`, `cluster`, `synthsampler`, `sampleplayergain`; app
+`Fm::render` `0x7400`, `AnalogA::render` `0x1b518`]. So pan and level come **before** the sends, and `x` above is
+already levelled and panned. The "mixer level" in this loop is the mixer's own per-track gain (`Synth::setMasterGain`
+from `Sequencer::updateTrackGain` `0x48ca8`), not `params[11]` [code, app]. Details and what an engine must do:
+[engine-abi.md §4](../sdk/docs/engine-abi.md#level-pan-and-the-sends). The FX dry level and the `1 − dry` form are
 the same in the device ([host-tables-flags.md](host-tables-flags.md#the-bits)). `Synth::setFXDucker(8|9, …)` is
 overwritten every block by `1 − dry` (`Synth +0x6c5c`/`+0x6c60`), so only the tape ducker (`+0x6c64`) can be set
 from outside.
@@ -284,7 +289,40 @@ back with black key 1.
 - **Master effects** need the master mode (§3) and H-R1; until then keep `trackmask` without `0x800`, and treat
   `opz.py --track master` as unsafe for every existing engine (it only warns about the trackmask).
 
+## 6b. Hardware check H-M1: level, pan and sends on a synth of ours (not run)
+
+**Run 2026-11-11 with `modal` v2 instead of `fm2`** (the user's OP-Z had only `modal` installed, on lead slot 5;
+backup `backups/20261111T182253402680Z`; install read back as plug 61017 v2, slot map unchanged). By ear, after the
+restart of step 4: **step 5 passed** (the level dial turns the voice down; it did nothing until the restart, as
+expected), **step 6 passed** (pan), **step 8 passed** (LFO on volume: a clean tremolo) [proven, by ear; no
+recording]. **Step 7 passed**: with `opz_test_passthrough` v2 installed on FX2 slot 6 (approved, read back) and
+FX2's dry level at 0, the lead's FX2 send moved the sound into FX2 and the FX2 return fell with the level dial, so
+the sends are taken after the engine's level [proven, by ear]. Step 9 (calibration) not run yet. The heading keeps "not run" so links
+to it stay valid.
+
+Checks the 2026-11-11 finding ([engine-abi.md §4](../sdk/docs/engine-abi.md#level-pan-and-the-sends)): the OS leaves level
+and pan to the engine, and takes the sends after it. For the one device session; **every write is approved by the
+user on its own, and the user sees each result before the next step** ([SAFETY.md](../SAFETY.md)). Project 9,
+sequencer stopped, TE's app and our web app closed, volume low, headphones for the pan steps.
+
+| Step | Command / action | Expected | If not |
+|---|---|---|---|
+| 1 | `.venv/bin/python tools/opz.py backup` (read-only) | a backup folder; plug 61011 `fm2` v1 in slot 9 of bass, lead, arp, chord | stop |
+| 2 | `python3 tools/opz_build.py engines/fm2`, then `.venv/bin/python tools/opz.py install engines/fm2 --dry-run` | plan: plug 61011 v1 → v2, slot map unchanged, boot file rewritten | stop; show the plan |
+| 3 | **write, approved:** `.venv/bin/python tools/opz.py install engines/fm2` | read-back shows v2 | the tool rolls the slot map back; stop |
+| 4 | restart the OP-Z (volume knob past the click and back): a replaced engine keeps running until a restart | normal boot | crash-recovery.md |
+| 5 | lead track, track + black key 9 (`fm2`), preset 1 (white key 1), hold C4. Orange page (shift twice): red dial (level) from full to the middle, then to 0 | about −6 dB at the middle, silent at 0, smooth while turning | the level is still dead: the old engine is running (step 4) |
+| 6 | level back up; yellow dial (pan) fully left, then fully right | right channel silent, then left silent; both sides full in the middle | note which side |
+| 7 | FX2 = `opz_test_passthrough` (FX2 + black key 6); on lead, blue dial (FX2 send) up; then the red dial (level) down | the sound moves into FX2 as the send rises (crossfade, dry level 0), and the FX2 return falls with the level dial | sends are not post-level: write down what you hear |
+| 8 | LFO page: target volume, a fast speed, depth up | a clean tremolo, no buzz or zipper | note it |
+| 9 | optional, for rule 11's calibration: a TE synth still in a slot (slot 1) at the same note, preset and level 200 vs `fm2`'s pure-sine preset, recorded over USB | `fm2` about 2 dB quieter than TE's saw (it was calibrated with the level dial ignored) | report the difference: `OPZ_VOICE_PEAK` may move |
+
+Rollback: the OS imports a plug only when its version is higher ([presets.md](presets.md)), so v1 can't simply go
+back: build the old code (the commit before this change) with plug and engine version 3 and install that, dry run
+first, approved like step 3, then restart. After H-M1 passes, the other converted
+engines can go to the device one install at a time, each approved.
+
 ## 7. Open after this
 
-Q-29 instrument pan vs sends, Q-30 = H-R1 (master), Q-31 the plug-id entry button, Q-32 tape freeze reader, H-R2
+Q-29 answered 2026-11-11 (pan and level are the engine's; H-M1), Q-30 = H-R1 (master), Q-31 the plug-id entry button, Q-32 tape freeze reader, H-R2
 (tape). See [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).

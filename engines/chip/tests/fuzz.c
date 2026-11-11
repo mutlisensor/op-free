@@ -101,6 +101,8 @@ static int fuzz(void)
         uint32_t r = r32();
         if ((r & 15) == 0) {                                         /* a note-on, params NULL half the time */
             for (int i = 0; i < OPZ_NUM_PARAMS; i++) params[i] = r32() & 0x7fffffff;
+            params[OPZ_P_PAN] = 0x40000000u;                         /* level full, pan exact centre: L == R */
+            params[OPZ_P_LEVEL] = 0x7fffffffu;
             chip_onNoteOn((int)(r32() & 127), (uint8_t)r32(), s, (r & 16) ? NULL : params);
             e->stage = 1; e->level = 0; e->coef = OPZ_Q31_ONE; e->step = (int32_t)(r32() >> 4);
         }
@@ -114,6 +116,8 @@ static int fuzz(void)
         }
         if (e->stage == 0) e->stage = 1;
         for (int i = 0; i < OPZ_NUM_PARAMS; i++) params[i] = (r32() & 7) == 0 ? r32() : r32() & 0x7fffffff;
+        params[OPZ_P_PAN] = 0x40000000u;     /* the track's level and pan (opz_mix.h): full, exact centre, so L == R */
+        params[OPZ_P_LEVEL] = 0x7fffffffu;
         uint32_t pitch = r32();
         switch (r32() & 7) {
         case 0: pitch = 0; break;

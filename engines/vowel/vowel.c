@@ -38,6 +38,7 @@
 #include "opz_adsr.h"
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_mix.h"
 #include "vowel_tables.h"
 
 #define N OPZ_BLOCK_FRAMES
@@ -75,6 +76,7 @@ typedef struct State {
     int32_t vib_wait;       /* blocks before the vibrato fades in */
     int32_t detune;         /* singer spacing, frequency deviation Q31 */
     int32_t jitter;         /* formant size offset of this singer, Q16 octaves */
+    OpzMix mix;             /* the track's level and pan (opz_mix.h) */
     uint8_t track, singers, fresh;
 } State;
 
@@ -356,14 +358,15 @@ static int32_t env_block(int32_t level, int32_t c, int32_t s)
     return level < 0 ? 0 : level;
 }
 
-/* Output gain, the envelope as a ramp from l0 to l1, and pan, added into out. */
-static void pass_out(fract32 *out, int e, int32_t gl, int32_t gr, int32_t l0, int32_t l1)
+/* Output gain, the envelope as a ramp from l0 to l1, and the singer's pan, into the interleaved block buffer st
+ * that opz_mix_stereo adds into out (with the track's level and pan). */
+static void pass_out(fract32 *st, int e, int32_t gl, int32_t gr, int32_t l0, int32_t l1)
 {
     int32_t lv = l0, dl = (l1 - l0) / N;
     for (int i = 0; i < N; i++) {
         int32_t y = opz_mul_q31_q15(s_y[i], lv >> 16);       /* gains first, the shift last: no early clip */
-        out[2 * i] = opz_add_q31(out[2 * i], opz_shl_q31(opz_mul_q31_q15(y, gl), e));
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], opz_shl_q31(opz_mul_q31_q15(y, gr), e));
+        st[2 * i] = opz_shl_q31(opz_mul_q31_q15(y, gl), e);
+        st[2 * i + 1] = opz_shl_q31(opz_mul_q31_q15(y, gr), e);
         lv += dl;
     }
 }
@@ -392,7 +395,7 @@ void init(void *state, uint32_t track, uint32_t arg2, void *mem, void *scratch)
 
 void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
 {
-    (void)note; (void)params;                                /* params may be NULL (engine-abi.md §3); not needed */
+    (void)note;
     State *s = state;
     int chord = s->singers == 2;
     s->ph[0] = 0xf8000000u + (rnd() >> 6);                   /* the first pulse within 2^27 / inc samples (2 ms at C1) */
@@ -417,6 +420,7 @@ void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
     s->burst = (s->amp >> 8) * (s->amp >> 8);                /* vel^2 / 2, Q15: half the voice */
     s->tone = OCT(10.2288) + ((vel * 190054) >> 7);          /* fc = 1.2 kHz x 2^(2.9 vel) */
     s->fresh = 1;
+    if (params) opz_mix_start(&s->mix, params);              /* NULL (engine-abi.md §3): ramps in at render */
 }
 
 void onNoteOff(int note, void *state)
@@ -474,7 +478,9 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
 
     int32_t l0 = OPZ_ADSR_LEVEL(env);
     int32_t l1 = env_block(l0, OPZ_ADSR_COEF(env), OPZ_ADSR_STEP(env));
-    pass_out(out, s->gexp, s->gl, s->gr, l0, l1);
+    fract32 st[2 * N];                                       /* the voice, interleaved L R, before level and pan */
+    pass_out(st, s->gexp, s->gl, s->gr, l0, l1);
+    opz_mix_stereo(out, st, &s->mix, params);               /* level and pan, added into interleaved out */
     OPZ_ADSR_LEVEL(env) = l1;
 }
 

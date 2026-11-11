@@ -35,6 +35,7 @@
 #include "opz_adsr.h"
 #include "opz_dsp.h"
 #include "opz_engine.h"
+#include "opz_mix.h"
 #include "modal_tables.h"
 
 #define ALWAYS_INLINE static inline __attribute__((always_inline))
@@ -69,6 +70,7 @@ typedef struct State {
     int32_t ck_env, ck_lp;                      /* click envelope and low-pass state, Q31 */
     int32_t ck_k, ck_dec;                       /* click low-pass coefficient (Q15), decay per block (Q31) */
     int32_t rise, rise_inc;                     /* mallet contact: rise Q15 at the end of the last block, per block */
+    OpzMix mix;                                 /* the track's level and pan (opz_mix.h) */
     uint8_t vel;
     uint8_t fresh;                              /* first block after note-on */
     uint8_t c_age;                              /* blocks since the decays were computed */
@@ -309,7 +311,7 @@ void init(void *state, uint32_t track, uint32_t arg2, void *mem, void *scratch)
 
 void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
 {
-    (void)note; (void)params;                                            /* the pitch and knobs come with render */
+    (void)note;                                                          /* the pitch and knobs come with render */
     State *s = state;
     for (int k = 0; k < NM; k++) {
         s->amp[k] = s->lev[k] = 0;
@@ -320,6 +322,7 @@ void onNoteOn(int note, uint8_t velocity, void *state, const uint32_t *params)
     s->seed = s_seed;
     s->vel = (uint8_t)(velocity < 1 ? 1 : (velocity > 127 ? 127 : velocity));
     s->fresh = 1;
+    if (params) opz_mix_start(&s->mix, params);                          /* NULL: ramps in at render */
 }
 
 void onNoteOff(int note, void *state)
@@ -410,39 +413,32 @@ static void click_pass(State *s, int first)
     s->ck_lp = end < LIVE ? 0 : lp;
 }
 
-/* s_acc x the envelope, added into both channels of out, the level ramped by ls per sample (the decay, release and
- * sustain stages: see render). On the Blackfin the loop is scheduled by hand, 4 cycles per frame instead of GCC's
- * 10; the C below is the same arithmetic, bit for bit. Reads s_acc[64] (the guard) once. Returns the level. */
+/* s_acc x the envelope into the mono block buffer x (opz_mix_mono then adds it into out with the track's level and
+ * pan), the level ramped by ls per sample (the decay, release and sustain stages: see render). On the Blackfin the
+ * loop is scheduled by hand, 2 instructions per frame (the multiply reads x before the parallel load replaces it, as
+ * in the classic Blackfin FIR loop); the C below is the same arithmetic, bit for bit. Reads s_acc[64] (the guard)
+ * once. Returns the level. */
 #if defined(__bfin__) && !defined(MODAL_C_LOOP)
-ALWAYS_INLINE int32_t pass_lin(fract32 *out, int32_t level, int32_t ls)
+ALWAYS_INLINE int32_t pass_lin(fract32 *x, int32_t level, int32_t ls)
 {
     const int32_t *acc = s_acc;
-    fract32 *w = out;
-    int32_t x, v, l, r;
-    __asm__ volatile("I0 = %[out];\n\t"
-                     "I1 = %[out];\n\t"
-                     "M0 = 8 (X);\n\t"
-                     "I1 += 4;\n\t"
-                     "%[x] = [%[acc]++];\n\t"
+    fract32 *w = x;
+    int32_t a, v;
+    __asm__ volatile("%[a] = [%[acc]++];\n\t"
                      "LSETUP (1f, 2f) LC0 = %[n];\n"
-                     "1: %[v] = %[x].H * %[lev].H || %[l] = [I0 ++ M0] || %[r] = [I1 ++ M0];\n\t"
-                     "%[l] = %[l] + %[v] (S) || %[x] = [%[acc]++] || NOP;\n\t"
-                     "%[r] = %[r] + %[v] (S) || [%[w]++] = %[l] || NOP;\n"
-                     "2: %[lev] = %[lev] + %[ls] (S) || [%[w]++] = %[r] || NOP;"
-                     : [lev] "+d"(level), [acc] "+a"(acc), [w] "+a"(w), [x] "=&d"(x), [v] "=&d"(v), [l] "=&d"(l),
-                       [r] "=&d"(r)
-                     : [out] "a"(out), [ls] "d"(ls), [n] "a"(OPZ_BLOCK_FRAMES)
-                     : "memory", "I0", "I1", "M0", "LC0", "LT0", "LB0");
+                     "1: %[v] = %[a].H * %[lev].H || %[a] = [%[acc]++] || NOP;\n"
+                     "2: %[lev] = %[lev] + %[ls] (S) || [%[w]++] = %[v] || NOP;"
+                     : [lev] "+d"(level), [acc] "+a"(acc), [w] "+a"(w), [a] "=&d"(a), [v] "=&d"(v)
+                     : [ls] "d"(ls), [n] "a"(OPZ_BLOCK_FRAMES)
+                     : "memory", "LC0", "LT0", "LB0");
     return level;
 }
 #else
-ALWAYS_INLINE int32_t pass_lin(fract32 *out, int32_t level, int32_t ls)
+ALWAYS_INLINE int32_t pass_lin(fract32 *x, int32_t level, int32_t ls)
 {
     const int32_t *acc = s_acc;
     for (int i = 0; i < OPZ_BLOCK_FRAMES; i++) {
-        fract32 v = mul_hh(acc[i], level);
-        out[2 * i] = opz_add_q31(out[2 * i], v);
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], v);
+        x[i] = mul_hh(acc[i], level);
         level = opz_add_q31(level, ls);
     }
     return level;
@@ -450,13 +446,11 @@ ALWAYS_INLINE int32_t pass_lin(fract32 *out, int32_t level, int32_t ls)
 #endif
 
 /* The same with the host envelope's exact per-sample step, for the fade of a stolen voice (a few blocks). */
-static int32_t pass_out(fract32 *out, int32_t level, int32_t coef, int32_t step)
+static int32_t pass_out(fract32 *x, int32_t level, int32_t coef, int32_t step)
 {
     const int32_t *acc = s_acc;
     for (int i = 0; i < OPZ_BLOCK_FRAMES; i++) {
-        fract32 v = mul_hh(acc[i], level);
-        out[2 * i] = opz_add_q31(out[2 * i], v);
-        out[2 * i + 1] = opz_add_q31(out[2 * i + 1], v);
+        x[i] = mul_hh(acc[i], level);
         level = opz_env_tick(level, coef, step);
     }
     return level;
@@ -572,6 +566,7 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
     }
 
     int32_t level = OPZ_ADSR_LEVEL(env), env_coef = OPZ_ADSR_COEF(env), env_step = OPZ_ADSR_STEP(env);
+    fract32 mono[OPZ_BLOCK_FRAMES];                                      /* the voice, before level and pan */
     /* The envelope, which the host only reads at the block's end. Decay and release (step 0) fall by coef per sample:
      * here exactly per block (coef^64 by six squarings), linear in between. Sustain (coef 1): its step
      * (1 - level^3) s once per block (the host recomputes s = (S - level) / 256 every block). Attack (coef 1): the
@@ -581,7 +576,7 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
     if (env_step == 0) {
         int32_t c = env_coef;
         for (int i = 0; i < 6; i++) c = opz_mul_q31(c, c);
-        OPZ_ADSR_LEVEL(env) = pass_lin(out, level, (opz_mul_q31(level, c) - level) >> 6);
+        OPZ_ADSR_LEVEL(env) = pass_lin(mono, level, (opz_mul_q31(level, c) - level) >> 6);
     } else if (env_coef == 0x7fffffff) {
         int32_t ls = env_slope(level, env_step);
         if (stage != 3) {                                                /* two half-block steps */
@@ -589,10 +584,11 @@ void render(fract32 *out, uint32_t pitch, int32_t pitchSlope, void *state, const
             int32_t end = opz_add_q31(mid, opz_shl_q31(env_slope(mid, env_step), 5));
             ls = opz_sub_q31(end, level) >> 6;
         }
-        OPZ_ADSR_LEVEL(env) = pass_lin(out, level, ls);
+        OPZ_ADSR_LEVEL(env) = pass_lin(mono, level, ls);
     } else {
-        OPZ_ADSR_LEVEL(env) = pass_out(out, level, env_coef, env_step);
+        OPZ_ADSR_LEVEL(env) = pass_out(mono, level, env_coef, env_step);
     }
+    opz_mix_mono(out, mono, &s->mix, params);                            /* level and pan, added into out */
 }
 
 OPZ_EXPORTS_INSTRUMENT();

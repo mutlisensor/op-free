@@ -7,8 +7,8 @@
  *   P2     mode       a continuous morph: 0 = shift down (lower sideband only), 128 = ring modulation (both
  *                     sidebands), 255 = shift up (upper sideband only). In between, one sideband fades against the
  *                     other. The level is evened out: ring mode is +3 dB, so every setting is about as loud
- *   pan    dry / wet  TE's balance law normalised to unity (centre = half and half); the preset is wet only, an
- *                     insert
+ *   pan    dry / wet  the SDK's FX law: 128 .. 255 the shifted sound only (the OS's dry level keeps the source),
+ *                     below 128 the dry blends in at equal power, 0 = dry only; output through the SDK's limiter
  *   level  output level (x gain)
  *   notes  on the FX track: a held key sets the carrier to the note's frequency (A4 = 440 Hz), for tuned ring
  *          modulation and shifts by a musical amount; release returns to P1. The newest note wins; the OS's
@@ -127,14 +127,13 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
     int32_t am = m < 0 ? -(m >> 15) : m >> 15;                 /* |m|, 0..65536 */
     int32_t lv = 32768 + ((RING_GAIN * (65536 - am)) >> 17);   /* level / 2, Q16: 0.5 .. 0.707 */
 
-    uint32_t pan = params[OPZ_P_PAN] & OPZ_Q31_ONE;            /* TE's law, then / (dry + wet): no division */
-    int32_t pw = opz_shl_q31((int32_t)pan, 1), pd = opz_shl_q31(OPZ_Q31_ONE - (int32_t)pan, 1);
-    uint32_t half = ((uint32_t)pw + (uint32_t)pd) >> 1;
-    fract32 h = opz_recip_q31(half > OPZ_Q31_ONE ? OPZ_Q31_ONE : (int32_t)half);
+    int32_t pd, pw;                                            /* the SDK's FX law (equal power: a shifted signal */
+    opz_fx_drywet(params[OPZ_P_PAN], &pd, &pw);                /* is unrelated to the dry) */
     int32_t out_gain = opz_mul_q31((int32_t)(params[OPZ_P_LEVEL] & OPZ_Q31_ONE), gain);
-    int32_t dg = opz_mul_q31(opz_mul_q31(pd, h), out_gain);
-    /* the wet path runs at x / 2 for headroom in the all-passes; lv (level / 2) and << 2 undo it */
-    int32_t wg = opz_mul_q31(opz_mul_q31(pw, h), out_gain);
+    int32_t dg = opz_mul_q31(pd, out_gain) >> 1;               /* half scale, for the output limiter */
+    /* the wet path runs at x / 4 for headroom in the all-passes (the 90-degree image of a saw or a pulse peaks far
+     * above the input: at x / 2 the chains saturated); lv (level / 2) and << 2 bring it to half scale */
+    int32_t wg = opz_mul_q31(pw, out_gain);
     int32_t wl = lv << 15;                                     /* level / 2, Q31 */
 
     const fract32 *tab = s_cb ? s_cb->g_sine : (const fract32 *)0;
@@ -148,16 +147,17 @@ void renderFX(const uint32_t *params, fract32 pitchBend, void *state, const frac
         ph += inc;
         for (int c = 0; c < 2; c++) {
             int32_t x = in[2 * i + c];
-            int32_t xh = x >> 1;
+            int32_t xh = x >> 2;
             int32_t vi = chain(s->h[c][0], k_ca, xh, p);
             int32_t vq = chain(s->h[c][1], k_cb, s->xd[c], p);
             s->xd[c] = xh;
             int32_t y = opz_sub_q31(opz_mul_q31(vi, cs), opz_mul_q31(vq, msn));
             y = opz_shl_q31(opz_mul_q31(y, wl), 2);
-            out[2 * i + c] = opz_add_q31(opz_mul_q31(dg, x), opz_mul_q31(wg, y));
+            out[2 * i + c] = opz_mul_q31(wg, y);              /* the wet at half scale */
         }
         p ^= 1;
     }
+    opz_fx_finish(out, in, dg, dg);                            /* + the dry, through the SDK's limiter */
     s->phase = ph;
     s->parity = (uint8_t)p;
 }
