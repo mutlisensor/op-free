@@ -13,7 +13,7 @@ slot map back if it differs. Nothing here writes to an OP-Z any other way.
 | 2 Connect & back up | Web MIDI with SysEx (Chrome or Edge on a computer, https or localhost) with the *quit TE's app* warning, or the **demo OP-Z** (the core's `FakeOpz`). Reads the settings and backs them up at once: the first backup of an OP-Z in this browser is what *original* and *Restore original layout* go back to | none (a read) |
 | 3 Install | One confirm sheet: every slot before → after, the slots left alone (the visitor's samples), the engines and files sent, restart needed, the backup id. Then the core's `install` per engine (install only, no slot), `presetsPush` for engines already installed, and one `writeSlotMap` for the layout, each with its own backup, checks and read-back; the batch stops at the first failure | engines, `patch.json`, the slot map |
 | 4 Content mode | The user-sample check (no disk action while any sample the visitor made sits in no slot), the device gesture (hold *track* while switching on, manual p.61), then the bake of the picks' presets into `config/userPresets.dat` through the folder picker (the visitor picks the disk's **`config` folder**: Chrome refuses the top of a disk as "contains system files", seen on macOS 2026-11-06; the disk itself is still taken where a browser allows it). Our presets replace hand-stored ones on the same keys by default (*Also replace…* ticked; the old file is kept): backup (in this browser; saved as a file only when the browser can't keep data, e.g. a private window), confirm, write, read back, the original put back on a mismatch. An OP-Z on which no preset was ever stored by hand has no such file: the bake then **makes** it (an empty store with only our presets; nothing to back up; deleted again on a mismatch), not yet tested on hardware (H-9b below). The demo has *Try it as a new OP-Z* for that case | `config/userPresets.dat` only |
-| 5 Eject & play | Eject, pick a sound (hold *track*, tap a black key), and **Restore**: any settings backup (through `writeSlotMap`), or a preset-store backup back onto the disk | the slot map, or `userPresets.dat` |
+| 5 Eject & play | Eject, pick a sound (hold *track*, tap a black key), and **Restore**: any settings backup (through `writeSlotMap`), or a preset-store backup back onto the disk; **Take OP-FREE off** (the core's `removeOurs`) and **Check a backup folder** before a content-mode restore | the slot map, or `userPresets.dat`; for Take OP-FREE off: an empty boot file, the slot map, the removals |
 
 **Which engine goes on which track.** Synth and drum engines only on tracks 1–8, effects only on fx1 and fx2 (9 and
 10), as the OP-Z is laid out; within that, an engine only on the tracks of its kind (synths on bass–chord, drums on
@@ -33,6 +33,13 @@ track and can't be given anything; a track still on its default moves its engine
 that names such a cell is skipped there (listed on the sheet); the core's `writeSlotMap`
 refuses any map that would leave one in no slot, a restore keeps their current cells, and step 4 stays locked while
 one is loose (SAFETY.md rule 5).
+
+**Room and taking OP-FREE off** (docs/roadmap/restore-space.md in the lab). Step 3 and the install sheet show how many
+of the OS's 200 sound definitions are free now and after the install, and warn below 60 (a content-mode restore of the
+visitor's own backup needs one per sample; a full table loses samples silently). Step 5 has *Take OP-FREE off…* (the
+core's `removeOurs`: an empty boot file, the slot map with the first backup's sounds put back, the removals; one sheet,
+each write read back) and *Check a backup folder…* (the core's `checkContentRestore` on a backup of the OP-Z disk:
+names and sizes only). The visitor's guide: `OP-FREE/guides/restore-a-backup.md`.
 
 **When the OP-Z doesn't answer.** Each session open waits up to 15 s for the OP-Z's `$34` (normally ~0.5 s), then,
 after a 3 s pause, tries once more (`controller.ts` `TrackingOpz.session`); after 2 s the busy line counts down. The
@@ -59,7 +66,7 @@ their message or a GitHub issue.
 | `plan.ts` | No DOM: each track's keys against an OP-Z's settings (cells, installs, the target slot map, the restore target), with the core's `planInstall` and `slotMapProblems` |
 | `controller.ts` | No DOM: connection, one operation at a time, the install batch and the restore on the core's flows, the interrupted-write record (slimmed from `web/app/src/controller.ts`) |
 | `store.ts` | Backups in IndexedDB (`op-free`), the first backup per device, the bake's copies (from `web/app/src/backups.ts`) |
-| `disk.ts`, `samplegate.ts`, `explain.ts`, `dom.ts`, `transport/*` | Ported from `web/app/src` (the bake on the content-mode disk, the user-sample gate, failure advice, the DOM helper, Web MIDI, the demo transport, worker timers) |
+| `restorecheck.ts`, `disk.ts`, `samplegate.ts`, `explain.ts`, `dom.ts`, `transport/*` | Ported from `web/app/src` (the bake on the content-mode disk, the user-sample gate, failure advice, the DOM helper, Web MIDI, the demo transport, worker timers) |
 | `demo.ts` | The demo OP-Z's factory state (every drum and synth slot filled, three of the visitor's samples, one in sample slot 4) and an in-memory content-mode disk |
 | `sheet.ts`, `index.ts`, `loader.css` | The confirm sheets and the panel |
 
@@ -117,6 +124,10 @@ bake`, H-9); the panel says so where it matters. Hardware checklist for the devi
    `opz.py presets bake --disk … --show` lists them.
 9. **Put back** that preset-store backup from step 8 in content mode: the file is the original again.
 10. **Restore original layout** in normal mode: the sheet lists every cell; verified; the OP-Z has its first layout.
+11. **Take OP-FREE off** (step 5) after step 6's batch: the sheet lists every cell going back to the first backup's
+    sound, an empty boot file and the removals; *Remove OP-FREE* → verified; `opz.py status` shows no plug
+    60900–61999 and the visitor's samples in their slots; after a restart still none (H-RS1 in the lab's
+    docs/roadmap/restore-space.md). *Check a backup folder…* on a copy of the OP-Z disk: "It should go through".
 
 ### H-9b: making the preset file on an OP-Z that has none
 
