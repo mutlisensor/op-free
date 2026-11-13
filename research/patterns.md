@@ -60,7 +60,7 @@ pass its checks.
 | 21,056 | 16 × 18 | Sound: the 18 parameters per track (P1, P2, attack, decay, sustain, release, FX1, FX2, filter, resonance, pan, level, portamento, LFO depth, speed, value/target, shape, note style). `$0E` writes this for the active pattern | [notes, proven]; presets.md |
 | 21,344 | 10 × 4 | Mute groups, 2 bits per track (upper bit = mute) | [code, app] `setTrackMute` `0x3d3ac` |
 | 21,384 | 2 | Tape routing mask (bit = track) | [notes, proven] |
-| 21,386 | 2 | Master routing mask | [notes, proven] |
+| 21,386 | 2 | u16. Low byte = **master routing mask** (bit = track). **Bit `0x0800` = the pattern is in use**: clear it and the OP-Z ignores the pattern and leaves its key dark, whatever notes it holds (§9). Bit `0x1000` seen once in the user's files, meaning unknown (Q-90) | [notes, proven] for the routing bits; [proven] (§9) for `0x0800`; [data] for the values seen |
 | 21,388 | 1 | Active mute group | [code, app] `setMutePreset` `0x3d440` |
 | 21,389 | 3 | Unknown (0 in all user files) | [data] |
 
@@ -81,7 +81,8 @@ nibble modes (`0x12`, `0x24`, … seen in user files). [notes, proven; data]
 
 **Defaults** (`PatternData::PatternData`, app `0x3eda0`): no plug, 16 steps, timing 5, step length 1, note length 64,
 last note 60; every note slot unused with duration 2,560 and velocity 100; component values
-4,2,4,5,4,4,4,4,2,2,4,4,2,2 (table app `0x838a8`); no locks; sounds 0; tape mask `00FF`, master mask `00F0`.
+4,2,4,5,4,4,4,4,2,2,4,4,2,2 (table app `0x838a8`); no locks; sounds 0; tape mask `00FF`, master mask `00F0` — **the in-use bit is clear**, which is why a pattern the
+device has never used stays dark until something sets it (§9).
 
 ## 4. Global block (568 bytes)
 
@@ -167,7 +168,8 @@ All [code, device] unless marked; for the file-service write path and for boot (
 So **the OP-Z does not protect itself or the user's projects**: our side must make every file one the OS could have
 written. `opz_project.Project.problems()` checks exactly that (version 73.7, step count/length, notes, micro, lock
 enables, reserved component bits, mute group, chains, tempo, selected chain; durations are not checked because the OS
-writes −256 itself).
+writes −256 itself). It also warns when a pattern holds notes but lacks the in-use bit (§9) — not a file the OS would
+refuse, but one whose patterns the user will never see.
 
 ## 7. Safe writing: design
 
@@ -182,6 +184,8 @@ writes −256 itself).
 3. **Only project numbers 1–10** (`project_path`, `project_file_id`; `$09` project index 0–9).
 4. **Only checked files**: start from the device's own file (or `Project()` defaults), change bytes through the typed
    setters, require `problems() == []`, version 73.7.
+   **Every pattern you generate must carry the in-use bit** (§9) or the OP-Z will ignore it: the content setters
+   mark it, `set_pattern_in_use(p)` sets it by hand, and `problems()` warns when notes are there without it.
 5. **Verify by a fresh read** of the file (id 3–12) and compare byte for byte; on any difference write the backup
    back and verify that.
 6. **One client**: TE's app closed (SAFETY.md rule 8); the device idle (no edits on the device during the write).
@@ -209,9 +213,9 @@ python3 tools/opz.py projects put 8 song.opz --dry-run
 ```
 
 `tools/opz_project.py` (`info`, `check`, `diff`, `empty`, `vectors`) and its library: `Project.parse/to_bytes`, typed
-reads (`track`, `notes`, `step`, `sound`, `muted`, `routing`, `chain`, `summary`), setters (`set_notes`,
+reads (`track`, `notes`, `step`, `sound`, `muted`, `routing`, `pattern_in_use`, `chain`, `summary`), setters (`set_notes`,
 `set_component`, `set_lock`, `set_sound`, `set_track`, `set_muted`, `clear_track`, `copy_pattern`, `set_chain`,
-`set_tempo`), generators (`euclid`, `write_rhythm`, `write_pages`) and `bank_upload_frames`. `@opz/core` has the same
+`set_tempo`, `set_pattern_in_use`), generators (`euclid`, `write_rhythm`, `write_pages`) and `bank_upload_frames`. `@opz/core` has the same
 format code as `project.*` (shared vectors `test-vectors/project.json`); the web transport for projects is still to do
 (its zlib port compresses at most 16 KB, so pulls work but a 343 KB push needs a bigger deflate or stored blocks).
 
@@ -283,8 +287,8 @@ Also seen [proven, fresh reads after each step]:
   (fx1 … motion too), and the live chain record changed to the pattern last opened. Patterns not opened kept the
   written bytes. So the device's copy of project 9 is not the file, and leaving or using the project writes parts of
   it back [inferred: a per-pattern save of visited patterns].
-- **The note length is not the cause** (write 3). No byte or global field marks a pattern "in use": none separates
-  the 62 patterns with notes from the 98 without across the user's ten projects [data].
+- **The note length is not the cause** (write 3). *(At the time we also wrote here that no byte marks a pattern
+  "in use". That was wrong — see "What it really was" below; one byte does, and our search for it had missed it.)*
 - Still unexplained, against H-P1 (a one-step kick on TE's plug 130 in pattern 3, which played at once): either the
   written file is not loaded into the device's copy at all (H-P1's success then needs another explanation), or
   patterns naming plug 60907 on every track are dropped on load. Open as **Q-50**. A differential test would write
@@ -308,19 +312,98 @@ the user's pattern 1 (a pattern the OP-Z wrote) and written with `projects put` 
 copy; 6 = the copy with plug 60907 on all eight instrument tracks; 7 = the copy with its notes removed and H-P1's
 kick on steps 1, 5, 9, 13; 8 = the full H-C1 zone-0 pattern (60907 on every track, neutral sounds, one 98,303-unit
 note per track) on the copy. **All four lit up** [proven, user]. So the file-service write and reload work, and our
-plug ids, notes, long durations and sounds are accepted; **what made the earlier patterns vanish is the base they were
-built on: a pattern the device has never used** (its bytes as the OS's constructor left them: e.g. plug 13 on kick,
-track byte +5 = 0 on some). The device drops such a pattern on load, or keeps it marked unused, whatever we write into
-its notes [proven for the effect; the exact bytes not yet bisected — Q-50 stays open for that]. **Rule until then:
-build generated patterns on a copy of a pattern the device wrote** (`copy_pattern` from a used pattern), never on a
-never-used one.
+plug ids, notes, long durations and sounds are accepted; what made the earlier patterns vanish was the base they were
+built on. The rule we wrote then — build on a copy of a pattern the device wrote — worked, but we did not know why.
 
-Until Q-50 is answered: verify a project write **on the device**, not only by the read-back, and expect the patterns
+### What it really was: the in-use bit (2026-11-13, Q-50 closed)
+
+**Bit `0x08` of byte 21,387 — bit `0x0800` of the u16 at 21,386, the field §3 calls the master routing mask — is the
+flag the OP-Z uses to treat a pattern as in use.** Clear, and the pattern key stays dark and the pattern is ignored,
+whatever notes the file holds. Set it and the pattern loads, lights and plays.
+
+Reported by Reddit user u/Economy_fig3800 via the OP-FREE repository, 2026-11-13, from their own device work
+(a framework that converts jazz standards into OP-Z project files); verified here against the user's own files and
+our Q-50 device history before being written down.
+
+What each piece of evidence actually shows:
+
+- **[data] The byte-level correlation across the user's ten projects** (`backups/20261026T170542988907Z-projects`,
+  read-only, 160 patterns): every one of the **62 patterns that hold notes has bit `0x0800` set — no exceptions**.
+  Of the 98 patterns with no notes, 94 have it clear and **4 have it set**, which fits "in use" (a pattern the user
+  opened and left empty) and does not fit "has notes". Observed u16 values: unused `0x00F0` and `0x00F8`; used
+  `0x0803 0x080B 0x080F 0x0820 0x0870 0x08B0 0x08E0 0x08E4 0x08F0`, plus one `0x18F0`. The low byte varies — that is
+  the routing — while `0x0800` tracks use. `0x1000` appears once and is unexplained: **Q-90**.
+- **[proven] Our own 2026-11-01 device runs, re-read in this light.** Walking `project09.opz` through the backups of
+  that day in time order and printing, per pattern, whether it holds notes and whether `0x0800` is set:
+
+  | Backup (UTC) | Patterns with notes | In-use bit | What the user saw |
+  |---|---|---|---|
+  | 15:08, 15:17, 15:36, 15:42 (writes 1–3) | 4–16 (varying) | **clear** | dark |
+  | 16:27 (content mode, incl. the TE-plug control in pattern 16) | 4–16 | **clear** | dark, control included |
+  | 16:38, 16:42, 16:46 | 4–16 | **clear** | dark |
+  | 16:49 (the copy-pattern test) | 1–9, 11–16 | **set on 5–8** | **5–8 lit** |
+
+  Every pattern the device refused to show had the bit clear; the four that lit were exactly the four that carried
+  it. Nothing else distinguishes them. So the copy-pattern rule worked for one reason only: a copy carries the
+  source pattern's bit along with everything else.
+- **[notes, outside report] The decisive single-byte write**, which we have not run ourselves: in a project copied
+  off the OP-Z in content mode, six generated patterns were written and only pattern 1 — whose byte came from the
+  template — lit. A second write that changed **only byte 21,387 to `0x08` in patterns 2–6** made all six light and
+  play, every note matching over MIDI, the chain advancing correctly. The same report found that in a project saved
+  on the device with notes only in pattern 1, the only pattern-level differences between pattern 1 and the unused
+  patterns were the notes, track byte `+10` (last note played) and byte 21,387: bytes 21,384..21,391 were
+  `ff 00 f0 08 00 00 00 00` against `ff 00 f0 00 00 00 00 00`, in two different projects. Our hardware check
+  **H-P2** (§10) runs this ourselves; until it passes, this one step stays [notes], and what is [proven] here is
+  the correlation above, not the causal single-byte write.
+
+**Why our earlier search missed it.** We looked for a byte that separates patterns *with notes* from patterns
+*without* and found none that was clean — because four empty patterns carry the bit. Read as "in use" rather than
+"has notes", the same data separates perfectly. The claim "no byte or global field marks a pattern in use" is
+withdrawn.
+
+**Rule, replacing the copy-pattern rule: set the in-use bit on every pattern you generate.**
+`opz_project.set_pattern_in_use(p)` / `@opz/core`'s `setPatternInUse(p)` do it, and every setter that writes content
+into a pattern (`set_notes` with notes, `set_component`, `set_lock`, `set_sound`, `set_track`, and the `write_rhythm`
+/ `write_pages` generators) now marks the pattern automatically, so ordinary use needs no extra call. `copy_pattern`
+still works, because the copy carries the source's bit — it is no longer required, only one way of getting the bit.
+`problems()` warns when a pattern holds notes but lacks the bit. Clearing notes never clears the bit, matching the
+device, which keeps visited-but-empty patterns marked.
+
+Still true regardless: verify a project write **on the device**, not only by the read-back, and expect the patterns
 the user opens to be saved over the file.
 
-## 10. Open
+## 10. Hardware check H-P2: the in-use bit on a never-used base (not run)
 
-Q-38 (does the write + reload behave as the code says, H-P1), Q-39 (reloading the open project), Q-40 (track bytes
-+5, +8, +11, note duration −256, global 518–560), Q-41 (does a `$09` write persist without `debug-save`), Q-42 (chains:
-14 or 15 slots, 31 or 32 entries), Q-43 (does content mode check project files on import): see
-[OPEN_QUESTIONS.md](OPEN_QUESTIONS.md).
+Goal: prove on our own OP-Z what the outside report found — that the in-use bit alone, with nothing else changed, is
+what makes a generated pattern appear. §9's evidence is a correlation over files plus someone else's device run;
+this closes it as [proven] here. Nothing in the user's music is at risk: one spare pattern of the test project.
+
+Rules of SAFETY.md apply: TE's app closed, one client, the user confirms each write and sees the result before the
+next step, and the dry run comes first.
+
+| Step | Do | Expect | If not |
+|---:|---|---|---|
+| 0 | OP-Z in normal mode, playback stopped, **project 10 open** (not 9). TE's app closed | — | — |
+| 1 | `python3 tools/opz.py projects backup` | ten files; keep the folder — this is the rollback | not served: stop |
+| 2 | In the fresh backup of project 9, pick a pattern **P that has never been used**: `pattern_has_notes(P)` false **and** `pattern_in_use(P)` false (`opz_project.py info` lists `patterns_in_use`). Patterns 1–3 are the user's; do not touch them | one such P exists (patterns 10–16 of project 9 were in use after the 2026-11-01 runs, so expect to have to pick carefully, or use a project with spare patterns and the user's say-so) | no never-used pattern: ask the user which project to use, or clear the bit on a spare one first (step 7 restores it) |
+| 3 | Build file A from that backup: write H-P1's kick (steps 1, 5, 9, 13, note 53, TE's plug 130 as pattern 3 uses) into pattern P on its **never-used bytes** — no `copy_pattern` — and then **clear** the in-use bit (`set_pattern_in_use(P, False)`), so the only difference from the old failing writes is deliberate. `opz_project.py check` must report the new warning ("holds notes but is not marked in use") and no other problem | the warning, nothing else | fix the file; do not write it |
+| 4 | Build file B from file A by setting **only** that one byte: `set_pattern_in_use(P)`. Confirm with `cmp -l A B` that **exactly one byte differs** (offset 4 + 568 + P × 21,392 + 21,387, `00` → `08`) | one differing byte | rebuild; a second difference invalidates the test |
+| 5 | `python3 tools/opz.py projects put 9 A --overwrite --dry-run`, then (user confirms) without `--dry-run` | "written and verified" | the tool restores the backup itself; report the log |
+| 6 | On the device: switch to project 9 and look at pattern P, then switch back to 10 | **P is dark and empty** (the 2026-11-01 result reproduced) | if P lights, the bit is not the cause: stop, record it, Q-50 reopens |
+| 7 | `python3 tools/opz.py projects put 9 B --overwrite` (user confirms), then on the device switch to project 9, open P and play it | **P lights and plays the kick on steps 1, 5, 9, 13**; switch back to 10 | if P stays dark, the single byte is not sufficient: record it, Q-50 reopens |
+| 8 | Fresh `opz.py projects backup`; `opz_project.py diff` against step 1 | project 9 differs in pattern P only (plus whatever the device saved for patterns the user opened) | report the differing fields |
+
+**Rollback** (any step, including a crash — power-cycle first): `python3 tools/opz.py projects put 9
+<step 1's backup>/projects/project09.opz --overwrite`, then a fresh read and `opz_project.py diff` against step 1's
+file to confirm project 9 is back as it was. Projects 1–8 and 10 are never written.
+
+Expected result if §9 is right: step 6 dark, step 7 lit, one byte apart. That makes the single-byte write [proven]
+here and not only [notes, outside report].
+
+## 11. Open
+
+Q-39 (reloading the open project), Q-40 (track bytes +5, +8, +11, note duration −256, global 518–560), Q-41 (does a
+`$09` write persist without `debug-save`), Q-42 (chains: 14 or 15 slots, 31 or 32 entries), Q-43 (does content mode
+check project files on import), **Q-90** (bit `0x1000` of the u16 at 21,386, seen once, and the exact meaning of its
+other bits): see [OPEN_QUESTIONS.md](OPEN_QUESTIONS.md). Q-38 and **Q-50 are answered** (§9); H-P2 above is the one
+hardware check still to run for Q-50's single-byte step.

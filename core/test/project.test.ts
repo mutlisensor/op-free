@@ -64,6 +64,41 @@ describe("project files", () => {
     assert.deepEqual(pr.summary(), r.summary);
   });
 
+  it("marks a pattern in use when it writes content into it (Q-50)", () => {
+    const pr = new op.Project();
+    assert.equal(pr.patternInUse(3), false);
+    pr.setNotes(3, 0, 0, []);
+    assert.equal(pr.patternInUse(3), false);
+    pr.setNotes(3, 0, 0, [{ note: 53 }]);
+    assert.equal(pr.patternInUse(3), true);
+    assert.equal(pr.routing(3)[1], 0x08f0);
+    pr.setNotes(3, 0, 0, []);
+    assert.equal(pr.patternHasNotes(3), false);
+    assert.equal(pr.patternInUse(3), true, "clearing notes never unmarks: the device keeps visited patterns marked");
+    pr.copyPattern(3, 9);
+    assert.equal(pr.patternInUse(9), true);
+    pr.setPatternInUse(9, false);
+    assert.equal(pr.patternInUse(9), false);
+    assert.equal(pr.routing(9)[1], 0x00f0);
+    for (const edit of [(x: op.Project) => x.setComponent(5, 4, 2, "glide", 7),
+      (x: op.Project) => x.setLock(5, 5, 0, "filter", 200),
+      (x: op.Project) => x.setSound(5, 5, Array.from({ length: 18 }, (_, i) => 100 + i)),
+      (x: op.Project) => x.setTrack(5, 4, { plug: 61016 })]) {
+      const q = new op.Project();
+      edit(q);
+      assert.equal(q.patternInUse(5), true);
+      assert.equal(q.patternInUse(4), false);
+    }
+  });
+
+  it("warns when a pattern holds notes but is not in use", () => {
+    const pr = new op.Project();
+    pr.setNotes(3, 0, 0, [{ note: 53 }]);
+    assert.deepEqual(pr.problems(), []);
+    pr.setPatternInUse(3, false);
+    assert.match(pr.problems()[0]!, /^pattern 4: holds notes but is not marked in use/);
+  });
+
   it("spreads Euclidean rhythms like the Python tool", () => {
     for (const [key, want] of Object.entries(vector.euclid as Record<string, number[]>)) {
       const [k, n, rot] = key.split(",").map(Number);

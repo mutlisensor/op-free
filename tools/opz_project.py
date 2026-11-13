@@ -70,6 +70,7 @@ SOUND_AT = 21_056
 MUTES_AT = 21_344
 TAPE_AT = 21_384
 MASTER_AT = 21_386
+IN_USE_BIT = 0x0800                       # bit of the u16 at MASTER_AT that marks a pattern in use (patterns.md §9)
 MUTE_GROUP_AT = 21_388
 STEP_RECORD = 54
 TRACK_RECORD = 12
@@ -215,6 +216,18 @@ class Project:
         _check(p=p)
         return struct.unpack_from("<HH", self.bank, p * PATTERN_SIZE + TAPE_AT)
 
+    def pattern_in_use(self, p: int) -> bool:
+        """Bit 0x0800 of the u16 at MASTER_AT: the OP-Z plays and lights a pattern only when it is set."""
+        _check(p=p)
+        return bool(struct.unpack_from("<H", self.bank, p * PATTERN_SIZE + MASTER_AT)[0] & IN_USE_BIT)
+
+    def set_pattern_in_use(self, p: int, in_use: bool = True) -> None:
+        """Mark the pattern in use (or not). Clearing it hides the pattern on the device, notes and all."""
+        _check(p=p)
+        at = p * PATTERN_SIZE + MASTER_AT
+        mask = struct.unpack_from("<H", self.bank, at)[0]
+        struct.pack_into("<H", self.bank, at, mask | IN_USE_BIT if in_use else mask & ~IN_USE_BIT)
+
     def pattern_has_notes(self, p: int) -> bool:
         base = p * PATTERN_SIZE + NOTES_AT
         return any(self.bank[base + n * 8 + 4] != 0xFF for n in range(STEPS * SLOTS_PER_STEP))
@@ -237,7 +250,8 @@ class Project:
                 "levels": dict(zip(LEVELS, g[512:516])), "metronome": [g[METRONOME_LEVEL_AT], g[METRONOME_SOUND_AT]],
                 "selected_chain": None if g[SELECTED_CHAIN_AT] == 0xFF else g[SELECTED_CHAIN_AT],
                 "chains": {n: self.chain(n) for n in range(CHAINS) if self.chain(n)},
-                "patterns_with_notes": [p for p in range(PATTERNS) if self.pattern_has_notes(p)]}
+                "patterns_with_notes": [p for p in range(PATTERNS) if self.pattern_has_notes(p)],
+                "patterns_in_use": [p for p in range(PATTERNS) if self.pattern_in_use(p)]}
 
     # pattern bank: writing ------------------------------------------------------------------------------------
     def set_notes(self, p: int, t: int, s: int, notes: list[dict]) -> None:
@@ -258,6 +272,8 @@ class Project:
                                  n.get("velocity", 100), n.get("micro", 0) * 8, n.get("age", 0))
             else:
                 self.bank[at + 4] = 0xFF
+        if notes:
+            self.set_pattern_in_use(p)
 
     def set_component(self, p: int, t: int, s: int, name: str, value: int | None) -> None:
         """Enable a step component with a raw value (1-10 = keys 1-0), or disable it (None; the value stays)."""
@@ -270,6 +286,7 @@ class Project:
             _byte(value, "component value")
             mask |= 1 << i
             self.bank[at + 2 + i] = value
+            self.set_pattern_in_use(p)
         struct.pack_into("<H", self.bank, at, mask)
 
     def set_lock(self, p: int, t: int, s: int, param: str, value: int | None) -> None:
@@ -281,6 +298,7 @@ class Project:
         else:
             self.bank[at + 18 + i] = _byte(value, "lock value")
             self.bank[at + 36 + i] = 0xFF
+            self.set_pattern_in_use(p)
 
     def set_sound(self, p: int, t: int, values) -> None:
         values = [_byte(v, "sound value") for v in values]
@@ -289,11 +307,14 @@ class Project:
         _check(p=p, t=t)
         at = p * PATTERN_SIZE + SOUND_AT + t * len(PARAMS)
         self.bank[at:at + len(PARAMS)] = bytes(values)
+        self.set_pattern_in_use(p)
 
     def set_track(self, p: int, t: int, *, step_count: int | None = None, step_length: int | None = None,
                   plug: int | None = None, note_length: int | None = None, quantize: int | None = None) -> None:
         _check(p=p, t=t)
         at = p * PATTERN_SIZE + t * TRACK_RECORD
+        if any(v is not None for v in (step_count, step_length, plug, note_length, quantize)):
+            self.set_pattern_in_use(p)
         if step_count is not None:
             if not 1 <= step_count <= STEPS:
                 raise FormatError("step count must be 1..16")
@@ -374,6 +395,9 @@ class Project:
                         out.append("pattern %d %s step %d: reserved component bits" % (p + 1, TRACK_NAMES[t], s + 1))
                     if any(b not in (0, 0xFF) for b in self.bank[at + 36:at + 54]):
                         out.append("pattern %d %s step %d: lock enable not 00/FF" % (p + 1, TRACK_NAMES[t], s + 1))
+            if self.pattern_has_notes(p) and not self.pattern_in_use(p):
+                out.append("pattern %d: holds notes but is not marked in use (bit 0x%04X of the u16 at %d); the "
+                           "OP-Z will ignore it" % (p + 1, IN_USE_BIT, MASTER_AT))
             if self.bank[base + MUTE_GROUP_AT] > 9:
                 out.append("pattern %d: mute group %d" % (p + 1, self.bank[base + MUTE_GROUP_AT]))
         for n in range(CHAINS):

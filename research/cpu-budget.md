@@ -249,7 +249,8 @@ step 1 with a tone code decoded by `tools/opz_loadtest.py`, and adds a run C for
 ### H-C1 run A/C results (2026-11-01, the user's OP-Z, firmware 1.2.45)
 
 Set-up: `opz_test_load` (60907) in slot 10 of all eight instrument tracks; project 9 patterns 4–16 built on a copy
-of the user's pattern 1 (see [patterns.md §9](patterns.md), Q-50), each pattern one P2 zone; one pattern looped at a
+of the user's pattern 1 (so they carried the in-use bit and appeared at all; see [patterns.md §9](patterns.md),
+Q-50 answered 2026-11-13), each pattern one P2 zone; one pattern looped at a
 time at 40 BPM, its tone recorded from USB audio for 10 s (`tools/opz_freqtrack.py`, git-ignored
 `device-tests/20261101T17*-freqtrack-hc1-p*`), the steady median decoded with the engine's table. FX1/FX2 played
 `echo`/`plate` (pattern 1's), sends 0. Every tone was steady to ±1–3 Hz over 8 s [proven].

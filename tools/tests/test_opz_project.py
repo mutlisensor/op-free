@@ -67,7 +67,8 @@ class Format(unittest.TestCase):
             op.Project.parse(data[:-4])          # version 73 without its minor word
 
     def test_edits_match_opzsysex(self):
-        """Our setters write the same bytes as the vendored, device-proven PatternBankEditor."""
+        """Our setters write the same bytes as the vendored, device-proven PatternBankEditor, except for the
+        in-use bit at MASTER_AT: opzsysex never sets it, which is why generated patterns stayed dark (Q-50)."""
         pr = op.Project()
         ed = PatternBankEditor(bytes(pr.bank))
         pr.set_notes(2, 6, 5, [{"note": 60, "velocity": 90, "duration": 3100, "micro": -3},
@@ -97,7 +98,14 @@ class Format(unittest.TestCase):
         ed.set_active_plug(1, 9, 61004)
         pr.set_muted(0, 13, True)
         ed.set_muted(0, 13, True)
-        self.assertEqual(bytes(pr.bank), ed.bytes())
+        ours, theirs = bytearray(pr.bank), bytearray(ed.bytes())
+        touched = [1, 2, 4, 15]
+        for p in touched:
+            at = p * op.PATTERN_SIZE + op.MASTER_AT
+            self.assertTrue(pr.pattern_in_use(p), p)
+            self.assertEqual(struct.unpack_from("<H", theirs, at)[0] & op.IN_USE_BIT, 0, p)
+            struct.pack_into("<H", ours, at, struct.unpack_from("<H", ours, at)[0] & ~op.IN_USE_BIT)
+        self.assertEqual(bytes(ours), bytes(theirs))
 
     def test_reads_back_edits(self):
         pr = op.Project()
@@ -154,6 +162,97 @@ class Format(unittest.TestCase):
         pr.set_notes(0, 5, 0, [{"note": 60}])
         struct.pack_into("<i", pr.bank, op._note_at(0, 5, 0, 0), -256)
         self.assertEqual(pr.problems(), [])
+
+
+class InUseBit(unittest.TestCase):
+    """Bit 0x0800 of the u16 at MASTER_AT marks a pattern in use (research/patterns.md §9, Q-50)."""
+
+    def test_default_pattern_is_not_in_use(self):
+        pr = op.Project()
+        for p in range(op.PATTERNS):
+            self.assertFalse(pr.pattern_in_use(p))
+        self.assertEqual(struct.unpack_from("<H", pr.bank, op.MASTER_AT)[0], 0x00F0)
+
+    def test_set_and_clear_keeps_the_routing_bits(self):
+        pr = op.Project()
+        struct.pack_into("<H", pr.bank, op.MASTER_AT, 0x00E4)
+        pr.set_pattern_in_use(0)
+        self.assertTrue(pr.pattern_in_use(0))
+        self.assertEqual(struct.unpack_from("<H", pr.bank, op.MASTER_AT)[0], 0x08E4)
+        self.assertEqual(pr.routing(0)[1], 0x08E4)
+        pr.set_pattern_in_use(0, False)
+        self.assertFalse(pr.pattern_in_use(0))
+        self.assertEqual(struct.unpack_from("<H", pr.bank, op.MASTER_AT)[0], 0x00E4)
+
+    def test_writing_notes_marks_the_pattern(self):
+        pr = op.Project()
+        pr.set_notes(3, 0, 0, [{"note": 53}])
+        self.assertTrue(pr.pattern_in_use(3))
+        self.assertEqual([p for p in range(op.PATTERNS) if pr.pattern_in_use(p)], [3])
+
+    def test_clearing_notes_does_not_unmark(self):
+        """The device keeps visited-but-empty patterns marked (4 such patterns in the user's ten files)."""
+        pr = op.Project()
+        pr.set_notes(3, 0, 0, [{"note": 53}])
+        pr.set_notes(3, 0, 0, [])
+        pr.clear_track(3, 0)
+        self.assertFalse(pr.pattern_has_notes(3))
+        self.assertTrue(pr.pattern_in_use(3))
+
+    def test_empty_set_notes_alone_does_not_mark(self):
+        pr = op.Project()
+        pr.set_notes(3, 0, 0, [])
+        self.assertFalse(pr.pattern_in_use(3))
+
+    def test_other_content_setters_mark(self):
+        for edit in (lambda pr: pr.set_component(2, 4, 2, "glide", 7),
+                     lambda pr: pr.set_lock(2, 5, 0, "filter", 200),
+                     lambda pr: pr.set_sound(2, 5, list(range(100, 118))),
+                     lambda pr: pr.set_track(2, 4, plug=61016)):
+            pr = op.Project()
+            edit(pr)
+            self.assertTrue(pr.pattern_in_use(2))
+            self.assertFalse(pr.pattern_in_use(1))
+
+    def test_disabling_alone_does_not_mark(self):
+        pr = op.Project()
+        pr.set_component(2, 4, 2, "glide", None)
+        pr.set_lock(2, 5, 0, "filter", None)
+        pr.set_track(2, 4)
+        self.assertFalse(pr.pattern_in_use(2))
+
+    def test_copy_pattern_carries_the_bit(self):
+        pr = op.Project()
+        pr.set_notes(0, 0, 0, [{"note": 53}])
+        pr.copy_pattern(0, 7)
+        self.assertTrue(pr.pattern_in_use(7))
+        pr2 = op.Project()
+        pr2.copy_pattern(0, 7)
+        self.assertFalse(pr2.pattern_in_use(7))
+
+    def test_generators_mark(self):
+        pr = op.Project()
+        op.write_rhythm(pr, 5, 0, op.euclid(4, 16), note=53)
+        self.assertTrue(pr.pattern_in_use(5))
+        pr = op.Project()
+        pages = op.write_pages(pr, 4, [[{"note": 36}] if s % 4 == 0 else [] for s in range(48)], first=8, chain_slot=4)
+        for p in pages:
+            self.assertTrue(pr.pattern_in_use(p), p)
+
+    def test_checker_warns_about_notes_without_the_bit(self):
+        pr = op.Project()
+        pr.set_notes(3, 0, 0, [{"note": 53}])
+        self.assertEqual(pr.problems(), [])
+        pr.set_pattern_in_use(3, False)
+        got = pr.problems()
+        self.assertTrue(any("pattern 4: holds notes but is not marked in use" in x for x in got), got)
+
+    def test_summary_lists_patterns_in_use(self):
+        pr = op.Project()
+        pr.set_notes(0, 0, 0, [{"note": 53}])
+        pr.set_sound(6, 0, list(range(18)))
+        self.assertEqual(pr.summary()["patterns_with_notes"], [0])
+        self.assertEqual(pr.summary()["patterns_in_use"], [0, 6])
 
 
 class Generators(unittest.TestCase):
@@ -342,6 +441,15 @@ class UserFiles(unittest.TestCase):
             self.assertEqual(pr.to_bytes(), data, path)
             if (pr.major, pr.minor) == (op.MAJOR, op.MINOR):
                 self.assertEqual(pr.problems(), [], path)
+
+    def test_every_pattern_with_notes_is_marked_in_use(self):
+        """[data] 62 of 62 patterns with notes carry bit 0x0800; 94 of 98 empty ones do not (Q-50)."""
+        for path in user_files():
+            with open(path, "rb") as f:
+                pr = op.Project.parse(f.read())
+            for p in range(op.PATTERNS):
+                if pr.pattern_has_notes(p):
+                    self.assertTrue(pr.pattern_in_use(p), "%s pattern %d" % (path, p + 1))
 
 
 if __name__ == "__main__":

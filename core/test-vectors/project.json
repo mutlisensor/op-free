@@ -161,7 +161,7 @@
   ],
   "routing": [
    255,
-   240
+   2288
   ],
   "sound": [
    [
@@ -255,6 +255,12 @@
     100,
     0
    ],
+   "patterns_in_use": [
+    0,
+    8,
+    9,
+    10
+   ],
    "patterns_with_notes": [
     0,
     8,
@@ -324,6 +330,6 @@
    }
   ]
  },
- "sha256": "038011f0030be4f2ede4d50cccb7461cfc965c873464ddb8e3da95238a6bc7e5",
+ "sha256": "9c085bd6f34d42a94264cc0749ec4e7518b1a1f9e403bf587fb1b865546b861e",
  "size": 342848
 }

@@ -36,6 +36,9 @@ const STEPS_AT = 7_232;
 const SOUND_AT = 21_056;
 const MUTES_AT = 21_344;
 const TAPE_AT = 21_384;
+const MASTER_AT = 21_386;
+/** Bit of the u16 at MASTER_AT that marks a pattern in use (research/patterns.md §9). */
+export const IN_USE_BIT = 0x0800;
 const MUTE_GROUP_AT = 21_388;
 const STEP_RECORD = 54;
 const TRACK_RECORD = 12;
@@ -62,6 +65,7 @@ export interface StepRecord { mask: number; components: Record<string, number>; 
 export interface Summary {
   version: string; tempo: number; swing: number; levels: Record<string, number>; metronome: number[];
   selected_chain: number | null; chains: Record<string, number[]>; patterns_with_notes: number[];
+  patterns_in_use: number[];
 }
 
 export class FormatError extends Error {
@@ -240,6 +244,20 @@ export class Project {
     return [this.b.getUint16(at, true), this.b.getUint16(at + 2, true)];
   }
 
+  /** Bit 0x0800 of the u16 at MASTER_AT: the OP-Z plays and lights a pattern only when it is set. */
+  patternInUse(p: number): boolean {
+    check(p);
+    return (this.b.getUint16(p * PATTERN_SIZE + MASTER_AT, true) & IN_USE_BIT) !== 0;
+  }
+
+  /** Mark the pattern in use (or not). Clearing it hides the pattern on the device, notes and all. */
+  setPatternInUse(p: number, inUse = true): void {
+    check(p);
+    const at = p * PATTERN_SIZE + MASTER_AT;
+    const mask = this.b.getUint16(at, true);
+    this.b.setUint16(at, inUse ? mask | IN_USE_BIT : mask & ~IN_USE_BIT, true);
+  }
+
   patternHasNotes(p: number): boolean {
     const base = p * PATTERN_SIZE + NOTES_AT;
     for (let n = 0; n < STEPS * SLOTS_PER_STEP; n++) if (this.bank[base + n * 8 + 4] !== 0xff) return true;
@@ -265,10 +283,12 @@ export class Project {
     LEVELS.forEach((name, i) => (levels[name] = g[512 + i]!));
     const patterns: number[] = [];
     for (let p = 0; p < PATTERNS; p++) if (this.patternHasNotes(p)) patterns.push(p);
+    const inUse: number[] = [];
+    for (let p = 0; p < PATTERNS; p++) if (this.patternInUse(p)) inUse.push(p);
     return {
       version: this.version, tempo: this.tempo, swing: g[SWING_AT]!, levels,
       metronome: [g[METRONOME_LEVEL_AT]!, g[METRONOME_SOUND_AT]!],
-      selected_chain: g[SELECTED_CHAIN_AT] === 0xff ? null : g[SELECTED_CHAIN_AT]!, chains, patterns_with_notes: patterns,
+      selected_chain: g[SELECTED_CHAIN_AT] === 0xff ? null : g[SELECTED_CHAIN_AT]!, chains, patterns_with_notes: patterns, patterns_in_use: inUse,
     };
   }
 
@@ -298,6 +318,7 @@ export class Project {
         this.bank[at + 4] = 0xff;
       }
     }
+    if (notes.length) this.setPatternInUse(p);
   }
 
   setComponent(p: number, t: number, s: number, name: Component, value: number | null): void {
@@ -310,6 +331,7 @@ export class Project {
     } else {
       this.bank[at + 2 + i] = byte(value, "component value");
       mask |= 1 << i;
+      this.setPatternInUse(p);
     }
     this.b.setUint16(at, mask, true);
   }
@@ -323,6 +345,7 @@ export class Project {
     } else {
       this.bank[at + 18 + i] = byte(value, "lock value");
       this.bank[at + 36 + i] = 0xff;
+      this.setPatternInUse(p);
     }
   }
 
@@ -331,12 +354,16 @@ export class Project {
     if (v.length !== PARAMS.length) throw new FormatError("a sound is 18 values");
     check(p, t);
     this.bank.set(v, p * PATTERN_SIZE + SOUND_AT + t * PARAMS.length);
+    this.setPatternInUse(p);
   }
 
   setTrack(p: number, t: number, o: { step_count?: number; step_length?: number; plug?: number; note_length?: number;
     quantize?: number }): void {
     check(p, t);
     const at = p * PATTERN_SIZE + t * TRACK_RECORD;
+    if ([o.step_count, o.step_length, o.plug, o.note_length, o.quantize].some((v) => v !== undefined)) {
+      this.setPatternInUse(p);
+    }
     if (o.step_count !== undefined) {
       if (!Number.isInteger(o.step_count) || o.step_count < 1 || o.step_count > STEPS) {
         throw new FormatError("step count must be 1..16");
@@ -416,6 +443,11 @@ export class Project {
             out.push(`${where} step ${s + 1}: lock enable not 00/FF`);
           }
         }
+      }
+      if (this.patternHasNotes(p) && !this.patternInUse(p)) {
+        const bit = IN_USE_BIT.toString(16).toUpperCase().padStart(4, "0");
+        out.push(`pattern ${p + 1}: holds notes but is not marked in use (bit 0x${bit} of the u16 at ` +
+          `${MASTER_AT}); the OP-Z will ignore it`);
       }
       if (this.muteGroup(p) > 9) out.push(`pattern ${p + 1}: mute group ${this.muteGroup(p)}`);
     }
