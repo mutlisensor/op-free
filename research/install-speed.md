@@ -29,7 +29,7 @@ The loader's log from that install (OP-FREE site, every line timestamped) shows 
 - **What it means.** The single-engine flow (`install`: backup, push, read-back) costs ~22 s per engine. The
   printout of every track after each install is just a log line; it costs no device time.
 
-## 2. What the loader does now
+## 2. What the loader does now (all of it ran on the OP-Z, §3c)
 
 1. **A backup reuses a fresh read-back** (`OpzOptions.reuseRead`, seconds; the OP-FREE site uses 5).
    - **When:** a flow's backup follows the previous flow's read-back by milliseconds. When nothing was pushed in
@@ -56,30 +56,52 @@ The loader's log from that install (OP-FREE site, every line timestamped) shows 
 The site's test "a batch of N engines is N + 4 sessions" pins this
 [test: `OP-FREE/site/src/loader/test/flow.test.ts`, 15 engines in the demo].
 
-## 3. H-IS1: every engine in one push (device check, 2026-11-13): **no**
+## 3. H-IS1 on the OP-Z (2026-11-13)
 
-The first version of `installMany` sent every engine file and one `patch.json` in a single push. The push was 7
-files: fmperc, swarm, clouds, swirl, plate and lofi, plus a `patch.json` with their six `auto_import[]` entries and
-chip's presets. About 48 KB, ~240 parts of 200 bytes.
+### 3a. Every engine in one push: **no**
 
-- **What happened:** the session opened. Then the OP-Z showed its transfer light (a blue sweep across the top row)
-  for minutes, never reported the sync complete, and the site waited
-  [proven: the tester's report, 2026-11-13 11:55:44 onward].
-- **Why the site never gave up:** it only stopped a push after 15 s with no traffic, so the OP-Z must have kept
-  sending requests or progress [inferred]. That's why pushes now have the overall time limit.
-- **Recovery:** closing the tab ended the session. The sweep stopped, and the OP-Z worked normally.
-- **What landed:** nothing. A read-back (`opz.py status`) showed the same state CRC `c85e860c`, plugs and slot map
-  as before [proven].
+The first `installMany` sent every engine file and one `patch.json` in a single push: 7 files (fmperc, swarm,
+clouds, swirl, plate, lofi and the patch), ~48 KB, ~240 parts of 200 bytes.
 
-**Cause: not known.** Every push before had at most 3 files.
-- A single file of 230 parts (`table`, 45,844 B) installs fine [proven: installed 2026-11-11]. So the part count of
-  one file isn't the limit.
-- Two candidates [idea]:
-  - The OP-Z limits how many files, or how many bytes, one sync job can carry.
-  - Our flow control (`UploadState`: at most 64 parts in flight, counted as parts sent minus the OP-Z's reported
-    count) disagrees with the OP-Z when its `$33` count runs per file rather than per job. Then we stop sending after
-    a few files while the OP-Z keeps asking.
-- **Q-88** asks which. The next stalled push's `push trace:` lines answer it.
+- **What happened:** the session opened, then the OP-Z showed its transfer light (a blue sweep across the top row)
+  for minutes, never reported the sync complete, and the site waited with it [proven: tester's report, 11:55:44 on].
+- **Recovery:** closing the page ended the session; the sweep stopped and the OP-Z worked normally. No power cycle.
+- **What landed:** nothing. A read-back (`opz.py status`) gave the same state CRC `c85e860c`, plugs and slot map as
+  before [proven].
+- **Why the site waited:** it only gave up after 15 s with no traffic, so the OP-Z kept sending something. Pushes
+  now have an overall time limit (§2.3).
+- **Cause: not known.** A single file of 230 parts (`table`, 45,844 B) installs fine [proven, 2026-11-11], so one
+  file's part count is not the limit. Either the OP-Z limits the files or bytes of one sync job, or our flow control
+  (at most 64 parts in flight, counted as parts sent minus the OP-Z's reported count) disagrees with it when the
+  count runs per file rather than per job [idea]. **Q-88.**
+
+### 3b. An unfinished job outlives its session
+
+The two attempts after the stuck push both failed at once with `unknown hosted file id`: `4061517770` is
+`clouds.engine` and `3164615262` is `swirl.engine`, the 3rd and 4th files of the **stuck job**
+[proven: the ids are `crc32` of those paths].
+
+- The OP-Z kept the interrupted job's file list and asked for its next file in each new session, one per session,
+  although the new push hosted neither [proven].
+- It cleared by itself after a few sessions and ~3 minutes; the OP-Z was never restarted [proven].
+- The loader now recognises such a request (`StaleJobError`): nothing of that push has gone out, so `Opz.push` opens
+  a new session and tries again, up to 6 times, logging `trying again (n of 5)`. **Q-89** asks what exactly clears
+  the list.
+
+### 3c. A push per engine: **yes**
+
+The same six engines, chip's presets and 10 slot changes, run again with one push per engine:
+
+- **Every push was fetched and applied**: six `sync: requested ['engines/<name>.engine', 'settings/patch.json']`,
+  then one for chip's presets, each with `OP-Z reports sync complete` [proven: 12:13:12–12:13:54].
+- **One read-back verified all of them**: `installed and verified`, 18 user plugs, slot map unchanged at that point
+  [proven: 12:14:01].
+- **Sessions: 10 = N + 4** for N = 6, as the site's test predicts. The read reuse fired twice
+  (`settings as read back 4.7 s ago`, `0.0 s ago`) [proven].
+- **Time: 65 s** from the first push's session to `batch: done.` (12:13:10.6 → 12:14:16.1). Each session's wait was
+  6.3 s, steady with §1 [proven].
+- **The old flow for the same work** would be 3 sessions per engine + 3 for the presets + 3 for the slot map = 24
+  sessions, about 3 minutes.
 
 ## 4. Open
 
@@ -87,5 +109,7 @@ chip's presets. About 48 KB, ~240 parts of 200 bytes.
   session gets cheaper, the single-engine flows too.
 - **Q-87:** in what order does the OP-Z apply the files of one sync job? If `patch.json` is imported before
   `slotConfiguration.json` is applied, the slot map could join the last engine's push and save two sessions.
-- **Q-88:** why did a 7-file push never finish (§3)? Once a multi-file push is understood, a batch could drop back to
-  ~5 sessions.
+- **Q-88:** why did a 7-file push never finish (§3a)? Once a multi-file push is understood, a batch could drop back
+  to ~5 sessions.
+- **Q-89:** what clears an unfinished sync job (§3b)? Time, a number of sessions, or draining its file list? The
+  answer sets how many retries `Opz.push` should make.

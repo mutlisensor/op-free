@@ -4,8 +4,9 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 
 import {
-  type Doc, type Engine, FakeOpz, FileSession, MASTER, MemoryBackupStore, Opz, PlanError, SLOTS, SessionError,
-  VirtualTransport, assign, assignedTracks, buildPatch, devicePresets, fromUtf8, loads, makeEngine, planInstall,
+  type Doc, type Engine, FakeOpz, FileSession, MASTER, MemoryBackupStore, Opz, PlanError, SLOTS, SessionError, StaleJobError,
+  type Transport, VirtualTransport, assign, assignedTracks, buildPatch, concat, devicePresets, fileId, frame, fromUtf8,
+  loads, makeEngine, planInstall, u16le, u32le,
 } from "../src/index.ts";
 
 function engine(options: {
@@ -437,6 +438,54 @@ describe("install many (one push per engine, one read-back)", () => {
     await s.open();
     await assert.rejects(s.push([["engines/x.engine", new Uint8Array(4000).fill(7)]], null, 15, 2, 0.001), /not finished after/);
     assert.ok(lines.some((l) => l.startsWith("push trace: sent")));
+  });
+});
+
+describe("a sync job the OP-Z never finished", () => {
+  beforeEach(setUp);
+
+  it("a request for a file this push does not host stops it before anything is sent", async () => {
+    const t = new VirtualTransport(dev);
+    let swap = true;
+    const transport: Transport = {
+      send: (raw) => t.send(raw),
+      async receive(ms) {
+        const raw = await t.receive(ms);
+        if (raw && raw[5] === 0x35 && swap) {
+          swap = false; // as the OP-Z did after H-IS1's stuck push: it asked for that job's next file
+          return frame(0x35, concat(u16le(dev.clientId), u32le(fileId("engines/gone.engine")), u16le(0)));
+        }
+        return raw;
+      },
+    };
+    const s = new FileSession(transport, { log: (l) => logs.push(l), clock: t.clock });
+    await s.open();
+    await assert.rejects(s.push([["engines/x.engine", new Uint8Array(300).fill(3)]]),
+      (e: Error) => e.name === "StaleJobError" && /earlier sync job that never finished/.test(e.message));
+    assert.equal(dev.syncCount, 0);
+    assert.ok(!dev.files.has("engines/x.engine"));
+  });
+
+  it("push tries again until it clears, then gives up", async () => {
+    class Flaky extends Opz {
+      tries = 0;
+      stale = 2;
+      protected override pushOnce(files: Array<[string, Uint8Array]>, remove: number[] | null) {
+        this.tries++;
+        if (this.stale-- > 0) throw new StaleJobError("the OP-Z asked for file 1, which is not in this push: it is "
+          + "still working through an earlier sync job that never finished");
+        return super.pushOnce(files, remove);
+      }
+    }
+    const t = new VirtualTransport(dev);
+    const o = new Flaky(t, { log: (l) => logs.push(l), backups: store, confirm: () => true, clock: t.clock });
+    assert.ok(await o.install(engine(), [4], null, false, { yes: true }));
+    assert.equal(o.tries, 3);
+    assert.equal(logs.filter((l) => l.includes("trying again")).length, 2);
+    assert.deepEqual(assignedTracks(settings()[1], 60950), [[4, 2]]);
+
+    o.stale = 99;
+    await assert.rejects(o.install(engine({ pid: 60951 }), [4], null, false, { yes: true }), /never finished/);
   });
 });
 

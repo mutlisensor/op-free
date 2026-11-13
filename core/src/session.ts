@@ -66,6 +66,14 @@ export class SessionError extends Error {
 }
 
 /**
+ * The OP-Z asked for a file of an earlier sync job that never finished (UploadState.wantsUnknownFile). Nothing of
+ * this push was sent, so the caller may simply try it again.
+ */
+export class StaleJobError extends SessionError {
+  override name = "StaleJobError";
+}
+
+/**
  * Refuse a path two folders deep before anything is sent. The OP-Z stages each download in inbox/<path> and makes only
  * its last folder (one mkdir, FUN_80129454), so inbox/a/b/ fails unless inbox/a/ exists: the parts are taken, the
  * sync reports complete, and finalising copies nothing ("invalid file crc", FUN_80127a24) [code, device; Q-49].
@@ -269,6 +277,15 @@ export class FileSession {
         const [mid, p] = msg;
         if (mid === 0x35) {
           state.acceptRequest(p, this.clientId);
+          if (state.activeFileId !== SYNC_JOB_ID && !paths.has(state.activeFileId!)) {
+            // H-IS1 (2026-11-13): after a push that never finished, the OP-Z went on asking for that push's files in
+            // the next sessions of the same client, until it restarted.
+            this.active = 0;
+            await this.keepalive(true);
+            throw new StaleJobError(`the OP-Z asked for file ${state.activeFileId}, which is not in this push: it is `
+              + "still working through an earlier sync job that never finished. Nothing of this push was sent; trying "
+              + "again clears one of that job's files");
+          }
           note(now, `$35 file ${state.activeFileId === SYNC_JOB_ID ? "syncjob" : (paths.get(state.activeFileId!) ?? state.activeFileId)} from part ${state.nextPart}`
             + ` (sent ${state.sentPartCount}, done ${state.clientCompletedPartCount ?? "-"})`);
           if (state.activeFileId !== null && paths.has(state.activeFileId)) requested.add(state.activeFileId);

@@ -12,7 +12,7 @@ import {
 } from "./plan.ts";
 import { dumps, loads, pyEqual, pyInt, pyRepr } from "./pyjson.ts";
 import { describeSpace, installRoom, planRemoveOurs, removeOursLines, spaceReport } from "./space.ts";
-import { type Clock, FileSession, type PushResult, StateSession, type Transport, monotonic } from "./session.ts";
+import { type Clock, FileSession, type PushResult, StaleJobError, StateSession, type Transport, monotonic } from "./session.ts";
 
 /** Where backups go (the CLI writes backups/<time>-<label>/; a web app might use IndexedDB or downloads). */
 export interface BackupStore {
@@ -155,9 +155,26 @@ export class Opz {
     return { id, plugs: loads(plugsRaw), slots: loads(slotsRaw) };
   }
 
-  async push(files: Array<[string, Uint8Array]>, remove: number[] | null = null): Promise<PushResult> {
-    this.forgetRead();
+  /** One push in its own session. Subclasses that count or watch pushes override this, not push(). */
+  protected pushOnce(files: Array<[string, Uint8Array]>, remove: number[] | null): Promise<PushResult> {
     return this.session((s) => s.push(files, remove));
+  }
+
+  /**
+   * Push, retrying while the OP-Z is still asking for files of an earlier sync job that never finished: it offers
+   * one of them per session, so a few tries drain it (StaleJobError; H-IS1, 2026-11-13). Nothing is sent on such a
+   * try, so a retry repeats no step.
+   */
+  async push(files: Array<[string, Uint8Array]>, remove: number[] | null = null, tries = 6): Promise<PushResult> {
+    this.forgetRead();
+    for (let n = 1; ; n++) {
+      try {
+        return await this.pushOnce(files, remove);
+      } catch (e) {
+        if (!(e instanceof StaleJobError) || n >= tries) throw e;
+        this.log(`  ${(e as Error).message.split(":")[0]}: trying again (${n} of ${tries - 1})`);
+      }
+    }
   }
 
   async install(
