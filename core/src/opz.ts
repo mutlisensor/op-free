@@ -66,7 +66,7 @@ export interface OpzOptions {
   /**
    * Seconds within which a backup may take the settings the last read-back returned instead of reading them again,
    * when nothing was pushed since. 0 (the default) always reads. Every session costs a ~6.5 s wait for the OP-Z's next
-   * `$34` (docs/research/install-speed.md), and a flow's backup usually follows the previous flow's read-back by
+   * `$34` (research/install-speed.md), and a flow's backup usually follows the previous flow's read-back by
    * milliseconds, so a batch saves one session per step.
    */
   reuseRead?: number;
@@ -222,7 +222,7 @@ export class Opz {
    * Install several engines and replace the presets of installed plugs in one push: one backup, one sync job with
    * every engine file and one patch.json (buildBatchPatch), one read-back. No slot changes (write the slot map next);
    * the read-back must show the slot map unchanged, or it is restored. The single-engine flow (install) costs three
-   * sessions per engine, each with a ~6.5 s wait for the OP-Z (docs/research/install-speed.md).
+   * sessions per engine, each with a ~6.5 s wait for the OP-Z (research/install-speed.md).
    */
   async installMany(engines: Engine[], presets: Engine[] = [], options: WriteOptions = {}): Promise<boolean> {
     const b = await this.backup("install-batch");
