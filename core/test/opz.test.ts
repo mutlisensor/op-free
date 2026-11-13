@@ -370,3 +370,103 @@ describe("session", () => {
     await s.close();
   });
 });
+
+describe("install many (one push)", () => {
+  beforeEach(setUp);
+  const opens = () => logs.filter((l) => l.includes("session open")).length;
+
+  it("three engines in one sync, three sessions, slot map untouched", async () => {
+    const slotsBefore = dev.files.get("settings/slotConfiguration.json")!;
+    const es = [engine({ name: "aa", pid: 60950, slot: 86 }), engine({ name: "bb", pid: 60951, slot: 85 }),
+      engine({ name: "cc", pid: 60952, slot: 84, presets: [{ index: 0, slot: 0, name: "p", values: Array(18).fill(1) }] })];
+    assert.ok(await opz.installMany(es, [], { yes: true }));
+    assert.equal(dev.syncCount, 1);
+    assert.equal(opens(), 3);
+    const [plugs] = settings();
+    for (const e of es) {
+      assert.ok(plugs.plugs.some((p: Doc) => p.id === e.manifest.plug.id && p.engine === e.devicePath));
+      assert.deepEqual(dev.files.get(e.devicePath), e.data);
+    }
+    assert.deepEqual(dev.files.get("settings/slotConfiguration.json"), slotsBefore);
+    assert.equal(dev.presets.get(60952)?.size, 1);
+    const id = [...store.backups.keys()][0];
+    assert.equal(loads(store.backups.get(id)!.get("install.json")!).batch.length, 3);
+  });
+
+  it("presets of an installed plug ride in the same patch.json", async () => {
+    assert.ok(await opz.install(engine({ name: "aa" }), [], null, false, { yes: true }));
+    dev.syncCount = 0;
+    const again = engine({ name: "aa", presets: [{ index: 1, slot: 0, name: "x", values: Array(18).fill(2) }] });
+    const added = engine({ name: "bb", pid: 60951, slot: 85 });
+    let patch: Doc = {};
+    const real = dev.importPatch.bind(dev);
+    dev.importPatch = (doc: Doc) => { patch = doc; real(doc); };
+    assert.ok(await opz.installMany([added], [again], { yes: true }));
+    assert.equal(dev.syncCount, 1);
+    assert.equal(dev.presets.get(60950)?.size, 1);
+    assert.equal(patch.auto_import.length, 1);
+    assert.equal(patch.plugs[0].id, 60950);
+  });
+
+  it("refuses a memory slot or plug id used twice in the batch, writes nothing", async () => {
+    assert.equal(await opz.installMany([engine({ name: "aa" }), engine({ name: "bb", pid: 60951 })], [], { yes: true }), false);
+    assert.ok(logs.some((l) => l.includes("memory slot 86 is also aa")));
+    assert.equal(await opz.installMany([engine({ name: "aa" }), engine({ name: "bb", slot: 85 })], [], { yes: true }), false);
+    assert.ok(logs.some((l) => l.includes("plug id 60950 is also aa")));
+    assert.equal(dev.syncCount, 0);
+  });
+
+  it("a plug the device did not import fails verification", async () => {
+    dev.importPatch = () => {};
+    assert.equal(await opz.installMany([engine()], [], { yes: true }), false);
+    assert.ok(logs.some((l) => l.includes("verify:  testeng: plug 60950 missing")));
+  });
+
+  it("dry run prints one patch.json and writes nothing", async () => {
+    assert.ok(await opz.installMany([engine({ name: "aa" }), engine({ name: "bb", pid: 60951, slot: 85 })], [], { dryRun: true }));
+    assert.equal(dev.syncCount, 0);
+    const dry = logs.find((l) => l.startsWith("dry run"))!;
+    assert.equal(loads(dry.split("\n")[1]).auto_import.length, 2);
+  });
+});
+
+describe("read-back reuse", () => {
+  beforeEach(setUp);
+  const opens = () => logs.filter((l) => l.includes("session open")).length;
+
+  function reusing(seconds: number): Opz {
+    const t = new VirtualTransport(dev);
+    return new Opz(t, { log: (l) => logs.push(l), backups: store, confirm: () => true, clock: t.clock, reuseRead: seconds });
+  }
+
+  it("off by default: every flow reads again", async () => {
+    assert.ok(await opz.install(engine({ name: "aa" }), [], null, false, { yes: true }));
+    assert.ok(await opz.install(engine({ name: "bb", pid: 60951, slot: 85 }), [], null, false, { yes: true }));
+    assert.equal(opens(), 6);
+  });
+
+  it("the next flow's backup takes the read-back, the result is the same", async () => {
+    const o = reusing(5);
+    assert.ok(await o.install(engine({ name: "aa" }), [], null, false, { yes: true }));
+    assert.ok(await o.install(engine({ name: "bb", pid: 60951, slot: 85 }), [4], null, false, { yes: true }));
+    assert.equal(opens(), 5);
+    assert.ok(logs.some((l) => l.includes("(nothing written since)")));
+    assert.deepEqual(assignedTracks(settings()[1], 60951), [[4, 2]]);
+    const ids = [...store.backups.keys()];
+    assert.equal(ids.length, 2);
+    // the second backup holds what the OP-Z had after the first install
+    assert.ok(loads(store.backups.get(ids[1])!.get("settings/plugs.json")!).plugs.some((p: Doc) => p.id === 60950));
+  });
+
+  it("a push in between, or an old read, means a fresh read", async () => {
+    const o = reusing(5);
+    await o.readSettings();
+    await o.push([]);
+    await o.backup("x");
+    assert.equal(opens(), 3);
+    const t = o.clock() + 10;
+    while (o.clock() < t) await o.transport.receive(1000);
+    await o.backup("y");
+    assert.equal(opens(), 4);
+  });
+});

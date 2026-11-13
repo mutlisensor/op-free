@@ -4,11 +4,15 @@
  * (backup first, plan checks, confirm, read-back verify, slot-map rollback); this layer feeds it a transport, the
  * browser's backup store and a confirm callback that opens the loader's confirm sheet.
  *
- * Install is a batch, like web/app's "re-push all presets": it backs up, plans from that backup (src/loader/plan.ts),
- * asks once with every slot before → after, then runs the core's own flows with `yes` (each one backs up again,
- * checks and verifies on its own): `install` per engine (install only, no slot), `presetsPush` for engines already
- * there, then one `writeSlotMap` for the whole layout (refused if the OP-Z's map changed since the backup; read back
- * and rolled back if it differs). It stops at the first failure; nothing after it is written.
+ * Install is a batch: it backs up, plans from that backup (src/loader/plan.ts), asks once with every slot before →
+ * after, then runs the core's own flows with `yes` (each one checks and verifies on its own): one `installMany` that
+ * sends every new or upgraded engine and every preset refresh in a single push (one patch.json, no slot changes, read
+ * back), then one `writeSlotMap` for the whole layout (refused if the OP-Z's map changed since the backup; read back
+ * and rolled back if it differs). Nothing after a failure is written.
+ *
+ * Speed: every session costs a ~6.5 s wait for the OP-Z's next `$34` (docs/research/install-speed.md), so the opz
+ * reuses a read-back made in the last few seconds as the next flow's backup (READ_REUSE) and a batch is 5 sessions
+ * (backup, push, read-back, slot-map push, read-back) whatever the number of engines, instead of 3 per engine.
  */
 
 import type { CatalogueEngine } from "../shared/catalogue.ts";
@@ -96,6 +100,8 @@ const WRITES = new Set<OpName>(["install", "restore", "remove"]);
 export const OPEN_WAIT = 15;
 export const OPEN_PAUSE = 3;
 const NO_ANSWER = /no \$34 reply/;
+/** A backup within this many seconds of a read-back, with nothing pushed since, takes that read-back (OpzOptions.reuseRead). */
+export const READ_REUSE = 5;
 
 /** A session open the OP-Z hasn't answered yet: the panel shows a countdown. */
 export interface OpenWait {
@@ -127,6 +133,7 @@ class TrackingOpz extends Opz {
 
   /** As the core's push(); counted once the OP-Z has answered the open, the moment files can start to go out. */
   override push(files: Array<[string, Uint8Array]>, remove: number[] | null = null) {
+    this.forgetRead();
     return this.session((s) => {
       this.pushes++;
       this.unverified = true;
@@ -248,7 +255,7 @@ export class LoaderController {
     this.store.source = kind === "demo" ? "demo" : deviceName;
     const watched = new WatchedTransport(transport, (id) => this.log(`warning: the OP-Z is also sending file-service frames to `
       + `client ${id}: is TE's app or another tab connected? Close it (one client at a time).`));
-    this.opz = new TrackingOpz(watched, { log: (line) => this.log(line), backups: this.store, confirm: (q) => this.coreConfirm(q), clock });
+    this.opz = new TrackingOpz(watched, { log: (line) => this.log(line), backups: this.store, confirm: (q) => this.coreConfirm(q), clock, reuseRead: READ_REUSE });
     this.opz.onWait = (w) => {
       this.waiting = w;
       this.hooks.changed();
@@ -434,6 +441,7 @@ export class LoaderController {
         ...work.map((i) => `${engines.get(i.dir)!.devicePath} (${kb(i.bytes ?? 0)})`),
         ...work.map((i) => `settings/patch.json: plug ${i.plugId} v${i.version} with ${i.presets} preset${i.presets === 1 ? "" : "s"}`),
         ...repush.map((i) => `settings/patch.json: ${i.presets} presets for plug ${i.plugId} (no version bump)`),
+        ...(work.length + repush.length > 1 ? ["(one patch.json and one push for all of them)"] : []),
         ...(plan.changes.length ? [SLOTS] : []),
       ];
       const restart = work.some((i) => i.restart);
@@ -460,27 +468,24 @@ export class LoaderController {
         this.log("cancelled.");
         return false;
       }
-      for (const i of work) {
-        const ok = await opz.install(engines.get(i.dir)!, [], null, false, { yes: true });
-        this.log(`batch: ${i.label} ${ok ? "installed and verified" : "FAILED"}`);
+      if (work.length || repush.length) {
+        const ok = await opz.installMany(
+          work.map((i) => engines.get(i.dir)!), repush.map((i) => toEngine(byDir.get(i.dir)!, new Uint8Array(0))), { yes: true },
+        );
+        const what = [...work.map((i) => i.label), ...repush.map((i) => `presets of ${i.label}`)].join(", ");
+        this.log(`batch: ${what} ${ok ? (work.length ? "installed and verified" : "pushed and verified") : "FAILED"}`);
         if (!ok) {
-          this.log("batch: stopped. Nothing after this engine was written; the slot map was not changed.");
+          this.log("batch: stopped. The slot map was not changed.");
           return false;
         }
-      }
-      let failed = 0;
-      for (const i of repush) {
-        const ok = await opz.presetsPush(toEngine(byDir.get(i.dir)!, new Uint8Array(0)), { yes: true });
-        this.log(`batch: presets of ${i.label} ${ok ? "pushed and verified" : "FAILED"}`);
-        if (!ok) failed++;
       }
       if (plan.changes.length) {
         const ok = await opz.writeSlotMap(plan.target, b.slots, "opfree-slots", { yes: true, manifests: request.engines.map((e) => e.manifest) });
         this.log(`batch: slot map ${ok ? "written and verified" : "FAILED (rolled back to the backup)"}`);
         if (!ok) return false;
       }
-      this.log(`batch: done${failed ? `, ${failed} presets push${failed > 1 ? "es" : ""} failed` : ""}.`);
-      return failed === 0;
+      this.log("batch: done.");
+      return true;
     });
   }
 

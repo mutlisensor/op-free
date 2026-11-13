@@ -7,7 +7,7 @@
 import { fromUtf8, toHex, utf8 } from "./bytes.ts";
 import {
   BOOT_PATCH, BOOT_PATCH_MAX, type Doc, type Engine, MASTER, PATCH, PLUGS, SLOTS, TRACK_NAMES, USER_PLUG_MIN, assign,
-  assignedTracks, bootEntries, effectPlug, FX_TRACK_MIN, instrumentError, masterError, masterPlugs, plugManifest, slotCells, buildBootPatch, buildPatch, buildPresetsPatch, checkSound, describe, devicePresets, formatSound, orphanEngines, planInstall, presetKeysText,
+  assignedTracks, bootEntries, effectPlug, FX_TRACK_MIN, instrumentError, masterError, masterPlugs, plugManifest, slotCells, buildBootPatch, buildBatchPatch, buildPatch, buildPresetsPatch, checkSound, describe, devicePresets, formatSound, orphanEngines, planInstall, presetKeysText,
   orphanErrors, presetProblems, removalBlock, sameSlots, setCommand, slotEntries, slotMapChanges, slotMapProblems, unassign, verifyInstall,
 } from "./plan.ts";
 import { dumps, loads, pyEqual, pyInt, pyRepr } from "./pyjson.ts";
@@ -63,6 +63,13 @@ export interface OpzOptions {
   /** Ask the user; the default refuses, so a write needs `yes` or a real prompt. */
   confirm?: (question: string) => boolean | Promise<boolean>;
   clock?: Clock;
+  /**
+   * Seconds within which a backup may take the settings the last read-back returned instead of reading them again,
+   * when nothing was pushed since. 0 (the default) always reads. Every session costs a ~6.5 s wait for the OP-Z's next
+   * `$34` (docs/research/install-speed.md), and a flow's backup usually follows the previous flow's read-back by
+   * milliseconds, so a batch saves one session per step.
+   */
+  reuseRead?: number;
 }
 
 export interface WriteOptions {
@@ -95,6 +102,9 @@ export class Opz {
   readonly backups: BackupStore;
   readonly confirm: (question: string) => boolean | Promise<boolean>;
   readonly clock: Clock;
+  readonly reuseRead: number;
+  /** The last read-back and when it finished; dropped by any push (see OpzOptions.reuseRead). */
+  private recentRead: { at: number; raw: [Uint8Array, Uint8Array] } | null = null;
 
   constructor(transport: Transport, options: OpzOptions = {}) {
     this.transport = transport;
@@ -102,6 +112,12 @@ export class Opz {
     this.backups = options.backups ?? new MemoryBackupStore();
     this.confirm = options.confirm ?? (() => false);
     this.clock = options.clock ?? monotonic;
+    this.reuseRead = options.reuseRead ?? 0;
+  }
+
+  /** Forget the last read-back: the OP-Z's settings may change from here on. A subclass's own push must call it. */
+  protected forgetRead(): void {
+    this.recentRead = null;
   }
 
   /** Open a session, run body, always close. */
@@ -117,11 +133,21 @@ export class Opz {
 
   /** [plugs.json, slotConfiguration.json] as stored on the OP-Z. */
   async readSettings(): Promise<[Uint8Array, Uint8Array]> {
-    return this.session(async (s) => [await s.pull(PLUGS), await s.pull(SLOTS)]);
+    this.recentRead = null;
+    const raw = await this.session(async (s): Promise<[Uint8Array, Uint8Array]> => [await s.pull(PLUGS), await s.pull(SLOTS)]);
+    this.recentRead = { at: this.clock(), raw };
+    return raw;
   }
 
   async backup(label = ""): Promise<Backup> {
-    const [plugsRaw, slotsRaw] = await this.readSettings();
+    const recent = this.recentRead;
+    let plugsRaw: Uint8Array, slotsRaw: Uint8Array;
+    if (recent !== null && this.reuseRead > 0 && this.clock() - recent.at <= this.reuseRead) {
+      [plugsRaw, slotsRaw] = recent.raw;
+      this.log(`  settings as read back ${(this.clock() - recent.at).toFixed(1)} s ago (nothing written since)`);
+    } else {
+      [plugsRaw, slotsRaw] = await this.readSettings();
+    }
     const meta: Record<string, string> = { [PLUGS]: await sha256(plugsRaw), [SLOTS]: await sha256(slotsRaw) };
     const files = new Map([[PLUGS, plugsRaw], [SLOTS, slotsRaw], ["backup.json", utf8(dumps({ sha256: meta }, { indent: 2 }))]]);
     const id = await this.backups.save(label, files);
@@ -130,6 +156,7 @@ export class Opz {
   }
 
   async push(files: Array<[string, Uint8Array]>, remove: number[] | null = null): Promise<PushResult> {
+    this.forgetRead();
     return this.session((s) => s.push(files, remove));
   }
 
@@ -187,6 +214,118 @@ export class Opz {
       }
       const keys = presetKeysText(engine.name, engine.presets, pyInt(engine.manifest.plug.trackmask ?? 0));
       if (keys) this.log(keys);
+    }
+    return true;
+  }
+
+  /**
+   * Install several engines and replace the presets of installed plugs in one push: one backup, one sync job with
+   * every engine file and one patch.json (buildBatchPatch), one read-back. No slot changes (write the slot map next);
+   * the read-back must show the slot map unchanged, or it is restored. The single-engine flow (install) costs three
+   * sessions per engine, each with a ~6.5 s wait for the OP-Z (docs/research/install-speed.md).
+   */
+  async installMany(engines: Engine[], presets: Engine[] = [], options: WriteOptions = {}): Promise<boolean> {
+    const b = await this.backup("install-batch");
+    const errors: string[] = [];
+    const warnings: string[] = [];
+    const restart: string[] = [];
+    const ids = new Map<number, string>();
+    const mslots = new Map<number, string>();
+    for (const e of [...engines, ...presets]) {
+      const pid = pyInt(e.manifest.plug.id);
+      if (ids.has(pid)) errors.push(`${e.name}: plug id ${pid} is also ${ids.get(pid)} in this batch`);
+      ids.set(pid, e.name);
+    }
+    for (const e of engines) {
+      const [errs, warns, plan] = planInstall(b.plugs, b.slots, e, [], null, false);
+      errors.push(...errs.map((x) => `${e.name}: ${x}`));
+      warnings.push(...warns.map((x) => `${e.name}: ${x}`));
+      if (plan.restart) restart.push(e.name);
+      const mslot = pyInt(e.manifest.memoryslot);
+      if (mslots.has(mslot)) errors.push(`${e.name}: memory slot ${mslot} is also ${mslots.get(mslot)} in this batch`);
+      mslots.set(mslot, e.name);
+    }
+    const records: Array<[Doc, Doc[]]> = [];
+    for (const e of presets) {
+      const pid = pyInt(e.manifest.plug.id);
+      const record = (b.plugs.plugs ?? []).find((p: Doc) => p.id === pid);
+      const [perrs, pwarns] = presetProblems(e.presets, pyInt(e.manifest.plug.trackmask ?? 0));
+      if (record === undefined) errors.push(`${e.name}: plug ${pid} is not installed (install it first)`);
+      else if (record.engine !== e.devicePath) errors.push(`${e.name}: plug id ${pid} belongs to ${record.engine}`);
+      else records.push([record, e.presets]);
+      if (!e.presets.length) errors.push(`${e.name}: presets.json is empty: nothing to push`);
+      errors.push(...perrs.map((x) => `${e.name}: ${x}`));
+      warnings.push(...pwarns.map((x) => `${e.name}: ${x}`));
+    }
+    if (!engines.length && !presets.length) errors.push("nothing to install");
+    for (const w of warnings) this.log("warning: " + w);
+    for (const e of errors) this.log("error:   " + e);
+    if (errors.length) {
+      this.log("nothing written.");
+      return false;
+    }
+    const patch = (nonce: number | null) => buildBatchPatch(engines, records, nonce);
+    const files: Array<[string, Uint8Array]> = [...engines.map((e): [string, Uint8Array] => [e.devicePath, e.data]), [PATCH, patch(null)]];
+    for (const e of engines) {
+      this.log(`plan: ${e.devicePath} (${e.data.length} bytes) as plug ${pyInt(e.manifest.plug.id)} v${pyInt(e.manifest.plug.version)}`
+        + ` with ${e.presets.length} presets`);
+    }
+    for (const [record, ps] of records) this.log(`plan: ${ps.length} presets -> plug ${record.id} (${record.engine} v${record.version}), no version bump`);
+    this.log(`plan: one push of ${files.length} file${files.length > 1 ? "s" : ""}, no slot changes`);
+    if (options.dryRun) {
+      this.log("dry run: nothing written. patch.json:\n" + fromUtf8(files[files.length - 1][1]));
+      return true;
+    }
+    if (!options.yes && !(await this.confirm("Install now?"))) {
+      this.log("cancelled.");
+      return false;
+    }
+    let result = await this.push(files);
+    this.log(`sync: requested ${pyRepr(result.requested)}; skipped (unchanged) ${pyRepr(result.skipped)}`);
+    if (result.skipped.includes(PATCH)) {
+      this.log("the OP-Z did not fetch patch.json (it still holds an identical one); sending it with a nonce");
+      result = await this.push([[PATCH, patch(Math.trunc(this.clock() * 1000))]]);
+      if (result.skipped.includes(PATCH)) {
+        this.log("error:   the OP-Z did not fetch patch.json; nothing was imported");
+        return false;
+      }
+    }
+    const [plugs2, slots2] = (await this.readSettings()).map(loads);
+    const problems: string[] = [];
+    for (const e of engines) problems.push(...verifyInstall(plugs2, slots2, e, []).map((x) => `${e.name}: ${x}`));
+    for (const [record] of records) {
+      const now = (plugs2.plugs ?? []).find((p: Doc) => p.id === record.id) ?? null;
+      if (!pyEqual(now, record)) problems.push(`plug record changed: ${pyRepr(record)} -> ${pyRepr(now)}`);
+    }
+    const slotsChanged = !pyEqual(slots2, b.slots);
+    if (slotsChanged) problems.push("slot map changed");
+    if (problems.length) {
+      for (const p of problems) this.log("verify:  " + p);
+      if (slotsChanged) {
+        this.log(`restoring the slot map from ${b.id}`);
+        await this.restore(b.id, { yes: true });
+      }
+      return false;
+    }
+    const sums: Doc[] = [];
+    for (const e of engines) sums.push({ engine: e.devicePath, sha256: await sha256(e.data), plug: e.manifest.plug.id, assigned: [] });
+    await this.backups.annotate(b.id, "install.json", utf8(dumps({ batch: sums, presets: records.map(([r]) => r.id) }, { indent: 2 })));
+    this.log("installed and verified" + (records.length ? " (presets cannot be read back: plug records unchanged)" : "")
+      + ".\n" + describe(plugs2, slots2));
+    if (restart.length) {
+      this.log(`RESTART THE OP-Z: ${restart.join(", ")} ${restart.length > 1 ? "were" : "was"} already registered, and the OP-Z `
+        + "keeps the code it loaded at boot until it restarts (proven on hardware 2026-10-17).");
+    }
+    const withPresets = [...engines, ...presets].filter((e) => e.presets.length);
+    if (withPresets.length) {
+      this.log(options.boot
+        ? "The OP-Z keeps the presets this install sent in RAM; the boot file written next brings them back after a restart (research/presets.md)."
+        : "The OP-Z keeps the presets this install sent in RAM only: a restart or crash drops them (research/presets.md); "
+          + `then run: opz.py presets push engines/<name> (${withPresets.map((e) => e.name).join(", ")})`);
+      for (const e of withPresets) {
+        const keys = presetKeysText(e.name, e.presets, pyInt(e.manifest.plug.trackmask ?? 0));
+        if (keys) this.log(keys);
+      }
     }
     return true;
   }

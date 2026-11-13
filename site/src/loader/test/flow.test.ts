@@ -74,6 +74,15 @@ test("back up, then install the default picks: one confirm, every engine and slo
   assert.ok(asked[1].installs.every((i) => i.action === "ready"));
 });
 
+test("a whole batch is 5 sessions and 2 pushes, however many engines", async () => {
+  const { fake, c, lines } = setup();
+  const r = await install(c, featuredChoice(engines));
+  assert.ok(r.ok, r.lines.join("\n"));
+  assert.equal(lines.filter((l) => l.includes("session open")).length, 5, "backup, push, read-back, slot-map push, read-back");
+  assert.equal(fake.syncCount, 2, "every engine and preset in one push, then the slot map");
+  assert.ok(r.highlights.some((l) => l.startsWith("batch: ") && l.endsWith("installed and verified")));
+});
+
 test("cancel at the sheet: nothing written", async () => {
   const { fake, c, say } = setup();
   await c.backup();
@@ -224,8 +233,8 @@ function setupUnanswered(from: number, seconds = Infinity) {
 }
 
 test("a session open the OP-Z doesn't answer is tried once more, and the install goes on", async () => {
-  // 0 the batch's backup, 1 the first engine's backup, 2 its push: unanswered (a friend's install, 2026-11-05)
-  const { c, fake, lines, waits } = setupUnanswered(2, OPEN_WAIT + 1);
+  // 0 the batch's backup, 1 the push of every engine: unanswered (a friend's install, 2026-11-05)
+  const { c, fake, lines, waits } = setupUnanswered(1, OPEN_WAIT + 1);
   const r = await install(c, featuredChoice(engines));
   assert.ok(r.ok, r.lines.join("\n"));
   assert.ok(lines.some((l) => l.startsWith(`the OP-Z did not answer within ${OPEN_WAIT} s`)));
@@ -236,7 +245,7 @@ test("a session open the OP-Z doesn't answer is tried once more, and the install
 });
 
 test("no answer at all before a push: nothing written, no interrupted-write banner", async () => {
-  const { c, fake } = setupUnanswered(2);
+  const { c, fake } = setupUnanswered(1);
   const before = new Map(fake.files);
   const r = await install(c, featuredChoice(engines));
   assert.ok(!r.ok);
@@ -247,20 +256,21 @@ test("no answer at all before a push: nothing written, no interrupted-write bann
 });
 
 test("no answer for the read-back after a push: that write is unchecked, the banner says so", async () => {
-  const { c } = setupUnanswered(3);
+  const { c } = setupUnanswered(2);
   const r = await install(c, featuredChoice(engines));
   assert.ok(!r.ok);
   assert.ok(c.interrupted, "the push went out and was never read back");
   assert.equal(c.interrupted!.op, "install");
 });
 
-test("an engine installed and checked, then no answer: nothing half-written, no banner", async () => {
-  // 0 batch backup; engine 1: 1 backup, 2 push, 3 read-back; engine 2: 4 backup… unanswered
-  const { c, fake } = setupUnanswered(4);
+test("the engines installed and checked, then no answer: nothing half-written, no banner", async () => {
+  // 0 batch backup; 1 push of every engine, 2 read-back; the slot map: its backup takes that read-back, 3 push… unanswered
+  const { c, fake } = setupUnanswered(3);
+  const slotsBefore = fake.files.get("settings/slotConfiguration.json");
   const r = await install(c, featuredChoice(engines));
   assert.ok(!r.ok);
-  assert.ok(fake.files.has("engines/drm1.engine"), "the first engine of the batch");
-  assert.ok(!fake.files.has("engines/drm2.engine"));
+  assert.ok(fake.files.has("engines/drm1.engine") && fake.files.has("engines/syn1.engine"), "every engine, in one push");
+  assert.deepEqual(fake.files.get("settings/slotConfiguration.json"), slotsBefore, "the slot map was not written");
   assert.ok(r.highlights.some((l) => l.startsWith("nothing was left half-written")));
   assert.equal(c.interrupted, null);
 });

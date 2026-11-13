@@ -302,22 +302,38 @@ export function buildBootPatch(entries: Doc[]): Uint8Array {
   return utf8(dumps({ plugs: entries }, { separators: [",", ":"], sortKeys: true }));
 }
 
-/** settings/patch.json for PlugManager::importPatch: engine definition, plug record, tracks to assign. */
-export function buildPatch(engine: Engine, tracks: number[]): Uint8Array {
+/** One auto_import[] entry of patch.json: engine definition, plug record, tracks to assign. */
+export function autoImportEntry(engine: Engine, tracks: number[]): Doc {
   const m = engine.manifest;
   const plug = m.plug;
-  const doc = {
-    auto_import: [{
-      engine: { path: engine.devicePath, memoryslot: pyInt(m.memoryslot), version: pyInt(m.engine_version ?? 1) },
-      plug: {
-        id: pyInt(plug.id), version: pyInt(plug.version), engine: engine.devicePath,
-        samples: plug.samples ?? "", flags: pyInt(plug.flags ?? 0), name: plug.name ?? engine.name,
-        trackmask: pyInt(plug.trackmask ?? 0), parameter_names: plug.parameter_names ?? [],
-        presets: devicePresets(engine.presets),
-      },
-      tracks,
-    }],
+  return {
+    engine: { path: engine.devicePath, memoryslot: pyInt(m.memoryslot), version: pyInt(m.engine_version ?? 1) },
+    plug: {
+      id: pyInt(plug.id), version: pyInt(plug.version), engine: engine.devicePath,
+      samples: plug.samples ?? "", flags: pyInt(plug.flags ?? 0), name: plug.name ?? engine.name,
+      trackmask: pyInt(plug.trackmask ?? 0), parameter_names: plug.parameter_names ?? [],
+      presets: devicePresets(engine.presets),
+    },
+    tracks,
   };
+}
+
+/** settings/patch.json for PlugManager::importPatch: engine definition, plug record, tracks to assign. */
+export function buildPatch(engine: Engine, tracks: number[]): Uint8Array {
+  return utf8(dumps({ auto_import: [autoImportEntry(engine, tracks)] }, { separators: [",", ":"], sortKeys: true }));
+}
+
+/**
+ * One patch.json for a batch: an auto_import[] entry per new or upgraded engine (no tracks), and a plugs[] entry per
+ * installed plug whose presets are replaced (plugEntry). importPatch walks auto_import[] first, then plugs[], in one
+ * file (research/presets.md, device `0x801001d6`) [code]; several engines in one file is what TE's own boot file
+ * does [code]. Either list may be empty.
+ */
+export function buildBatchPatch(engines: Engine[], presets: Array<[Doc, Doc[]]>, nonce: number | null = null): Uint8Array {
+  const doc: Doc = {};
+  if (engines.length) doc.auto_import = engines.map((e) => autoImportEntry(e, []));
+  if (presets.length) doc.plugs = presets.map(([record, ps]) => plugEntry(record, ps));
+  if (nonce !== null) doc.nonce = nonce;
   return utf8(dumps(doc, { separators: [",", ":"], sortKeys: true }));
 }
 
