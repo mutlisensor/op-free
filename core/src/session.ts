@@ -23,7 +23,7 @@
  */
 
 import { concat, readU16le, readU32le, u16le, u32le } from "./bytes.ts";
-import { UploadState, downloadFileId } from "./fileprotocol.ts";
+import { SYNC_JOB_ID, UploadState, downloadFileId } from "./fileprotocol.ts";
 import { BANK_SIZE, PATTERN_SIZE } from "./project.ts";
 import { ProtocolError, decodeFrame, decompress, frame, stateSyncClientHello } from "./sysex.ts";
 import { ZlibError } from "./zlib.ts";
@@ -236,15 +236,26 @@ export class FileSession {
     removePlugIds: number[] | null = null,
     idleTimeout = 15.0,
     grace = 2.0,
+    deadline: number | null = null,
   ): Promise<PushResult> {
     if (this.clientId === null) throw new SessionError("session not open");
     checkUploadPaths(files);
     const state = new UploadState(files, removePlugIds);
     const paths = new Map(state.descriptors.map((d) => [d.fileId, d.path] as [number, string]));
     const requested = new Set<number>();
+    // A whole push may take this long. The OP-Z can keep asking for parts without the job ever finishing (H-IS1,
+    // 2026-11-13: a 7-file push swept for minutes), and then the idle timeout never fires.
+    const bytes = files.reduce((n, [, d]) => n + d.length, 0);
+    const limit = deadline ?? 30 + bytes / 2000;
+    const trace: string[] = [];
+    const note = (t: number, what: string) => {
+      trace.push(`${(t - started).toFixed(2)} s ${what}`);
+      if (trace.length > 24) trace.splice(0, trace.length - 24);
+    };
     this.active = 1;
     await this.keepalive(true);
-    let lastActivity = this.clock();
+    const started = this.clock();
+    let lastActivity = started;
     let doneAt: number | null = null;
     for (;;) {
       const now = this.clock();
@@ -258,6 +269,8 @@ export class FileSession {
         const [mid, p] = msg;
         if (mid === 0x35) {
           state.acceptRequest(p, this.clientId);
+          note(now, `$35 file ${state.activeFileId === SYNC_JOB_ID ? "syncjob" : (paths.get(state.activeFileId!) ?? state.activeFileId)} from part ${state.nextPart}`
+            + ` (sent ${state.sentPartCount}, done ${state.clientCompletedPartCount ?? "-"})`);
           if (state.activeFileId !== null && paths.has(state.activeFileId)) requested.add(state.activeFileId);
           lastActivity = now;
           doneAt = null;
@@ -268,6 +281,7 @@ export class FileSession {
             state.observeCompletedParts(value);
             lastActivity = now;
           } else if (status === STATUS_DONE && doneAt === null) {
+            note(now, "$33 done");
             doneAt = now;
             this.active = 0; // keep-alives must not start a second sync
             this.log("OP-Z reports sync complete");
@@ -277,10 +291,13 @@ export class FileSession {
       if (doneAt !== null && state.activeFileId === null) {
         if (state.sentAllFiles || now - doneAt >= grace) break;
       }
-      if (now - lastActivity > idleTimeout) {
+      if (now - lastActivity > idleTimeout || now - started > limit) {
         this.active = 0;
         await this.keepalive(true);
-        throw new SessionError(`sync stalled for ${idleTimeout.toFixed(0)} s`);
+        for (const line of trace) this.log("push trace: " + line);
+        this.log(`push trace: sent ${state.sentPartCount} parts, the OP-Z reported ${state.clientCompletedPartCount ?? "none"} done`);
+        throw new SessionError(now - lastActivity > idleTimeout ? `sync stalled for ${idleTimeout.toFixed(0)} s`
+          : `sync not finished after ${limit.toFixed(0)} s (the OP-Z kept the transfer going)`);
       }
       await this.keepalive();
     }

@@ -5,14 +5,15 @@
  * browser's backup store and a confirm callback that opens the loader's confirm sheet.
  *
  * Install is a batch: it backs up, plans from that backup (src/loader/plan.ts), asks once with every slot before →
- * after, then runs the core's own flows with `yes` (each one checks and verifies on its own): one `installMany` that
- * sends every new or upgraded engine and every preset refresh in a single push (one patch.json, no slot changes, read
- * back), then one `writeSlotMap` for the whole layout (refused if the OP-Z's map changed since the backup; read back
- * and rolled back if it differs). Nothing after a failure is written.
+ * after, then runs the core's own flows with `yes` (each one checks and verifies on its own): one `installMany` (a
+ * push per new or upgraded engine with its own patch.json, one push for every preset refresh, one read-back for all;
+ * no slot changes), then one `writeSlotMap` for the whole layout (refused if the OP-Z's map changed since the backup;
+ * read back and rolled back if it differs). Nothing after a failure is written.
  *
  * Speed: every session costs a ~6.5 s wait for the OP-Z's next `$34` (docs/research/install-speed.md), so the opz
- * reuses a read-back made in the last few seconds as the next flow's backup (READ_REUSE) and a batch is 5 sessions
- * (backup, push, read-back, slot-map push, read-back) whatever the number of engines, instead of 3 per engine.
+ * reuses a read-back made in the last few seconds as the next flow's backup (READ_REUSE), and a batch of N engines is
+ * N + 4 sessions instead of 3 per engine plus 3 per preset refresh plus 3 for the slot map. All the engines in one push
+ * made the OP-Z transfer for minutes without finishing (H-IS1, 2026-11-13).
  */
 
 import type { CatalogueEngine } from "../shared/catalogue.ts";
@@ -441,7 +442,7 @@ export class LoaderController {
         ...work.map((i) => `${engines.get(i.dir)!.devicePath} (${kb(i.bytes ?? 0)})`),
         ...work.map((i) => `settings/patch.json: plug ${i.plugId} v${i.version} with ${i.presets} preset${i.presets === 1 ? "" : "s"}`),
         ...repush.map((i) => `settings/patch.json: ${i.presets} presets for plug ${i.plugId} (no version bump)`),
-        ...(work.length + repush.length > 1 ? ["(one patch.json and one push for all of them)"] : []),
+        ...(repush.length > 1 ? ["(the preset refreshes go in one patch.json)"] : []),
         ...(plan.changes.length ? [SLOTS] : []),
       ];
       const restart = work.some((i) => i.restart);

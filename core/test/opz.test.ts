@@ -371,17 +371,17 @@ describe("session", () => {
   });
 });
 
-describe("install many (one push)", () => {
+describe("install many (one push per engine, one read-back)", () => {
   beforeEach(setUp);
   const opens = () => logs.filter((l) => l.includes("session open")).length;
 
-  it("three engines in one sync, three sessions, slot map untouched", async () => {
+  it("three engines: one backup, three pushes, one read-back; slot map untouched", async () => {
     const slotsBefore = dev.files.get("settings/slotConfiguration.json")!;
     const es = [engine({ name: "aa", pid: 60950, slot: 86 }), engine({ name: "bb", pid: 60951, slot: 85 }),
       engine({ name: "cc", pid: 60952, slot: 84, presets: [{ index: 0, slot: 0, name: "p", values: Array(18).fill(1) }] })];
     assert.ok(await opz.installMany(es, [], { yes: true }));
-    assert.equal(dev.syncCount, 1);
-    assert.equal(opens(), 3);
+    assert.equal(dev.syncCount, 3);
+    assert.equal(opens(), 5);
     const [plugs] = settings();
     for (const e of es) {
       assert.ok(plugs.plugs.some((p: Doc) => p.id === e.manifest.plug.id && p.engine === e.devicePath));
@@ -393,7 +393,7 @@ describe("install many (one push)", () => {
     assert.equal(loads(store.backups.get(id)!.get("install.json")!).batch.length, 3);
   });
 
-  it("presets of an installed plug ride in the same patch.json", async () => {
+  it("presets of installed plugs go in one plugs[]-only push after the engines", async () => {
     assert.ok(await opz.install(engine({ name: "aa" }), [], null, false, { yes: true }));
     dev.syncCount = 0;
     const again = engine({ name: "aa", presets: [{ index: 1, slot: 0, name: "x", values: Array(18).fill(2) }] });
@@ -402,10 +402,11 @@ describe("install many (one push)", () => {
     const real = dev.importPatch.bind(dev);
     dev.importPatch = (doc: Doc) => { patch = doc; real(doc); };
     assert.ok(await opz.installMany([added], [again], { yes: true }));
-    assert.equal(dev.syncCount, 1);
+    assert.equal(dev.syncCount, 2);
     assert.equal(dev.presets.get(60950)?.size, 1);
-    assert.equal(patch.auto_import.length, 1);
+    assert.equal(patch.auto_import, undefined, "the last push carries the presets only");
     assert.equal(patch.plugs[0].id, 60950);
+    assert.ok(settings()[0].plugs.some((p: Doc) => p.id === 60951));
   });
 
   it("refuses a memory slot or plug id used twice in the batch, writes nothing", async () => {
@@ -422,11 +423,20 @@ describe("install many (one push)", () => {
     assert.ok(logs.some((l) => l.includes("verify:  testeng: plug 60950 missing")));
   });
 
-  it("dry run prints one patch.json and writes nothing", async () => {
+  it("dry run prints a patch.json per push and writes nothing", async () => {
     assert.ok(await opz.installMany([engine({ name: "aa" }), engine({ name: "bb", pid: 60951, slot: 85 })], [], { dryRun: true }));
     assert.equal(dev.syncCount, 0);
-    const dry = logs.find((l) => l.startsWith("dry run"))!;
-    assert.equal(loads(dry.split("\n")[1]).auto_import.length, 2);
+    const dry = logs.find((l) => l.startsWith("dry run"))!.split("\n").slice(1).map(loads);
+    assert.deepEqual(dry.map((d) => d.auto_import.length), [1, 1]);
+  });
+
+  it("a push that never finishes stops at its deadline with a trace", async () => {
+    const t = new VirtualTransport(dev);
+    const lines: string[] = [];
+    const s = new FileSession(t, { log: (l) => lines.push(l), clock: t.clock });
+    await s.open();
+    await assert.rejects(s.push([["engines/x.engine", new Uint8Array(4000).fill(7)]], null, 15, 2, 0.001), /not finished after/);
+    assert.ok(lines.some((l) => l.startsWith("push trace: sent")));
   });
 });
 

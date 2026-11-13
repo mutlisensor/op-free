@@ -219,10 +219,12 @@ export class Opz {
   }
 
   /**
-   * Install several engines and replace the presets of installed plugs in one push: one backup, one sync job with
-   * every engine file and one patch.json (buildBatchPatch), one read-back. No slot changes (write the slot map next);
-   * the read-back must show the slot map unchanged, or it is restored. The single-engine flow (install) costs three
-   * sessions per engine, each with a ~6.5 s wait for the OP-Z (research/install-speed.md).
+   * Install several engines and replace the presets of installed plugs: one backup, then one push per engine (its file
+   * and its own patch.json, the shape every single install uses), one push for all preset refreshes (one patch.json,
+   * plugs[] only), then one read-back for everything. No slot changes (write the slot map next); the read-back must
+   * show the slot map unchanged, or it is restored. The single-engine flow (install) costs three sessions per engine,
+   * each with a ~6.5 s wait for the OP-Z; this costs one per engine plus two (research/install-speed.md).
+   * Several engines in one push made the OP-Z transfer for minutes without finishing (H-IS1, 2026-11-13).
    */
   async installMany(engines: Engine[], presets: Engine[] = [], options: WriteOptions = {}): Promise<boolean> {
     const b = await this.backup("install-batch");
@@ -264,30 +266,40 @@ export class Opz {
       this.log("nothing written.");
       return false;
     }
-    const patch = (nonce: number | null) => buildBatchPatch(engines, records, nonce);
-    const files: Array<[string, Uint8Array]> = [...engines.map((e): [string, Uint8Array] => [e.devicePath, e.data]), [PATCH, patch(null)]];
+    const pushes: Array<[Array<[string, Uint8Array]>, (nonce: number | null) => Uint8Array]> = engines.map((e) => {
+      const patch = (nonce: number | null) => buildBatchPatch([e], [], nonce);
+      return [[[e.devicePath, e.data], [PATCH, patch(null)]], patch];
+    });
+    if (records.length) {
+      const patch = (nonce: number | null) => buildBatchPatch([], records, nonce);
+      pushes.push([[[PATCH, patch(null)]], patch]);
+    }
     for (const e of engines) {
       this.log(`plan: ${e.devicePath} (${e.data.length} bytes) as plug ${pyInt(e.manifest.plug.id)} v${pyInt(e.manifest.plug.version)}`
         + ` with ${e.presets.length} presets`);
     }
     for (const [record, ps] of records) this.log(`plan: ${ps.length} presets -> plug ${record.id} (${record.engine} v${record.version}), no version bump`);
-    this.log(`plan: one push of ${files.length} file${files.length > 1 ? "s" : ""}, no slot changes`);
+    this.log(`plan: ${pushes.length} push${pushes.length > 1 ? "es" : ""} (`
+      + [engines.length ? "an engine and its patch.json each" : "", records.length ? "the presets in one patch.json" : ""].filter(Boolean).join(", then ")
+      + "), one read-back, no slot changes");
     if (options.dryRun) {
-      this.log("dry run: nothing written. patch.json:\n" + fromUtf8(files[files.length - 1][1]));
+      this.log("dry run: nothing written. patch.json:\n" + pushes.map(([files]) => fromUtf8(files[files.length - 1][1])).join("\n"));
       return true;
     }
     if (!options.yes && !(await this.confirm("Install now?"))) {
       this.log("cancelled.");
       return false;
     }
-    let result = await this.push(files);
-    this.log(`sync: requested ${pyRepr(result.requested)}; skipped (unchanged) ${pyRepr(result.skipped)}`);
-    if (result.skipped.includes(PATCH)) {
-      this.log("the OP-Z did not fetch patch.json (it still holds an identical one); sending it with a nonce");
-      result = await this.push([[PATCH, patch(Math.trunc(this.clock() * 1000))]]);
+    for (const [files, patch] of pushes) {
+      let result = await this.push(files);
+      this.log(`sync: requested ${pyRepr(result.requested)}; skipped (unchanged) ${pyRepr(result.skipped)}`);
       if (result.skipped.includes(PATCH)) {
-        this.log("error:   the OP-Z did not fetch patch.json; nothing was imported");
-        return false;
+        this.log("the OP-Z did not fetch patch.json (it still holds an identical one); sending it with a nonce");
+        result = await this.push([[PATCH, patch(Math.trunc(this.clock() * 1000))]]);
+        if (result.skipped.includes(PATCH)) {
+          this.log("error:   the OP-Z did not fetch patch.json; that import did not happen");
+          return false;
+        }
       }
     }
     const [plugs2, slots2] = (await this.readSettings()).map(loads);

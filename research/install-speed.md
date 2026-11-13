@@ -1,7 +1,7 @@
 # Install speed: where the time goes, and the batched install
 
 A tester's OP-FREE install of three engines, one preset refresh and a slot map took about two minutes (2026-11-11).
-This note says why, what the loader does about it, and the device check the batched install still needs.
+This note says why, what the loader does about it, and what device check H-IS1 showed.
 
 ## 1. Every session costs a ~6.5 s wait
 
@@ -31,68 +31,61 @@ The loader's log from that install (OP-FREE site, every line timestamped) shows 
 
 ## 2. What the loader does now
 
-Both changes are offline and covered by tests. The second still needs H-IS1 (§3) before it is published.
-
 1. **A backup reuses a fresh read-back** (`OpzOptions.reuseRead`, seconds; the OP-FREE site uses 5).
    - **When:** a flow's backup follows the previous flow's read-back by milliseconds. When nothing was pushed in
      between, that read-back *is* the device's state, so the backup takes it instead of opening another session.
    - **Safety:** any push drops it, and so does age. The default is 0 (always read), so `opz.py`, the web app and
      the recorded test vectors don't change.
-   - **Saves:** one session (~7.5 s) per step [code + test: `core/test/opz.test.ts` "read-back reuse"].
-2. **One push for the whole batch** (`Opz.installMany`).
-   - **What it sends:** every new or upgraded engine file, plus one `settings/patch.json`
-     (`buildBatchPatch`). That file has an `auto_import[]` entry per engine (no tracks) and a `plugs[]` entry per
-     installed plug whose presets are refreshed. Then one read-back checks every engine and plug record, and that
-     the slot map didn't change; if it changed, the slot map is restored.
-   - **The slot map:** it still goes in its own push afterwards (`writeSlotMap`, whose backup takes the
-     read-back). We don't know in what order the OP-Z applies the files of one sync job, and a slot map naming a plug
-     that isn't imported yet could be dropped [idea].
-   - **Why it should work:** `importPatch` walks `auto_import[]` and then `plugs[]` in one file
-     [code: device `0x801001d6`, research/presets.md]. TE's own boot file carries several `auto_import`
-     entries [code: crash-safety.md].
-   - **Not shown yet:** several new engines in one push from us [idea] → **H-IS1**.
+   - **Saves:** one session (~7.5 s) per step [proven: H-IS1's log, `settings as read back 2.5 s ago`; test:
+     `core/test/opz.test.ts` "read-back reuse"].
+2. **One read-back for a whole batch** (`Opz.installMany`).
+   - **Pushes:** one backup, then one push per engine (its file plus its own `patch.json`, the shape every single
+     install uses [proven]), one push with every preset refresh (`plugs[]` only), and one read-back. The read-back
+     checks every engine and plug record, and that the slot map didn't change; if it changed, the slot map is
+     restored.
+   - **The slot map:** it follows in its own push (`writeSlotMap`, whose backup takes the read-back).
+   - **Why not one push for everything:** sending every engine in one push failed on the device (H-IS1, §3).
+3. **A push has an overall time limit:** 30 s plus 1 s per 2 KB. When a push stops on it, or on the 15 s idle
+   limit, the log ends with `push trace:` lines: the OP-Z's last `$35` requests and its part counts.
 
-| Batch of N engines (+ slot map) | Sessions | Waits of ~6.5 s | About |
-|---|---|---|---|
-| before: `install` per engine, `presetsPush` per refresh, `writeSlotMap` | 3 per step | 3 per step | 22 s per step (the tester's five steps: ~1 min 50 s) |
-| with reuse only | 2 per step + 1 | the same count | ~15 s per step |
-| `installMany` + reuse (the OP-FREE site now) | **5 in all** | 5 | **~35 s, any N** [inferred from §1's timings] |
+| Batch of N engines (+ slot map) | Sessions | About |
+|---|---|---|
+| before: `install` per engine, `presetsPush` per refresh, `writeSlotMap` | 3 per step | 22 s per step (the tester's five steps: ~1 min 50 s) |
+| `installMany` + reuse (the OP-FREE site now) | **N + 4** (+1 with preset refreshes) | **~7.5 s per engine + ~30 s** [inferred from §1's timings] |
 
-The site's test "a whole batch is 5 sessions and 2 pushes, however many engines" pins this
+The site's test "a batch of N engines is N + 4 sessions" pins this
 [test: `OP-FREE/site/src/loader/test/flow.test.ts`, 15 engines in the demo].
 
-## 3. H-IS1: several engines in one push (device check)
+## 3. H-IS1: every engine in one push (device check, 2026-11-13): **no**
 
-**Asks:** does the OP-Z import every `auto_import[]` entry and `plugs[]` entry of one `patch.json`, sent in one sync
-job together with all the engine files, and is the batch really ~35 s?
+The first version of `installMany` sent every engine file and one `patch.json` in a single push. The push was 7
+files: fmperc, swarm, clouds, swirl, plate and lofi, plus a `patch.json` with their six `auto_import[]` entries and
+chip's presets. About 48 KB, ~240 parts of 200 bytes.
 
-**Needs:** the OP-FREE site from `loader/fast-install`, run locally (`npm --prefix OP-FREE/site run dev`), with TE's
-app closed. **Each write needs the user's go-ahead**, as for every install (SAFETY.md). The confirm sheet is the
-dry run.
+- **What happened:** the session opened. Then the OP-Z showed its transfer light (a blue sweep across the top row)
+  for minutes, never reported the sync complete, and the site waited
+  [proven: the tester's report, 2026-11-13 11:55:44 onward].
+- **Why the site never gave up:** it only stopped a push after 15 s with no traffic, so the OP-Z must have kept
+  sending requests or progress [inferred]. That's why pushes now have the overall time limit.
+- **Recovery:** closing the tab ended the session. The sweep stopped, and the OP-Z worked normally.
+- **What landed:** nothing. A read-back (`opz.py status`) showed the same state CRC `c85e860c`, plugs and slot map
+  as before [proven].
 
-1. Take a status and a backup in the site (read only).
-2. Pick two or three engines that aren't installed yet. Choose test plugs where you can; otherwise released plugs
-   that the user agrees to add. Give one of them a slot on a synth track. Also pick one installed engine with
-   presets, so its presets are pushed again.
-3. In the confirm sheet, check the files: the engine files, then the `settings/patch.json` lines, then "(one
-   patch.json and one push for all of them)", then the slot map. **User approves.**
-4. Expected log:
-   - one `sync: requested [...]` naming every engine and `settings/patch.json`;
-   - `installed and verified` listing every new plug, with the slot map unchanged at that point;
-   - `settings as read back 0.0 s ago (nothing written since)`, then the slot-map push and `slot map written and
-     verified`;
-   - `session open` five times in all, and about 35 s from the first open to `batch: done.`.
-5. On the OP-Z, play the newly slotted engine. Hold its track: the lit white keys show the presets.
-6. **Rollback:** "Put the original sounds back" (step 5) restores the slot map. The new plugs stay installed, as
-   after every install (taking OP-FREE off removes them).
-
-**If an engine is missing in the read-back:** the batch stops with `verify:` lines and the slot map isn't written.
-That would answer H-IS1 *no*. Ship the read reuse only, and keep one engine per push.
+**Cause: not known.** Every push before had at most 3 files.
+- A single file of 230 parts (`table`, 45,844 B) installs fine [proven: installed 2026-11-11]. So the part count of
+  one file isn't the limit.
+- Two candidates [idea]:
+  - The OP-Z limits how many files, or how many bytes, one sync job can carry.
+  - Our flow control (`UploadState`: at most 64 parts in flight, counted as parts sent minus the OP-Z's reported
+    count) disagrees with the OP-Z when its `$33` count runs per file rather than per job. Then we stop sending after
+    a few files while the OP-Z keeps asking.
+- **Q-88** asks which. The next stalled push's `push trace:` lines answer it.
 
 ## 4. Open
 
 - **Q-86:** why ~6.5 s between sessions? Is there a close the OP-Z honours at once? If there is, every remaining
   session gets cheaper, the single-engine flows too.
 - **Q-87:** in what order does the OP-Z apply the files of one sync job? If `patch.json` is imported before
-  `slotConfiguration.json` is applied, the slot map could join the engine push, and a batch would drop to 3
-  sessions (~20 s).
+  `slotConfiguration.json` is applied, the slot map could join the last engine's push and save two sessions.
+- **Q-88:** why did a 7-file push never finish (§3)? Once a multi-file push is understood, a batch could drop back to
+  ~5 sessions.
