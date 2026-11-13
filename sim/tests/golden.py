@@ -69,8 +69,12 @@ def param_word(b):
 
 class Results:
     def __init__(self, verbose):
-        self.passed = self.failed = 0
+        self.passed = self.failed = self.skipped = 0
         self.verbose = verbose
+
+    def skip(self, name, why):
+        print("%-4s %s — %s" % ("skip", name, why))
+        self.skipped += 1
 
     def check(self, name, ok, detail="", log=""):
         print("%-4s %s%s" % ("ok" if ok else "FAIL", name, (" — " + detail) if detail else ""))
@@ -228,10 +232,14 @@ def mix_check(build, res, tmp):
 
     name = "sdk: what an FX track is fed follows the instrument's level and pan"
     fx = os.path.join(build, "engines", "opz_test_passthrough.dylib")
-    wav_fx = os.path.join(tmp, "mix_probe_fx.wav")
-    rc, log = opzsim(build, dylib, scn, "--fx", fx, out=wav_fx)
-    res.check(name, rc == 0 and read_wav32(wav_fx) == x, "exit %d" % rc if rc else
-              "FX input identical to the levelled, panned track", log)
+    if not os.path.exists(fx):
+        # the test engines (plugs 60900-60999) stay in the lab, so this check has nothing to pass through in OP-FREE
+        res.skip(name, "engines/opz_test_passthrough is not in this checkout")
+    else:
+        wav_fx = os.path.join(tmp, "mix_probe_fx.wav")
+        rc, log = opzsim(build, dylib, scn, "--fx", fx, out=wav_fx)
+        res.check(name, rc == 0 and read_wav32(wav_fx) == x, "exit %d" % rc if rc else
+                  "FX input identical to the levelled, panned track", log)
 
 
 # No pan byte is the exact centre: 127 (0x3fbfbfbf) has gain_L = 1 and gain_R = 0.996, 128 (0x40404040) the reverse.
@@ -699,7 +707,7 @@ def main():
     if not args.update:
         host_checks(build, res, tmp)
     golden_tests(build, res, tmp, args.update, args.spectral, args.tolerance, args.engine)
-    print("\n%d passed, %d failed" % (res.passed, res.failed))
+    print("\n%d passed, %d failed%s" % (res.passed, res.failed, ", %d skipped" % res.skipped if res.skipped else ""))
     return 1 if res.failed else 0
 
 

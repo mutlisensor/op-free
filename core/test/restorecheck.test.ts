@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 
 import { checkContentRestore, describeRestoreCheck, parseImportLog } from "../src/index.ts";
 
-const fixture = JSON.parse(readFileSync(new URL("../../../tools/tests/fixtures/restore-check.json", import.meta.url), "utf8"));
+const fixture = JSON.parse(readFileSync(new URL("../../tools/tests/fixtures/restore-check.json", import.meta.url), "utf8"));
 
 describe("content-mode restore check", () => {
   for (const s of fixture.scenarios) {

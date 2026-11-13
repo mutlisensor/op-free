@@ -1,0 +1,1905 @@
+{
+ "scenarios": [
+  {
+   "name": "mixed restore over our plugs, with the disk",
+   "backup": [
+    {
+     "path": "OP-Z backup/samplepacks/1-kick/01/~TeKicks.aif",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/1-kick/02/mykit.aif",
+     "size": 500000
+    },
+    {
+     "path": "OP-Z backup/samplepacks/1-kick/03/new.aif",
+     "size": 900000
+    },
+    {
+     "path": "OP-Z backup/samplepacks/1-kick/04/~TeKicks.aif",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/1-kick/one_sample_pack_per_slot.plz",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/5-bass/01/~10.engine",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/5-bass/02/~10.engine",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/5-bass/03/~61016.engi",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/2-snare/01/big.wav",
+     "size": 30000000
+    },
+    {
+     "path": "OP-Z backup/samplepacks/2-snare/01/second.aif",
+     "size": 10
+    },
+    {
+     "path": "OP-Z backup/samplepacks/2-snare/02/._junk.aif",
+     "size": 4096
+    },
+    {
+     "path": "OP-Z backup/projects/project01.opz",
+     "size": 342848
+    },
+    {
+     "path": "OP-Z backup/import.log",
+     "size": 8210
+    }
+   ],
+   "device": {
+    "plugs": {
+     "engines": [],
+     "plugs": [
+      {
+       "id": 10,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 121,
+       "engine": "engines/x.engine",
+       "samples": "samplepacks/TeKicks.aif",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 1001,
+       "engine": "engines/x.engine",
+       "samples": "samplepacks/user/mykit.aif",
+       "flags": 2,
+       "version": 1
+      },
+      {
+       "id": 1002,
+       "engine": "engines/x.engine",
+       "samples": "samplepacks/user/old.aif",
+       "flags": 2,
+       "version": 1
+      },
+      {
+       "id": 61020,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61011,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      }
+     ]
+    },
+    "slots": {
+     "tracks": [
+      {
+       "index": 0,
+       "packs": [
+        {
+         "id": 121,
+         "slot": 1
+        },
+        {
+         "id": 1001,
+         "slot": 2
+        },
+        {
+         "id": 1002,
+         "slot": 3
+        },
+        {
+         "id": 61020,
+         "slot": 4
+        }
+       ]
+      },
+      {
+       "index": 4,
+       "packs": [
+        {
+         "id": 61011,
+         "slot": 1
+        },
+        {
+         "id": 10,
+         "slot": 2
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "disk": [
+    {
+     "path": "samplepacks/1-kick/02/mykit.aif",
+     "size": 500000
+    },
+    {
+     "path": "samplepacks/1-kick/03/old.aif",
+     "size": 700000
+    },
+    {
+     "path": "samplepacks/1-kick/04/~61020.engi",
+     "size": 0
+    },
+    {
+     "path": "projects/project01.opz",
+     "size": 342848
+    },
+    {
+     "path": "projects/project02.opz",
+     "size": 342848
+    },
+    {
+     "path": "projects/project03.opz",
+     "size": 342848
+    },
+    {
+     "path": "projects/project04.opz",
+     "size": 342848
+    },
+    {
+     "path": "projects/project05.opz",
+     "size": 342848
+    },
+    {
+     "path": "projects/project06.opz",
+     "size": 342848
+    },
+    {
+     "path": "projects/project07.opz",
+     "size": 342848
+    },
+    {
+     "path": "projects/project08.opz",
+     "size": 342848
+    },
+    {
+     "path": "projects/project09.opz",
+     "size": 342848
+    },
+    {
+     "path": "projects/project10.opz",
+     "size": 342848
+    }
+   ],
+   "expected": [
+    "backup: 30.3 MB, 8 slot folders (3 as on the OP-Z now), 1 projects",
+    "samples: 2 brought back (29.5 MB), 0 already on the OP-Z, 1 placeholders",
+    "sample memory: about 29.9 MB of 24.0 MB at the worst point",
+    "sound definitions: 195 free for 2 new samples (2 of ours on the OP-Z)",
+    "OP-Z disk now: 4.4 MB of 33.0 MB",
+    "problem: sample memory: the OP-Z keeps 24 MB of your samples; this restore needs about 29.9 MB (0.5 MB that stay on it, 29.5 MB brought back). It refuses the rest (\"sample memory full\", logged only at the next content mode) and those slots stay as they were. Restore fewer slots at a time, or first delete samples you don't need on the disk and eject",
+    "problem: 1 slot in the backup name a plug that isn't installed now (61016): the OP-Z would put that id in the slot anyway and the slot would be silent. Delete those ~<number>.engine files from the copy you restore, or install those engines again first",
+    "warning: samplepacks/2-snare/01/second.aif: a second sample in one slot folder; the OP-Z uses only the first that imports",
+    "warning: 2 slots the backup restores hold our sounds now. If the copy merges folders, our sound can stay in a slot whose sample fails to import. Take our plugs off first, or replace whole slot folders",
+    "warning: the disk holds 4.4 MB now and the backup is 30.3 MB; together more than the disk's 33.0 MB. If the computer says there isn't enough space, delete the old files on the OP-Z disk first (empty the Trash, or delete them for good), then copy",
+    "advice:  take our plugs off first (opz.py remove --all-ours, or Remove all of ours in the web app), then restore"
+   ]
+  },
+  {
+   "name": "same, without the disk",
+   "backup": [
+    {
+     "path": "OP-Z backup/samplepacks/1-kick/01/~TeKicks.aif",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/1-kick/02/mykit.aif",
+     "size": 500000
+    },
+    {
+     "path": "OP-Z backup/samplepacks/1-kick/03/new.aif",
+     "size": 900000
+    },
+    {
+     "path": "OP-Z backup/samplepacks/1-kick/04/~TeKicks.aif",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/1-kick/one_sample_pack_per_slot.plz",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/5-bass/01/~10.engine",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/5-bass/02/~10.engine",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/5-bass/03/~61016.engi",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/2-snare/01/big.wav",
+     "size": 30000000
+    },
+    {
+     "path": "OP-Z backup/samplepacks/2-snare/01/second.aif",
+     "size": 10
+    },
+    {
+     "path": "OP-Z backup/samplepacks/2-snare/02/._junk.aif",
+     "size": 4096
+    },
+    {
+     "path": "OP-Z backup/projects/project01.opz",
+     "size": 342848
+    },
+    {
+     "path": "OP-Z backup/import.log",
+     "size": 8210
+    }
+   ],
+   "device": {
+    "plugs": {
+     "engines": [],
+     "plugs": [
+      {
+       "id": 10,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 121,
+       "engine": "engines/x.engine",
+       "samples": "samplepacks/TeKicks.aif",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 1001,
+       "engine": "engines/x.engine",
+       "samples": "samplepacks/user/mykit.aif",
+       "flags": 2,
+       "version": 1
+      },
+      {
+       "id": 1002,
+       "engine": "engines/x.engine",
+       "samples": "samplepacks/user/old.aif",
+       "flags": 2,
+       "version": 1
+      },
+      {
+       "id": 61020,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61011,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      }
+     ]
+    },
+    "slots": {
+     "tracks": [
+      {
+       "index": 0,
+       "packs": [
+        {
+         "id": 121,
+         "slot": 1
+        },
+        {
+         "id": 1001,
+         "slot": 2
+        },
+        {
+         "id": 1002,
+         "slot": 3
+        },
+        {
+         "id": 61020,
+         "slot": 4
+        }
+       ]
+      },
+      {
+       "index": 4,
+       "packs": [
+        {
+         "id": 61011,
+         "slot": 1
+        },
+        {
+         "id": 10,
+         "slot": 2
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "disk": null,
+   "expected": [
+    "backup: 30.3 MB, 8 slot folders (3 as on the OP-Z now), 1 projects",
+    "samples: 2 brought back (29.5 MB), 0 already on the OP-Z, 1 placeholders",
+    "sample memory: about 29.5 MB of 24.0 MB at the worst point (+ 1 of your samples that stay, size unknown without the disk)",
+    "sound definitions: 195 free for 2 new samples (2 of ours on the OP-Z)",
+    "problem: sample memory: the OP-Z keeps 24 MB of your samples; this restore needs about 29.5 MB. It refuses the rest (\"sample memory full\", logged only at the next content mode) and those slots stay as they were. Restore fewer slots at a time, or first delete samples you don't need on the disk and eject",
+    "problem: 1 slot in the backup name a plug that isn't installed now (61016): the OP-Z would put that id in the slot anyway and the slot would be silent. Delete those ~<number>.engine files from the copy you restore, or install those engines again first",
+    "warning: samplepacks/2-snare/01/second.aif: a second sample in one slot folder; the OP-Z uses only the first that imports",
+    "warning: 2 slots the backup restores hold our sounds now. If the copy merges folders, our sound can stay in a slot whose sample fails to import. Take our plugs off first, or replace whole slot folders",
+    "advice:  take our plugs off first (opz.py remove --all-ours, or Remove all of ours in the web app), then restore"
+   ]
+  },
+  {
+   "name": "no settings known",
+   "backup": [
+    {
+     "path": "OP-Z backup/samplepacks/1-kick/01/~TeKicks.aif",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/1-kick/02/mykit.aif",
+     "size": 500000
+    },
+    {
+     "path": "OP-Z backup/samplepacks/1-kick/03/new.aif",
+     "size": 900000
+    },
+    {
+     "path": "OP-Z backup/samplepacks/1-kick/04/~TeKicks.aif",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/1-kick/one_sample_pack_per_slot.plz",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/5-bass/01/~10.engine",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/5-bass/02/~10.engine",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/5-bass/03/~61016.engi",
+     "size": 0
+    },
+    {
+     "path": "OP-Z backup/samplepacks/2-snare/01/big.wav",
+     "size": 30000000
+    },
+    {
+     "path": "OP-Z backup/samplepacks/2-snare/01/second.aif",
+     "size": 10
+    },
+    {
+     "path": "OP-Z backup/samplepacks/2-snare/02/._junk.aif",
+     "size": 4096
+    },
+    {
+     "path": "OP-Z backup/projects/project01.opz",
+     "size": 342848
+    },
+    {
+     "path": "OP-Z backup/import.log",
+     "size": 8210
+    }
+   ],
+   "device": null,
+   "disk": null,
+   "expected": [
+    "backup: 30.3 MB, 8 slot folders (0 as on the OP-Z now), 1 projects",
+    "samples: 3 brought back (29.9 MB), 0 already on the OP-Z, 2 placeholders",
+    "sample memory: about 29.9 MB of 24.0 MB at the worst point",
+    "problem: sample memory: the OP-Z keeps 24 MB of your samples; this restore needs about 29.9 MB. It refuses the rest (\"sample memory full\", logged only at the next content mode) and those slots stay as they were. Restore fewer slots at a time, or first delete samples you don't need on the disk and eject",
+    "warning: samplepacks/2-snare/01/second.aif: a second sample in one slot folder; the OP-Z uses only the first that imports"
+   ]
+  },
+  {
+   "name": "plug table too full; removing ours helps",
+   "backup": [
+    {
+     "path": "samplepacks/1-x/01/s0.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/1-x/02/s1.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/1-x/03/s2.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/1-x/04/s3.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/1-x/05/s4.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/1-x/06/s5.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/1-x/07/s6.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/1-x/08/s7.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/1-x/09/s8.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/1-x/10/s9.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/2-x/01/s10.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/2-x/02/s11.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/2-x/03/s12.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/2-x/04/s13.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/2-x/05/s14.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/2-x/06/s15.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/2-x/07/s16.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/2-x/08/s17.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/2-x/09/s18.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/2-x/10/s19.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/3-x/01/s20.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/3-x/02/s21.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/3-x/03/s22.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/3-x/04/s23.aif",
+     "size": 100000
+    },
+    {
+     "path": "samplepacks/3-x/05/s24.aif",
+     "size": 100000
+    }
+   ],
+   "device": {
+    "plugs": {
+     "engines": [],
+     "plugs": [
+      {
+       "id": 1,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 2,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 3,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 4,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 5,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 6,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 7,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 8,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 9,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 10,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 11,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 12,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 13,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 14,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 15,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 16,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 17,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 18,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 19,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 20,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 21,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 22,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 23,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 24,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 25,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 26,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 27,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 28,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 29,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 30,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 31,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 32,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 33,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 34,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 35,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 36,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 37,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 38,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 39,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 40,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 41,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 42,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 43,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 44,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 45,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 46,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 47,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 48,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 49,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 50,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 51,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 52,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 53,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 54,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 55,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 56,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 57,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 58,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 59,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 60,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 62,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 63,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 64,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 65,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 66,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 67,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 68,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 69,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 70,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 71,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 72,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 73,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 74,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 75,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 76,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 77,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 78,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 79,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 80,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 81,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 82,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 83,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 84,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 85,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 86,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 87,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 88,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 89,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 90,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 91,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 92,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 93,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 94,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 95,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 96,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 97,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 98,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 99,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 100,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 101,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 102,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 103,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 104,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 105,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 106,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 107,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 108,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 109,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 110,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 111,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 112,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 113,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 114,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 115,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 116,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 117,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 118,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 119,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 120,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 121,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 122,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 123,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 124,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 125,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 126,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 127,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 128,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 129,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 130,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 131,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 132,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 133,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 134,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 135,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 136,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 137,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 138,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 139,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 140,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 141,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 142,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 143,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 144,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 145,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 146,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 147,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 148,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 149,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 150,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 151,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 152,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 153,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 154,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 155,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 156,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 157,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 158,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 159,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 160,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 161,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 162,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 163,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 164,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 165,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 166,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 167,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 168,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 169,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 170,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61000,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61001,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61002,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61003,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61004,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61005,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61006,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61007,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61008,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61009,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61010,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61011,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61012,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61013,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61014,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61015,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61016,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61017,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61018,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      },
+      {
+       "id": 61019,
+       "engine": "engines/x.engine",
+       "samples": "",
+       "flags": 0,
+       "version": 1
+      }
+     ]
+    },
+    "slots": {
+     "tracks": []
+    }
+   },
+   "disk": null,
+   "expected": [
+    "backup: 2.4 MB, 25 slot folders (0 as on the OP-Z now), 0 projects",
+    "samples: 25 brought back (2.4 MB), 0 already on the OP-Z, 0 placeholders",
+    "sample memory: about 2.4 MB of 24.0 MB at the worst point",
+    "sound definitions: 10 free for 25 new samples (20 of ours on the OP-Z)",
+    "problem: sound definitions: this restore brings back 25 samples, and only 10 of the OP-Z's 200 definitions will be free. The OP-Z logs \"SUCCESS\" for the others, then deletes them. Taking our 20 plugs off first frees 20",
+    "advice:  take our plugs off first (opz.py remove --all-ours, or Remove all of ours in the web app), then restore"
+   ]
+  }
+ ],
+ "import_log": {
+  "text": "Reading content disk...SUCCESS\nCalculating used sample space...23.1/24.0 MB\n  Can't import big.wav, sample memory full\n  importing a.aif...SUCCESS. New used space 100 kB\n  importing b.aif...invalid drum sample pack\n  rejecting invalid engine : ~x.engine\n",
+  "expected": {
+   "used": "23.1/24.0 MB",
+   "memory_full": [
+    "big.wav"
+   ],
+   "failed": [
+    "importing b.aif...invalid drum sample pack",
+    "rejecting invalid engine : ~x.engine"
+   ],
+   "imports": 1
+  }
+ }
+}
